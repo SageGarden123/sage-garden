@@ -18,7 +18,10 @@ data class PlantEntity(
     val source: String,
     val date: String,
     val qty: Int,
+    val notes: String,
+    val wateringSystem: String,
     val lat: Double?,
     val lng: Double?,
-    val photoUri: String?
+    val photoUri: String?,
+    val photoUris: List<String> = emptyList()
 )
