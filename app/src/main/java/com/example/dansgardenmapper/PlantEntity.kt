@@ -1,0 +1,24 @@
+package com.example.dansgardenmapper
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "plants")
+data class PlantEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val sci: String,
+    val location: String,
+    val sun: String,
+    val water: String,
+    val soil: String,
+    val frost: String,
+    val native: String,
+    val pollinator: String,
+    val source: String,
+    val date: String,
+    val qty: Int,
+    val lat: Double?,
+    val lng: Double?,
+    val photoUri: String?
+)
