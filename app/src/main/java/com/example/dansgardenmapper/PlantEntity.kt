@@ -23,5 +23,7 @@ data class PlantEntity(
     val lat: Double?,
     val lng: Double?,
     val photoUri: String?,
-    val photoUris: List<String> = emptyList()
+    val photoUris: List<String> = emptyList(),
+    val mapX: Double? = null,  // 0.0–1.0 fraction across the custom map image
+    val mapY: Double? = null  // 0.0–1.0 fraction down the custom map image
 )
