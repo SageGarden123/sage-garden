@@ -65,4 +65,7 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
             _syncing.value = false
         }
     }
+    fun importEvents(events: List<WateringEvent>) {
+        viewModelScope.launch { dao.insertAll(events) }
+    }
 }

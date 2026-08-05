@@ -6,11 +6,12 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [PlantEntity::class, WateringEvent::class], version = 7, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class], version = 9, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
     abstract fun wateringEventDao(): WateringEventDao
+    abstract fun irrigationPathDao(): IrrigationPathDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
