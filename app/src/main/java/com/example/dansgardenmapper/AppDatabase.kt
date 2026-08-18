@@ -22,7 +22,6 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .fallbackToDestructiveMigration(true)
                     .build().also { INSTANCE = it }
             }
         }

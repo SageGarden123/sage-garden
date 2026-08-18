@@ -19,4 +19,7 @@ interface PlantDao {
 
     @Query("DELETE FROM plants")
     suspend fun deleteAll()
+
+    @Query("SELECT * FROM plants")
+    suspend fun getAllOnce(): List<PlantEntity>
 }
