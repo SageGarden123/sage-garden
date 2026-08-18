@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.Flow
 @Entity(tableName = "irrigation_paths")
 data class IrrigationPathEntity(
     @PrimaryKey val id: String,
-    val zone: String,                 // free-text zone/watering-system name — match a Tuya zone name for consistent colour-grouping
-    val waypointsJson: String,        // "[[x1,y1],[x2,y2],...]" — fractions 0.0-1.0 across the custom map image
-    val targetPlantIds: String        // comma-separated PlantEntity ids this path waters
+    val zone: String,           // free-text zone name — match a Tuya zone name for consistent colour-grouping
+    val outletX: Double,        // fraction 0.0-1.0 — where the tap/outlet starts on the custom map image
+    val outletY: Double,
+    val segmentsJson: String    // JSON array of {type:"main"|"drip", points:[[x,y],...], targets:[plantId,...]}
 )
 
 @Dao

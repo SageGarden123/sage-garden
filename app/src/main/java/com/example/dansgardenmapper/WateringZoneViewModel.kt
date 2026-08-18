@@ -47,7 +47,7 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
                     allNewEvents.addAll(zoneEvents)
                     successCount++
                 } catch (e: Exception) {
-                    errorZones.add(mapping.zone)
+                    errorZones.add("${mapping.zone} (${e.message ?: "unknown error"})")
                 }
             }
 
