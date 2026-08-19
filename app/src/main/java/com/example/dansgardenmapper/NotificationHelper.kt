@@ -30,7 +30,7 @@ object NotificationHelper {
         )
     }
 
-    fun showWateringReminder(context: Context, duePlants: List<PlantEntity>) {
+    fun showWateringReminder(context: Context, duePlants: List<PlantEntity>, rainWarning: Boolean) {
         if (duePlants.isEmpty()) return
         val style = getNotificationStyle(context)
         val channelId = if (style == "popup" || style == "both") CHANNEL_POPUP else CHANNEL_LOCKSCREEN
@@ -44,7 +44,8 @@ object NotificationHelper {
 
         val title = if (duePlants.size == 1) "${duePlants[0].name} needs watering" else "${duePlants.size} plants need watering"
         val body = duePlants.take(5).joinToString(", ") { it.name } +
-                if (duePlants.size > 5) " and ${duePlants.size - 5} more" else ""
+                (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "") +
+                (if (rainWarning) "\n🌧 Rain expected — consider skipping" else "")
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_leaf)
