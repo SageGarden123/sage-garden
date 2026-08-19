@@ -29,5 +29,11 @@ data class PlantEntity(
     val lastWateredDate: Long? = null,      // epoch millis, UTC midnight of the date picked
     val wateringFrequencyDays: Int? = null, // how often this plant should be watered
     val manualWateringOnly: Boolean = false, // true = hand-watered, shown in amber on custom maps, not part of a path
-    val isIndoor: Boolean = false // true = indoor plant, exempt from rain-based reminder skipping
+    val isIndoor: Boolean = false, // true = indoor plant, exempt from rain-based reminder skipping
+    val summerWateringFrequencyDays: Int? = null, // overrides wateringFrequencyDays in Dec/Jan/Feb
+    val winterWateringFrequencyDays: Int? = null,  // overrides wateringFrequencyDays in Jun/Jul/Aug
+    val lastFertilisedDate: Long? = null,
+    val fertiliseFrequencyDays: Int? = null,
+    val lastPrunedDate: Long? = null,
+    val pruneFrequencyDays: Int? = null
 )

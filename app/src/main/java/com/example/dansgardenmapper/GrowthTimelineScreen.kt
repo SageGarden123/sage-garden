@@ -138,6 +138,6 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
 
     if (showDropboxPicker) {
         DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
-            onImageSelected = { link -> growthViewModel.addPhoto(plantId, link) })
+            onImageSelected = { link, clientModified -> growthViewModel.addPhoto(plantId, link, takenAtOverride = clientModified) })
     }
 }

@@ -8,13 +8,14 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class], version = 12, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class], version = 14, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
     abstract fun wateringEventDao(): WateringEventDao
     abstract fun irrigationPathDao(): IrrigationPathDao
     abstract fun growthPhotoDao(): GrowthPhotoDao
+    abstract fun careLogDao(): CareLogDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -25,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .build().also { INSTANCE = it }
             }
         }
@@ -62,5 +63,31 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE plants ADD COLUMN isIndoor INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE plants ADD COLUMN summerWateringFrequencyDays INTEGER")
+        db.execSQL("ALTER TABLE plants ADD COLUMN winterWateringFrequencyDays INTEGER")
+    }
+}
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE plants ADD COLUMN lastFertilisedDate INTEGER")
+        db.execSQL("ALTER TABLE plants ADD COLUMN fertiliseFrequencyDays INTEGER")
+        db.execSQL("ALTER TABLE plants ADD COLUMN lastPrunedDate INTEGER")
+        db.execSQL("ALTER TABLE plants ADD COLUMN pruneFrequencyDays INTEGER")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `care_log` (
+                `id` TEXT NOT NULL, `plantId` TEXT NOT NULL, `type` TEXT NOT NULL,
+                `date` INTEGER NOT NULL, `notes` TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_care_log_plantId` ON `care_log` (`plantId`)")
     }
 }

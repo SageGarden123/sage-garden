@@ -32,6 +32,28 @@ object NotificationHelper {
 
     fun showWateringReminder(context: Context, duePlants: List<PlantEntity>, rainWarning: Boolean) {
         if (duePlants.isEmpty()) return
+        val title = if (duePlants.size == 1) "${duePlants[0].name} needs watering" else "${duePlants.size} plants need watering"
+        val body = duePlants.take(5).joinToString(", ") { it.name } +
+                (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "") +
+                (if (rainWarning) "\n🌧 Rain expected — consider skipping" else "")
+        postCareNotification(context, notificationId = 1001, title = title, body = body)
+    }
+
+    fun showFertiliseReminder(context: Context, duePlants: List<PlantEntity>) {
+        if (duePlants.isEmpty()) return
+        val title = if (duePlants.size == 1) "${duePlants[0].name} needs fertilising" else "${duePlants.size} plants need fertilising"
+        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
+        postCareNotification(context, notificationId = 1002, title = title, body = body)
+    }
+
+    fun showPruneReminder(context: Context, duePlants: List<PlantEntity>) {
+        if (duePlants.isEmpty()) return
+        val title = if (duePlants.size == 1) "${duePlants[0].name} needs pruning" else "${duePlants.size} plants need pruning"
+        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
+        postCareNotification(context, notificationId = 1003, title = title, body = body)
+    }
+
+    private fun postCareNotification(context: Context, notificationId: Int, title: String, body: String) {
         val style = getNotificationStyle(context)
         val channelId = if (style == "popup" || style == "both") CHANNEL_POPUP else CHANNEL_LOCKSCREEN
 
@@ -41,11 +63,6 @@ object NotificationHelper {
         val pendingIntent = PendingIntent.getActivity(
             context, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val title = if (duePlants.size == 1) "${duePlants[0].name} needs watering" else "${duePlants.size} plants need watering"
-        val body = duePlants.take(5).joinToString(", ") { it.name } +
-                (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "") +
-                (if (rainWarning) "\n🌧 Rain expected — consider skipping" else "")
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_leaf)
@@ -59,6 +76,6 @@ object NotificationHelper {
 
         val canPost = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (canPost) NotificationManagerCompat.from(context).notify(1001, notification)
+        if (canPost) NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 }

@@ -353,6 +353,23 @@ fun setOverdueRepeatDays(context: Context, value: Int) {
     prefs.edit().putInt("overdue_repeat_days", value.coerceAtLeast(1)).apply()
 }
 
+fun getFertiliseRemindersEnabled(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getBoolean("fertilise_reminders_enabled", false)
+}
+fun setFertiliseRemindersEnabled(context: Context, value: Boolean) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("fertilise_reminders_enabled", value).apply()
+}
+fun getPruneRemindersEnabled(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getBoolean("prune_reminders_enabled", false)
+}
+fun setPruneRemindersEnabled(context: Context, value: Boolean) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("prune_reminders_enabled", value).apply()
+}
+
 fun getNotificationHour(context: Context): Int {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getInt("notification_hour", 8)
@@ -1108,7 +1125,8 @@ fun GardenMapperApp() {
                     onDone = { navController.navigate("list") { popUpTo("map") } },
                     onCancel = { navController.popBackStack() },
                     onNavigateToPlacement = { route -> navController.navigate(route) },
-                    onOpenGrowthTimeline = { navController.navigate("growth/$it") }
+                    onOpenGrowthTimeline = { navController.navigate("growth/$it") },
+                    onOpenCareHistory = { navController.navigate("care/$it") }
                 )
             }
             composable("place_real/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
@@ -1145,6 +1163,10 @@ fun GardenMapperApp() {
             composable("growth/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 GrowthTimelineScreen(plantId = id, onBack = { navController.popBackStack() })
+            }
+            composable("care/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("id") ?: return@composable
+                CareHistoryScreen(plantId = id, onBack = { navController.popBackStack() })
             }
         }
     }
@@ -3172,9 +3194,41 @@ data class WateringStatus(val nextDueMillis: Long?, val label: String) {
     fun sortKey(): Long = nextDueMillis ?: Long.MIN_VALUE
 }
 
+/** Southern-hemisphere seasons: Dec/Jan/Feb = summer, Jun/Jul/Aug = winter, else base frequency. */
+fun effectiveWateringFrequencyDays(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): Int? {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
+    return when (cal.get(java.util.Calendar.MONTH)) {
+        java.util.Calendar.DECEMBER, java.util.Calendar.JANUARY, java.util.Calendar.FEBRUARY ->
+            plant.summerWateringFrequencyDays ?: plant.wateringFrequencyDays
+        java.util.Calendar.JUNE, java.util.Calendar.JULY, java.util.Calendar.AUGUST ->
+            plant.winterWateringFrequencyDays ?: plant.wateringFrequencyDays
+        else -> plant.wateringFrequencyDays
+    }
+}
+
+/** Generic due-date calculator, reused by watering, fertilising, and pruning. */
+fun computeCareStatus(lastDate: Long?, frequencyDays: Int?, nowMillis: Long = System.currentTimeMillis()): WateringStatus? {
+    val freq = frequencyDays ?: return null
+    val last = lastDate ?: return WateringStatus(nextDueMillis = null, label = "Never — do now")
+    val nextDue = last + freq * 86_400_000L
+    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
+    val label = when {
+        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
+        diffDays == 0 -> "Due today"
+        else -> "Due in $diffDays day(s)"
+    }
+    return WateringStatus(nextDueMillis = nextDue, label = label)
+}
+
+fun computeFertiliseStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
+    computeCareStatus(plant.lastFertilisedDate, plant.fertiliseFrequencyDays, nowMillis)
+
+fun computePruneStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
+    computeCareStatus(plant.lastPrunedDate, plant.pruneFrequencyDays, nowMillis)
+
 /** Returns null if no watering frequency is configured (nothing to schedule). */
 fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? {
-    val freq = plant.wateringFrequencyDays ?: return null
+    val freq = effectiveWateringFrequencyDays(plant, nowMillis) ?: return null
     val last = plant.lastWateredDate
         ?: return WateringStatus(nextDueMillis = null, label = "Never watered — water now")
 
@@ -3201,7 +3255,8 @@ fun FormScreen(
     snackbarHostState: SnackbarHostState, scope: CoroutineScope,
     onDone: () -> Unit, onCancel: () -> Unit,
     onNavigateToPlacement: (String) -> Unit = {},
-    onOpenGrowthTimeline: (String) -> Unit = {}
+    onOpenGrowthTimeline: (String) -> Unit = {},
+    onOpenCareHistory: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val photoMode = remember { getPhotoStorageMode(context) }
@@ -3239,6 +3294,12 @@ fun FormScreen(
     var lastWateredDate by remember { mutableStateOf("") }
     var originalLastWateredDate by remember { mutableStateOf("") }
     var wateringFrequency by remember { mutableStateOf("") }
+    var summerWateringFrequency by remember { mutableStateOf("") }
+    var winterWateringFrequency by remember { mutableStateOf("") }
+    var lastFertilisedDate by remember { mutableStateOf("") }
+    var fertiliseFrequency by remember { mutableStateOf("") }
+    var lastPrunedDate by remember { mutableStateOf("") }
+    var pruneFrequency by remember { mutableStateOf("") }
     var manualWateringOnly by remember { mutableStateOf(false) }
     var isIndoor by remember { mutableStateOf(false) }
     var showBulkWaterPrompt by remember { mutableStateOf(false) }
@@ -3298,6 +3359,12 @@ fun FormScreen(
                 lastWateredDate = millisToDateString(existing.lastWateredDate)
                 originalLastWateredDate = lastWateredDate
                 wateringFrequency = existing.wateringFrequencyDays?.toString() ?: ""
+                summerWateringFrequency = existing.summerWateringFrequencyDays?.toString() ?: ""
+                winterWateringFrequency = existing.winterWateringFrequencyDays?.toString() ?: ""
+                lastFertilisedDate = millisToDateString(existing.lastFertilisedDate)
+                fertiliseFrequency = existing.fertiliseFrequencyDays?.toString() ?: ""
+                lastPrunedDate = millisToDateString(existing.lastPrunedDate)
+                pruneFrequency = existing.pruneFrequencyDays?.toString() ?: ""
                 manualWateringOnly = existing.manualWateringOnly
                 isIndoor = existing.isIndoor
             }
@@ -3500,7 +3567,55 @@ fun FormScreen(
             supportingText = { Text("How often this plant should be watered, in days", fontSize = 11.sp) },
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
+
+        ExpandableSection(title = "Seasonal watering (optional)") {
+            Text("Overrides the frequency above during summer/winter. Leave blank to use the default year-round.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = summerWateringFrequency,
+                onValueChange = { summerWateringFrequency = it.filter { c -> c.isDigit() } },
+                label = { Text("Summer frequency (days) — Dec/Jan/Feb") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = winterWateringFrequency,
+                onValueChange = { winterWateringFrequency = it.filter { c -> c.isDigit() } },
+                label = { Text("Winter frequency (days) — Jun/Jul/Aug") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+
+        ExpandableSection(title = "Fertilising & pruning (optional)") {
+            DatePickerField("Last fertilised", lastFertilisedDate, { lastFertilisedDate = it }, restrictToPastOrToday = true)
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = fertiliseFrequency, onValueChange = { fertiliseFrequency = it.filter { c -> c.isDigit() } },
+                label = { Text("Fertilise frequency (days)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+            DatePickerField("Last pruned", lastPrunedDate, { lastPrunedDate = it }, restrictToPastOrToday = true)
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = pruneFrequency, onValueChange = { pruneFrequency = it.filter { c -> c.isDigit() } },
+                label = { Text("Prune frequency (days)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (plantId != null) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("📋 View fertilising & pruning history")
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -3548,8 +3663,14 @@ fun FormScreen(
                     mapX = mapX, mapY = mapY,
                     lastWateredDate = dateStringToMillis(lastWateredDate),
                     wateringFrequencyDays = wateringFrequency.toIntOrNull(),
+                    summerWateringFrequencyDays = summerWateringFrequency.toIntOrNull(),
+                    winterWateringFrequencyDays = winterWateringFrequency.toIntOrNull(),
                     manualWateringOnly = manualWateringOnly,
-                    isIndoor = isIndoor
+                    isIndoor = isIndoor,
+                    lastFertilisedDate = dateStringToMillis(lastFertilisedDate),
+                    fertiliseFrequencyDays = fertiliseFrequency.toIntOrNull(),
+                    lastPrunedDate = dateStringToMillis(lastPrunedDate),
+                    pruneFrequencyDays = pruneFrequency.toIntOrNull()
                 )
                 viewModel.save(plant)
                 pendingSavedPlant = plant
@@ -3650,7 +3771,7 @@ fun FormScreen(
         }
     }
     if (showDropboxPicker) {
-        DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false }, onImageSelected = { link -> photoUri = Uri.parse(link) })
+        DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false }, onImageSelected = { link, _ -> photoUri = Uri.parse(link) })
     }
 }
 
@@ -4046,6 +4167,20 @@ fun HelpScreen(
                         supportingText = { Text("Re-notify for overdue plants until \"last watered\" is updated", fontSize = 11.sp) },
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+                var fertiliseReminders by remember { mutableStateOf(getFertiliseRemindersEnabled(context)) }
+                var pruneReminders by remember { mutableStateOf(getPruneRemindersEnabled(context)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Include fertilising reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = fertiliseReminders, onCheckedChange = { fertiliseReminders = it; setFertiliseRemindersEnabled(context, it) })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Include pruning reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = pruneReminders, onCheckedChange = { pruneReminders = it; setPruneRemindersEnabled(context, it) })
                 }
 
                 Spacer(Modifier.height(10.dp))
@@ -4539,649 +4674,6 @@ fun HelpScreen(
     }
 }
 
-
-
-
-
-
-
-
-
-
-//    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
-//            Row(
-//                modifier = Modifier.padding(14.dp).fillMaxWidth(),
-//                verticalAlignment = Alignment.CenterVertically
-//            ) {
-//                Text("Frequently Asked Questions", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-//                Text("›", fontSize = 20.sp, color = Color.Gray)
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("App settings", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text("Choose which tab opens when you launch the app.", fontSize = 12.sp, color = Color.Gray)
-//                Spacer(Modifier.height(10.dp))
-//                var landingTab by remember { mutableStateOf(getDefaultLandingTab(context)) }
-//                DropdownField(
-//                    label = "Default tab on open",
-//                    options = landingTabOptions.map { it.label },
-//                    selected = landingTabOptions.firstOrNull { it.key == landingTab }?.label ?: "Map",
-//                    onSelect = { label ->
-//                        val key = landingTabOptions.firstOrNull { it.label == label }?.key ?: "map"
-//                        landingTab = key
-//                        setDefaultLandingTab(context, key)
-//                    }
-//                )
-//                Text("Takes effect next time you open the app.", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Watering notifications", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text("Get reminded when plants are due for watering.", fontSize = 12.sp, color = Color.Gray)
-//                Spacer(Modifier.height(10.dp))
-//
-//                var notifsEnabled by remember { mutableStateOf(getNotificationsEnabled(context)) }
-//                var notifStyle by remember { mutableStateOf(getNotificationStyle(context)) }
-//                var notifOffsets by remember { mutableStateOf(getNotificationOffsets(context)) }
-//                var notifHour by remember { mutableStateOf(getNotificationHour(context)) }
-//                var notifMinute by remember { mutableStateOf(getNotificationMinute(context)) }
-//                val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-//                val notificationPermissionLauncher = rememberLauncherForActivityResult(
-//                    ActivityResultContracts.RequestPermission()
-//                ) { /* worker re-checks permission before posting either way */ }
-//
-//                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-//                    Text("Enable notifications", fontSize = 13.sp, modifier = Modifier.weight(1f))
-//                    Switch(checked = notifsEnabled, onCheckedChange = { checked ->
-//                        notifsEnabled = checked
-//                        setNotificationsEnabled(context, checked)
-//                        if (checked) {
-//                            scheduleWateringReminders(context)
-//                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-//                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-//                            ) {
-//                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-//                            }
-//                        } else {
-//                            cancelWateringReminders(context)
-//                        }
-//                    })
-//                }
-//
-//                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && notifsEnabled && !hasPermission) {
-//                    Spacer(Modifier.height(6.dp))
-//                    Text("Notification permission isn't granted — enable it in system settings for reminders to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
-//                }
-//
-//                if (notifsEnabled) {
-//                    Spacer(Modifier.height(12.dp))
-//                    Text("Style", fontSize = 12.sp, color = Color.Gray)
-//                    Spacer(Modifier.height(6.dp))
-//                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                        listOf("lockscreen" to "Lock screen", "popup" to "Pop-up", "both" to "Both").forEach { (key, label) ->
-//                            Button(
-//                                onClick = { notifStyle = key; setNotificationStyle(context, key) },
-//                                colors = ButtonDefaults.buttonColors(
-//                                    containerColor = if (notifStyle == key) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-//                                    contentColor = if (notifStyle == key) Color.White else Color.Black
-//                                ),
-//                                modifier = Modifier.weight(1f)
-//                            ) { Text(label, fontSize = 11.sp) }
-//                        }
-//                    }
-//
-//                    Spacer(Modifier.height(12.dp))
-//                    Text("Remind me", fontSize = 12.sp, color = Color.Gray)
-//                    Spacer(Modifier.height(6.dp))
-//                    listOf(0 to "On the day", 1 to "1 day before", 2 to "2 days before", 3 to "3 days before").forEach { (days, label) ->
-//                        val checked = notifOffsets.contains(days)
-//                        Row(
-//                            verticalAlignment = Alignment.CenterVertically,
-//                            modifier = Modifier.fillMaxWidth().clickable {
-//                                val updated = (if (checked) notifOffsets - days else notifOffsets + days).ifEmpty { setOf(0) }
-//                                notifOffsets = updated
-//                                setNotificationOffsets(context, updated)
-//                            }.padding(vertical = 4.dp)
-//                        ) {
-//                            Checkbox(checked = checked, onCheckedChange = {
-//                                val updated = (if (checked) notifOffsets - days else notifOffsets + days).ifEmpty { setOf(0) }
-//                                notifOffsets = updated
-//                                setNotificationOffsets(context, updated)
-//                            })
-//                            Text(label, fontSize = 13.sp)
-//                        }
-//                    }
-//
-//                    Spacer(Modifier.height(10.dp))
-//                    Text("Notify at", fontSize = 12.sp, color = Color.Gray)
-//                    Spacer(Modifier.height(6.dp))
-//                    var showTimeDialog by remember { mutableStateOf(false) }
-//                    OutlinedButton(onClick = { showTimeDialog = true }, modifier = Modifier.fillMaxWidth()) {
-//                        Text(String.format("%02d:%02d", notifHour, notifMinute))
-//                    }
-//                    if (showTimeDialog) {
-//                        val timeState = rememberTimePickerState(initialHour = notifHour, initialMinute = notifMinute)
-//                        Dialog(onDismissRequest = { showTimeDialog = false }) {
-//                            Card {
-//                                Column(Modifier.padding(16.dp)) {
-//                                    TimePicker(state = timeState)
-//                                    Spacer(Modifier.height(10.dp))
-//                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                                        TextButton(onClick = { showTimeDialog = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-//                                        Button(
-//                                            onClick = {
-//                                                notifHour = timeState.hour
-//                                                notifMinute = timeState.minute
-//                                                setNotificationTime(context, notifHour, notifMinute)
-//                                                scheduleWateringReminders(context)
-//                                                showTimeDialog = false
-//                                            },
-//                                            modifier = Modifier.weight(1f)
-//                                        ) { Text("Set") }
-//                                    }
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Photo storage", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Choose whether new photos are stored on this device, or automatically saved to your own cloud storage. See the FAQ above for the pros and cons of each.",
-//                    fontSize = 12.sp, color = Color.Gray
-//                )
-//                Spacer(Modifier.height(10.dp))
-//                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                    Button(
-//                        onClick = { photoMode = "local"; setPhotoStorageMode(context, "local") },
-//                        modifier = Modifier.weight(1f),
-//                        colors = ButtonDefaults.buttonColors(
-//                            containerColor = if (photoMode == "local") Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-//                            contentColor = if (photoMode == "local") Color.White else Color.Black
-//                        )
-//                    ) { Text("On this device", fontSize = 12.sp) }
-//                    Button(
-//                        onClick = { photoMode = "cloud"; setPhotoStorageMode(context, "cloud") },
-//                        modifier = Modifier.weight(1f),
-//                        colors = ButtonDefaults.buttonColors(
-//                            containerColor = if (photoMode == "cloud") Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-//                            contentColor = if (photoMode == "cloud") Color.White else Color.Black
-//                        )
-//                    ) { Text("Cloud link", fontSize = 12.sp) }
-//                }
-//                if (photoMode == "cloud") {
-//                    Spacer(Modifier.height(8.dp))
-//                    val dropboxToken = DropboxAuthState.token
-//                    if (dropboxToken != null) {
-//                        Text("✅ Connected to Dropbox", fontSize = 12.sp, color = Color(0xFF3A5A40))
-//                        Spacer(Modifier.height(6.dp))
-//                        TextButton(onClick = { DropboxAuthState.clear(context) }) {
-//                            Text("Disconnect")
-//                        }
-//                    } else {
-//                        Button(onClick = { startDropboxSignIn(context) }, modifier = Modifier.fillMaxWidth()) {
-//                            Text("Connect Dropbox")
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Auto-link photos by Plant ID", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Photos named after a Plant ID (e.g. \"P0001.jpg\") link automatically. Only new, unlinked photos are added.",
-//                    fontSize = 12.sp, color = Color.Gray
-//                )
-//                Spacer(Modifier.height(10.dp))
-//
-//                if (photoMode == "local") {
-//                    var localFolder by remember { mutableStateOf(getLocalPhotoFolderUri(context)) }
-//                    OutlinedButton(onClick = { folderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-//                        Text(if (localFolder != null) "Change photo folder" else "Choose photo folder")
-//                    }
-//                    if (localFolder != null) {
-//                        Spacer(Modifier.height(8.dp))
-//                        Button(onClick = {
-//                            scope.launch {
-//                                val count = autoLinkLocalPhotos(context, localFolder!!, plants) { viewModel.save(it) }
-//                                snackbarHostState.showSnackbar("Linked $count new photo(s)")
-//                            }
-//                        }, modifier = Modifier.fillMaxWidth()) { Text("Auto-link photos now") }
-//                    }
-//                } else {
-//                    var dropboxPath by remember { mutableStateOf(getDropboxPhotoFolderPath(context) ?: "") }
-//                    var showFolderPicker by remember { mutableStateOf(false) }
-//                    var testResult by remember { mutableStateOf<String?>(null) }
-//                    var testing by remember { mutableStateOf(false) }
-//
-//                    OutlinedTextField(
-//                        value = dropboxPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-//                        label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
-//                    )
-//                    Spacer(Modifier.height(8.dp))
-//                    OutlinedButton(onClick = { showFolderPicker = true }, modifier = Modifier.fillMaxWidth()) {
-//                        Text("Browse Dropbox…")
-//                    }
-//                    Spacer(Modifier.height(8.dp))
-//                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                        OutlinedButton(
-//                            onClick = {
-//                                scope.launch {
-//                                    testing = true; testResult = null
-//                                    val result = countDropboxImages(context, dropboxPath)
-//                                    testing = false
-//                                    testResult = result.fold({ "✅ Found $it image(s) in this folder" }, { "❌ ${it.message}" })
-//                                }
-//                            },
-//                            modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking
-//                        ) { Text(if (testing) "Testing…" else "Test connection") }
-//
-//                        Button(
-//                            onClick = {
-//                                setDropboxPhotoFolderPath(context, dropboxPath)
-//                                viewModel.runDropboxAutoLink(context, dropboxPath)
-//                            },
-//                            modifier = Modifier.weight(1f),
-//                            enabled = !testing && !DropboxLinkState.linking
-//                        ) { Text(if (DropboxLinkState.linking) "Linking…" else "Auto-link now") }
-//                    }
-//
-//                    testResult?.let {
-//                        Spacer(Modifier.height(6.dp))
-//                        Text(it, fontSize = 12.sp, color = if (it.startsWith("✅")) Color(0xFF3A5A40) else Color(0xFFB23B3B))
-//                    }
-//
-//                    if (DropboxLinkState.linking) {
-//                        Spacer(Modifier.height(10.dp))
-//                        val current = DropboxLinkState.current
-//                        val total = DropboxLinkState.total
-//                        LinearProgressIndicator(
-//                            progress = if (total > 0) current.toFloat() / total.toFloat() else 0f,
-//                            modifier = Modifier.fillMaxWidth()
-//                        )
-//                        Spacer(Modifier.height(4.dp))
-//                        Text("$current of $total images linked", fontSize = 12.sp, color = Color.Gray)
-//                    }
-//
-//                    val linkResult = DropboxLinkState.result ?: getLastDropboxLinkResult(context)
-//                    linkResult?.let {
-//                        Spacer(Modifier.height(8.dp))
-//                        Text(it, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-//                            color = if (it.startsWith("Linking unsuccessful")) Color(0xFFB23B3B) else Color(0xFF3A5A40))
-//                    }
-//
-//                    if (showFolderPicker) {
-//                        DropboxFolderPickerDialog(
-//                            context = context,
-//                            onDismiss = { showFolderPicker = false },
-//                            onFolderSelected = { path ->
-//                                dropboxPath = path
-//                                setDropboxPhotoFolderPath(context, path)
-//                            }
-//                        )
-//                    }
-//                }
-//
-//                Spacer(Modifier.height(12.dp))
-//                OutlinedButton(
-//                    onClick = {
-//                        scope.launch {
-//                            plants.forEach { viewModel.save(it.copy(photoUri = null, photoUris = emptyList())) }
-//                            snackbarHostState.showSnackbar("Cleared photos from ${plants.size} plant(s)")
-//                        }
-//                    },
-//                    modifier = Modifier.fillMaxWidth(),
-//                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
-//                ) { Text("Clear auto-linked photos (keep plants)") }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Export to spreadsheet", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = Color.Gray)
-//                Spacer(Modifier.height(10.dp))
-//                Button(onClick = { exportLauncher.launch("dans_garden_mapper.csv") }, modifier = Modifier.fillMaxWidth()) {
-//                    Text("Export CSV")
-//                }
-//            }
-//        }
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Import from spreadsheet", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text("Upload a CSV in the same format to add or update plants in bulk.", fontSize = 12.sp, color = Color.Gray)
-//                Spacer(Modifier.height(10.dp))
-//                OutlinedButton(
-//                    onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
-//                    modifier = Modifier.fillMaxWidth()
-//                ) { Text("Choose CSV file") }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Custom garden map", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Upload a hand-drawn or custom image of your garden instead of using the real-world map.",
-//                    fontSize = 12.sp, color = Color.Gray
-//                )
-//                Spacer(Modifier.height(10.dp))
-//
-//                var customMapUri by remember { mutableStateOf(getCustomMapUri(context)) }
-//                var useCustomMap by remember { mutableStateOf(isUsingCustomMap(context)) }
-//
-//                val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-//                    if (uri != null) {
-//                        try {
-//                            context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-//                        } catch (e: Exception) { }
-//                        setCustomMapUri(context, uri)
-//                        customMapUri = uri
-//                    }
-//                }
-//
-//                OutlinedButton(onClick = { mapImageLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-//                    Text(if (customMapUri != null) "Change custom map image" else "Upload custom map image")
-//                }
-//
-//                if (customMapUri != null) {
-//                    Spacer(Modifier.height(10.dp))
-//                    Row(verticalAlignment = Alignment.CenterVertically) {
-//                        Text("Use custom map instead of real-world map", fontSize = 13.sp, modifier = Modifier.weight(1f))
-//                        Switch(
-//                            checked = useCustomMap,
-//                            onCheckedChange = { useCustomMap = it; setUsingCustomMap(context, it) }
-//                        )
-//                    }
-//                    Spacer(Modifier.height(10.dp))
-//                    OutlinedButton(
-//                        onClick = {
-//                            setCustomMapUri(context, null)
-//                            setUsingCustomMap(context, false)
-//                            customMapUri = null
-//                            useCustomMap = false
-//                        },
-//                        modifier = Modifier.fillMaxWidth(),
-//                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
-//                    ) { Text("Clear custom map") }
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Row(
-//                    modifier = Modifier.fillMaxWidth().clickable { irrigationZonesExpanded = !irrigationZonesExpanded },
-//                    verticalAlignment = Alignment.CenterVertically
-//                ) {
-//                    Text("Irrigation zones (Tuya)", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-//                    Text(if (irrigationZonesExpanded) "▾" else "▸", color = Color.Gray)
-//                }
-//
-//                if (irrigationZonesExpanded) {
-//                    Spacer(Modifier.height(10.dp))
-//                    Text(
-//                        "Add a friendly zone name for each physical outlet on your Tuya devices (e.g. \"Front Garden\" and " +
-//                                "\"Front Patch\" might be outlets 1 and 2 on the same timer). Zone names should match your " +
-//                                "Watering System field values.",
-//                        fontSize = 12.sp, color = Color.Gray
-//                    )
-//                    Spacer(Modifier.height(10.dp))
-//
-//                    zoneRows.forEachIndexed { index, (zoneName, deviceId, outlet) ->
-//                        Column(Modifier.padding(bottom = 12.dp)) {
-//                            OutlinedTextField(
-//                                value = zoneName,
-//                                onValueChange = { zoneRows[index] = Triple(it, deviceId, outlet) },
-//                                label = { Text("Zone name") },
-//                                placeholder = { Text("e.g. Front Garden") },
-//                                modifier = Modifier.fillMaxWidth()
-//                            )
-//                            Spacer(Modifier.height(6.dp))
-//                            OutlinedTextField(
-//                                value = deviceId,
-//                                onValueChange = { zoneRows[index] = Triple(zoneName, it, outlet) },
-//                                label = { Text("Tuya Device ID") },
-//                                modifier = Modifier.fillMaxWidth()
-//                            )
-//                            Spacer(Modifier.height(6.dp))
-//                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                                Box(Modifier.weight(1f)) {
-//                                    DropdownField(
-//                                        label = "Outlet",
-//                                        options = listOf("1", "2"),
-//                                        selected = outlet,
-//                                        onSelect = { zoneRows[index] = Triple(zoneName, deviceId, it) }
-//                                    )
-//                                }
-//                                if (zoneRows.size > 1) {
-//                                    IconButton(onClick = { zoneRows.removeAt(index) }) { Text("✕") }
-//                                }
-//                            }
-//                        }
-//                    }
-//
-//                    OutlinedButton(onClick = { zoneRows.add(Triple("", "", "1")) }, modifier = Modifier.fillMaxWidth()) {
-//                        Text("+ Add zone")
-//                    }
-//                    Spacer(Modifier.height(10.dp))
-//                    Button(
-//                        onClick = {
-//                            val mappings = zoneRows
-//                                .filter { it.first.isNotBlank() && it.second.isNotBlank() }
-//                                .map { TuyaZoneMapping(it.first, it.second, it.third) }
-//                            setTuyaZoneMappings(context, mappings)
-//                            scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
-//                        },
-//                        modifier = Modifier.fillMaxWidth()
-//                    ) { Text("Save zone mapping") }
-//                    Spacer(Modifier.height(8.dp))
-//                    OutlinedButton(
-//                        onClick = {
-//                            zoneRows.clear()
-//                            zoneRows.add(Triple("", "", "1"))
-//                            setTuyaZoneMappings(context, emptyList())
-//                            scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
-//                        },
-//                        modifier = Modifier.fillMaxWidth(),
-//                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
-//                    ) { Text("Clear all zones") }
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Sync irrigation history", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Pulls the last 30 days of watering activity from Tuya for each configured zone, and appends any new " +
-//                            "sessions to irrigation_log.csv in your photo storage folder (local or Dropbox) so history isn't " +
-//                            "lost once Tuya's ~7-day retention window rolls over.",
-//                    fontSize = 12.sp, color = Color.Gray
-//                )
-//                Spacer(Modifier.height(10.dp))
-//                val syncing by wateringViewModel.syncing.collectAsState()
-//                val syncResult by wateringViewModel.lastSyncResult.collectAsState()
-//                Button(
-//                    onClick = { wateringViewModel.sync(context) },
-//                    modifier = Modifier.fillMaxWidth(),
-//                    enabled = !syncing
-//                ) { Text(if (syncing) "Syncing…" else "Sync now") }
-//                syncResult?.let {
-//                    Spacer(Modifier.height(6.dp))
-//                    Text(it, fontSize = 12.sp, color = Color.Gray)
-//                }
-//                Spacer(Modifier.height(12.dp))
-//                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                    OutlinedButton(
-//                        onClick = { irrigationImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
-//                        modifier = Modifier.weight(1f)
-//                    ) { Text("Import from device") }
-//                    OutlinedButton(
-//                        onClick = {
-//                            scope.launch {
-//                                val text = fetchIrrigationCsvFromDropbox(context)
-//                                if (text != null) {
-//                                    val result = parseIrrigationCsv(text)
-//                                    if (result is CsvImportResult.Success) wateringViewModel.importEvents(result.items)
-//                                    importResultDialog = csvImportResultToOutcome(result)
-//                                } else {
-//                                    importResultDialog = CsvImportOutcome("Import failed", "Couldn't find irrigation_log.csv in your Dropbox folder.")
-//                                }
-//                            }
-//                        },
-//                        modifier = Modifier.weight(1f),
-//                        enabled = DropboxAuthState.token != null
-//                    ) { Text("Import from Dropbox") }
-//                }
-//                Spacer(Modifier.height(8.dp))
-//                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                    OutlinedButton(
-//                        onClick = { irrigationExportLauncher.launch("irrigation_log.csv") },
-//                        modifier = Modifier.weight(1f),
-//                        enabled = irrigationEvents.isNotEmpty()
-//                    ) { Text("Export to device") }
-//                    OutlinedButton(
-//                        onClick = {
-//                            scope.launch {
-//                                val saved = saveIrrigationCsvDropbox(context, irrigationEvents)
-//                                snackbarHostState.showSnackbar(if (saved) "Exported to Dropbox" else "Export to Dropbox failed")
-//                            }
-//                        },
-//                        modifier = Modifier.weight(1f),
-//                        enabled = irrigationEvents.isNotEmpty() && DropboxAuthState.token != null
-//                    ) { Text("Export to Dropbox") }
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Backup & restore", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Backs up plants, irrigation paths, watering history, Tuya zone mappings, app settings, and your custom map drawing to your Dropbox folder. Useful when moving to a new device.",
-//                    fontSize = 12.sp, color = Color.Gray
-//                )
-//                Spacer(Modifier.height(6.dp))
-//                Text(
-//                    "Note: locally-stored photos (not linked via Dropbox) can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.",
-//                    fontSize = 11.sp, color = Color(0xFFB23B3B)
-//                )
-//                Spacer(Modifier.height(10.dp))
-//
-//                var backupWorking by remember { mutableStateOf(false) }
-//                var backupResultText by remember { mutableStateOf<String?>(null) }
-//                var showRestoreConfirm by remember { mutableStateOf(false) }
-//
-//                Button(
-//                    onClick = {
-//                        scope.launch {
-//                            backupWorking = true; backupResultText = null
-//                            val result = BackupHelper.createBackup(context, plants, irrigationPaths, irrigationEvents)
-//                            backupWorking = false; backupResultText = result.message
-//                        }
-//                    },
-//                    modifier = Modifier.fillMaxWidth(),
-//                    enabled = !backupWorking && DropboxAuthState.token != null
-//                ) { Text(if (backupWorking) "Backing up…" else "Back up to Dropbox now") }
-//
-//                Spacer(Modifier.height(8.dp))
-//                OutlinedButton(
-//                    onClick = { showRestoreConfirm = true },
-//                    modifier = Modifier.fillMaxWidth(),
-//                    enabled = !backupWorking && DropboxAuthState.token != null
-//                ) { Text("Restore from Dropbox") }
-//
-//                if (DropboxAuthState.token == null) {
-//                    Spacer(Modifier.height(6.dp))
-//                    Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray)
-//                }
-//                backupResultText?.let {
-//                    Spacer(Modifier.height(8.dp))
-//                    Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40))
-//                }
-//
-//                if (showRestoreConfirm) {
-//                    AlertDialog(
-//                        onDismissRequest = { showRestoreConfirm = false },
-//                        title = { Text("Restore from Dropbox?") },
-//                        text = { Text("This adds/updates plants, irrigation paths, watering history, and settings from your Dropbox backup. Existing entries with matching IDs will be overwritten. This can't be undone.") },
-//                        confirmButton = {
-//                            TextButton(onClick = {
-//                                showRestoreConfirm = false
-//                                scope.launch {
-//                                    backupWorking = true; backupResultText = null
-//                                    val result = BackupHelper.restoreBackup(context, viewModel, pathViewModel, wateringViewModel)
-//                                    backupWorking = false; backupResultText = result.message
-//                                }
-//                            }) { Text("Restore") }
-//                        },
-//                        dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") } }
-//                    )
-//                }
-//            }
-//        }
-//
-//        Card(modifier = Modifier.fillMaxWidth()) {
-//            Column(Modifier.padding(14.dp)) {
-//                Text("Reset all data", fontWeight = FontWeight.SemiBold)
-//                Spacer(Modifier.height(6.dp))
-//                Text("Clears every plant in this app. Cannot be undone.", fontSize = 12.sp, color = Color.Gray)
-//                Spacer(Modifier.height(10.dp))
-//                OutlinedButton(
-//                    onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(),
-//                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
-//                ) { Text("Reset garden") }
-//            }
-//        }
-//        Spacer(Modifier.height(20.dp))
-//    }
-//
-//    if (showResetDialog) {
-//        AlertDialog(
-//            onDismissRequest = { showResetDialog = false },
-//            title = { Text("Reset your garden?") },
-//            text = { Text("This will permanently delete every plant you've added. This can't be undone.") },
-//            confirmButton = {
-//                TextButton(onClick = {
-//                    showResetDialog = false
-//                    viewModel.resetAll()
-//                    scope.launch { snackbarHostState.showSnackbar("Garden reset.") }
-//                }) { Text("Reset") }
-//            },
-//            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } }
-//        )
-//    }
-//    importResultDialog?.let { outcome ->
-//        AlertDialog(
-//            onDismissRequest = { importResultDialog = null },
-//            title = { Text(outcome.title) },
-//            text = { Text(outcome.message) },
-//            confirmButton = { TextButton(onClick = { importResultDialog = null }) { Text("OK") } }
-//        )
-//    }
-//}
-
 // ============================================================================
 // DROPBOX FOLDER ENTRY
 // ============================================================================
@@ -5227,7 +4719,7 @@ suspend fun countDropboxImages(context: Context, path: String): Result<Int> {
 // ============================================================================
 sealed class DropboxEntry {
     data class Folder(val name: String, val path: String) : DropboxEntry()
-    data class Image(val name: String, val path: String) : DropboxEntry()
+    data class Image(val name: String, val path: String, val clientModified: Long?) : DropboxEntry()
 }
 
 suspend fun listDropboxEntries(context: Context, path: String): Result<List<DropboxEntry>> = withContext(Dispatchers.IO) {
@@ -5238,7 +4730,7 @@ suspend fun listDropboxEntries(context: Context, path: String): Result<List<Drop
                 is com.dropbox.core.v2.files.FolderMetadata -> DropboxEntry.Folder(entry.name, entry.pathLower ?: "")
                 is com.dropbox.core.v2.files.FileMetadata ->
                     if (entry.name.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") })
-                        DropboxEntry.Image(entry.name, entry.pathLower ?: "") else null
+                        DropboxEntry.Image(entry.name, entry.pathLower ?: "", entry.clientModified?.time) else null
                 else -> null
             }
         }.sortedWith(compareBy({ it !is DropboxEntry.Folder }, {
@@ -5261,7 +4753,7 @@ suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = 
 }
 
 @Composable
-fun DropboxImagePickerDialog(context: Context, onDismiss: () -> Unit, onImageSelected: (String) -> Unit) {
+fun DropboxImagePickerDialog(context: Context, onDismiss: () -> Unit, onImageSelected: (String, Long?) -> Unit) {
     var currentPath by remember { mutableStateOf("") }
     var currentLabel by remember { mutableStateOf("Dropbox (root)") }
     var entries by remember { mutableStateOf<List<DropboxEntry>>(emptyList()) }
@@ -5308,7 +4800,7 @@ fun DropboxImagePickerDialog(context: Context, onDismiss: () -> Unit, onImageSel
                                                 resolving = true
                                                 val link = getDropboxDirectLink(context, entry.path)
                                                 resolving = false
-                                                if (link != null) { onImageSelected(link); onDismiss() }
+                                                if (link != null) { onImageSelected(link, entry.clientModified); onDismiss() }
                                             }
                                         }
                                     }.padding(vertical = 12.dp),

@@ -27,9 +27,9 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
         dao.getForPlant(plantId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addPhoto(plantId: String, uri: String, label: String = "") {
+    fun addPhoto(plantId: String, uri: String, label: String = "", takenAtOverride: Long? = null) {
         viewModelScope.launch {
-            val takenAt = withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
+            val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(
                 GrowthPhotoEntity(
                     id = "GP-${System.currentTimeMillis()}",
