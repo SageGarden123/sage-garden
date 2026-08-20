@@ -1,5 +1,6 @@
 package com.example.dansgardenmapper
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -10,10 +11,9 @@ import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+/** Not backed up and never shared between installs — each user connects their own Tuya Cloud project (Help screen). */
 object TuyaClient {
     private const val BASE_URL = "https://openapi.tuyaeu.com" // Central Europe endpoint
-    private const val CLIENT_ID = BuildConfig.TUYA_CLIENT_ID
-    private const val CLIENT_SECRET = BuildConfig.TUYA_CLIENT_SECRET
 
     // Always query both outlets' switch + duration codes; we filter to the
     // requested outlet after fetching, same set as ALL_CODES in the Python script.
@@ -28,6 +28,12 @@ object TuyaClient {
 
     data class DpLogEntry(val code: String, val value: Any?, val eventTimeMs: Long)
 
+    /** Call after the user changes their stored Tuya credentials so a token signed with the old secret isn't reused. */
+    fun invalidateToken() {
+        cachedToken = null
+        tokenExpiresAt = 0L
+    }
+
     private fun sha256Hex(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }
@@ -41,7 +47,7 @@ object TuyaClient {
             .uppercase()
     }
 
-    private suspend fun getToken(): String = withContext(Dispatchers.IO) {
+    private suspend fun getToken(context: Context, clientId: String, clientSecret: String): String = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         cachedToken?.let { if (now < tokenExpiresAt) return@withContext it }
 
@@ -50,12 +56,12 @@ object TuyaClient {
         val urlPath = "/v1.0/token?grant_type=1"
         val contentSha256 = sha256Hex("")
         val stringToSign = "$method\n$contentSha256\n\n$urlPath"
-        val signStr = CLIENT_ID + t + stringToSign
-        val sign = hmacSha256(signStr, CLIENT_SECRET)
+        val signStr = clientId + t + stringToSign
+        val sign = hmacSha256(signStr, clientSecret)
 
         val request = Request.Builder()
             .url(BASE_URL + urlPath)
-            .header("client_id", CLIENT_ID)
+            .header("client_id", clientId)
             .header("sign", sign)
             .header("t", t)
             .header("sign_method", "HMAC-SHA256")
@@ -76,7 +82,9 @@ object TuyaClient {
         }
     }
 
-    private suspend fun signedGet(path: String, accessToken: String, params: Map<String, String>? = null): JSONObject =
+    private suspend fun signedGet(
+        path: String, accessToken: String, clientId: String, clientSecret: String, params: Map<String, String>? = null
+    ): JSONObject =
         withContext(Dispatchers.IO) {
             val t = System.currentTimeMillis().toString()
             val method = "GET"
@@ -88,12 +96,12 @@ object TuyaClient {
 
             val contentSha256 = sha256Hex("")
             val stringToSign = "$method\n$contentSha256\n\n$urlPath"
-            val signStr = CLIENT_ID + accessToken + t + stringToSign
-            val sign = hmacSha256(signStr, CLIENT_SECRET)
+            val signStr = clientId + accessToken + t + stringToSign
+            val sign = hmacSha256(signStr, clientSecret)
 
             val request = Request.Builder()
                 .url(BASE_URL + urlPath)
-                .header("client_id", CLIENT_ID)
+                .header("client_id", clientId)
                 .header("access_token", accessToken)
                 .header("sign", sign)
                 .header("t", t)
@@ -108,9 +116,19 @@ object TuyaClient {
             }
         }
 
-    suspend fun getDeviceDpCodes(deviceId: String): List<String> {
-        val token = getToken()
-        val data = signedGet("/v1.0/devices/$deviceId/status", token)
+    private fun requireCredentials(context: Context): Pair<String, String> {
+        val clientId = getTuyaClientId(context)
+        val clientSecret = getTuyaClientSecret(context)
+        if (clientId.isBlank() || clientSecret.isBlank()) {
+            throw RuntimeException("Tuya isn't connected — add your Client ID and Secret in Help first")
+        }
+        return clientId to clientSecret
+    }
+
+    suspend fun getDeviceDpCodes(context: Context, deviceId: String): List<String> {
+        val (clientId, clientSecret) = requireCredentials(context)
+        val token = getToken(context, clientId, clientSecret)
+        val data = signedGet("/v1.0/devices/$deviceId/status", token, clientId, clientSecret)
         if (!data.optBoolean("success")) {
             throw RuntimeException(data.optString("msg", "Device lookup failed (check the Device ID)"))
         }
@@ -118,8 +136,9 @@ object TuyaClient {
         return (0 until result.length()).map { result.getJSONObject(it).getString("code") }
     }
 
-    suspend fun getDpLogs(deviceId: String, codes: List<String>, startMs: Long, endMs: Long): List<DpLogEntry> {
-        val token = getToken()
+    suspend fun getDpLogs(context: Context, deviceId: String, codes: List<String>, startMs: Long, endMs: Long): List<DpLogEntry> {
+        val (clientId, clientSecret) = requireCredentials(context)
+        val token = getToken(context, clientId, clientSecret)
         val allLogs = mutableListOf<DpLogEntry>()
         var rowKey = ""
         var firstPage = true
@@ -134,7 +153,7 @@ object TuyaClient {
             )
             if (rowKey.isNotEmpty()) params["start_row_key"] = rowKey
 
-            val data = signedGet("/v1.0/devices/$deviceId/logs", token, params)
+            val data = signedGet("/v1.0/devices/$deviceId/logs", token, clientId, clientSecret, params)
             if (!data.optBoolean("success")) {
                 if (firstPage) throw RuntimeException(data.optString("msg", "Log fetch failed for device $deviceId"))
                 break
@@ -165,9 +184,9 @@ object TuyaClient {
      * real OFF events by timestamp.
      */
     suspend fun fetchWateringEvents(
-        deviceId: String, zone: String, outlet: String, startMs: Long, endMs: Long
+        context: Context, deviceId: String, zone: String, outlet: String, startMs: Long, endMs: Long
     ): List<WateringEvent> {
-        val logs = getDpLogs(deviceId, ALL_CODES, startMs, endMs).sortedBy { it.eventTimeMs }
+        val logs = getDpLogs(context, deviceId, ALL_CODES, startMs, endMs).sortedBy { it.eventTimeMs }
 
         data class OnOff(val ts: Long)
         data class Dur(val ts: Long, val seconds: Double?)

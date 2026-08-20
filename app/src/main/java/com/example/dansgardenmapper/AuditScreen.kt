@@ -151,6 +151,11 @@ fun AuditScreen() {
                 AuditIssue("Overdue for pruning", "Based on last pruned date and frequency.", overduePrune)
             )
 
+            val overdueFeed = plants.filter { computeFeedStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
+            if (overdueFeed.isNotEmpty()) add(
+                AuditIssue("Overdue for feeding", "Based on last fed date and frequency.", overdueFeed)
+            )
+
             val frostRisk = frostTenderOutdoorPlants(plants)
             if (frostRisk.isNotEmpty()) add(
                 AuditIssue("Frost-tender & outdoors", "Worth keeping an eye on the forecast for these — consider covering on cold nights.", frostRisk)

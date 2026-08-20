@@ -24,7 +24,7 @@
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyA01pzAEh8tpPhpAYEklrYdl4RgT1_QYv0" />
+            android:value="${MAPS_API_KEY}" />
 
         <activity
             android:name="com.dropbox.core.android.AuthActivity"

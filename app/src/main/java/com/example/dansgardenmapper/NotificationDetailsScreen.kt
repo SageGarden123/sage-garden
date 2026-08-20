@@ -37,6 +37,11 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit) {
                 plants.filter { computePruneStatus(it, now)?.nextDueMillis?.let { d -> d <= now } == true },
                 { p: PlantEntity -> computePruneStatus(p, now)?.label ?: "" }
             )
+            "feed" -> Triple(
+                "Plants needing feeding",
+                plants.filter { computeFeedStatus(it, now)?.nextDueMillis?.let { d -> d <= now } == true },
+                { p: PlantEntity -> computeFeedStatus(p, now)?.label ?: "" }
+            )
             "frost" -> Triple(
                 "Frost risk — protect these plants",
                 frostTenderOutdoorPlants(plants),

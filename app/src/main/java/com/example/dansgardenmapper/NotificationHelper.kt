@@ -53,6 +53,13 @@ object NotificationHelper {
         postCareNotification(context, notificationId = 1003, title = title, body = body, type = "prune")
     }
 
+    fun showFeedReminder(context: Context, duePlants: List<PlantEntity>) {
+        if (duePlants.isEmpty()) return
+        val title = if (duePlants.size == 1) "${duePlants[0].name} needs feeding" else "${duePlants.size} plants need feeding"
+        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
+        postCareNotification(context, notificationId = 1005, title = title, body = body, type = "feed")
+    }
+
     fun showFrostWarning(context: Context, atRiskPlants: List<PlantEntity>) {
         if (atRiskPlants.isEmpty()) return
         val title = "❄️ Frost expected — protect ${atRiskPlants.size} plant(s)"

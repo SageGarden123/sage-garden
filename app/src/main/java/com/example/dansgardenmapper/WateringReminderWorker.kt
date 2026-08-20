@@ -47,6 +47,11 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
             if (duePrune.isNotEmpty()) NotificationHelper.showPruneReminder(applicationContext, duePrune)
         }
 
+        if (getFeedRemindersEnabled(applicationContext)) {
+            val dueFeed = plants.filter { isDue(computeFeedStatus(it, now)) }
+            if (dueFeed.isNotEmpty()) NotificationHelper.showFeedReminder(applicationContext, dueFeed)
+        }
+
         if (frostWarningsEnabled) {
             val minTemp = forecast?.minTempCelsius
             if (minTemp != null && minTemp <= getFrostTempThreshold(applicationContext)) {

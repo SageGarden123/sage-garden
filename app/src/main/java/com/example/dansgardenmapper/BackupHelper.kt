@@ -55,6 +55,8 @@ object BackupHelper {
             o.put("fertiliseFrequencyDays", p.fertiliseFrequencyDays ?: JSONObject.NULL)
             o.put("lastPrunedDate", p.lastPrunedDate ?: JSONObject.NULL)
             o.put("pruneFrequencyDays", p.pruneFrequencyDays ?: JSONObject.NULL)
+            o.put("lastFedDate", p.lastFedDate ?: JSONObject.NULL)
+            o.put("feedFrequencyDays", p.feedFrequencyDays ?: JSONObject.NULL)
             plantsArr.put(o)
         }
         root.put("plants", plantsArr)
@@ -209,7 +211,9 @@ object BackupHelper {
                     lastFertilisedDate = if (o.isNull("lastFertilisedDate")) null else o.optLong("lastFertilisedDate"),
                     fertiliseFrequencyDays = if (o.isNull("fertiliseFrequencyDays")) null else o.optInt("fertiliseFrequencyDays"),
                     lastPrunedDate = if (o.isNull("lastPrunedDate")) null else o.optLong("lastPrunedDate"),
-                    pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays")
+                    pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays"),
+                    lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
+                    feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays")
                 )
             )
         }

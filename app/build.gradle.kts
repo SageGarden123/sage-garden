@@ -27,8 +27,6 @@ android {
         buildConfigField("String", "PLANTNET_API_KEY", "\"${localProperties.getProperty("PLANTNET_API_KEY", "")}\"")
         buildConfigField("String", "DROPBOX_APP_KEY", "\"${localProperties.getProperty("DROPBOX_APP_KEY", "")}\"")
         buildConfigField("String", "MAPS_API_KEY", "\"${localProperties.getProperty("MAPS_API_KEY", "")}\"")
-        buildConfigField("String", "TUYA_CLIENT_ID", "\"${localProperties.getProperty("TUYA_CLIENT_ID")}\"")
-        buildConfigField("String", "TUYA_CLIENT_SECRET", "\"${localProperties.getProperty("TUYA_CLIENT_SECRET")}\"")
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
     }
 

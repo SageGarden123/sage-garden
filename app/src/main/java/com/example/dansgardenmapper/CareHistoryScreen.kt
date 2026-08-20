@@ -34,18 +34,22 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Watering, fertilising & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Watering, fertilising, feeding & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("💧 Log watering", fontSize = 12.sp) }
             Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🌱 Log fertilising", fontSize = 12.sp) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { pendingLogType = "feed"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🍽️ Log feeding", fontSize = 12.sp) }
             Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("✂️ Log pruning", fontSize = 12.sp) }
         }
         Spacer(Modifier.height(20.dp))
 
         if (entries.isEmpty()) {
-            Text("No entries yet — log watering, fertilising, or pruning above.", color = Color.Gray, fontSize = 13.sp)
+            Text("No entries yet — log watering, fertilising, feeding, or pruning above.", color = Color.Gray, fontSize = 13.sp)
         } else {
             entries.forEach { entry ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -90,11 +94,13 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
 fun careTypeIcon(type: String) = when (type) {
     "watering" -> "💧"
     "fertilise" -> "🌱"
+    "feed" -> "🍽️"
     else -> "✂️"
 }
 
 fun careTypeLabel(type: String) = when (type) {
     "watering" -> "Watered"
     "fertilise" -> "Fertilised"
+    "feed" -> "Fed"
     else -> "Pruned"
 }

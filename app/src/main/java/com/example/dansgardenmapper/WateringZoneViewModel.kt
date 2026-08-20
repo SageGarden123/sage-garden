@@ -32,6 +32,11 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
                 _syncing.value = false
                 return@launch
             }
+            if (getTuyaClientId(context).isBlank() || getTuyaClientSecret(context).isBlank()) {
+                _lastSyncResult.value = "Tuya isn't connected — add your Client ID and Secret in Help first."
+                _syncing.value = false
+                return@launch
+            }
             val end = System.currentTimeMillis()
             val start = end - (30L * 24 * 60 * 60 * 1000)
             var successCount = 0
@@ -41,7 +46,7 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
             mappings.forEach { mapping ->
                 try {
                     val zoneEvents = TuyaClient.fetchWateringEvents(
-                        mapping.deviceId, mapping.zone, mapping.outlet, start, end
+                        context, mapping.deviceId, mapping.zone, mapping.outlet, start, end
                     )
                     dao.insertAll(zoneEvents)
                     allNewEvents.addAll(zoneEvents)

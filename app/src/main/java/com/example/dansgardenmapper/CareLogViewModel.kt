@@ -29,6 +29,7 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
             "watering" -> plant.copy(lastWateredDate = date)
             "fertilise" -> plant.copy(lastFertilisedDate = date)
             "prune" -> plant.copy(lastPrunedDate = date)
+            "feed" -> plant.copy(lastFedDate = date)
             else -> plant
         }
         plantDao.upsert(updated)

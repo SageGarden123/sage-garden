@@ -35,5 +35,7 @@ data class PlantEntity(
     val lastFertilisedDate: Long? = null,
     val fertiliseFrequencyDays: Int? = null,
     val lastPrunedDate: Long? = null,
-    val pruneFrequencyDays: Int? = null
+    val pruneFrequencyDays: Int? = null,
+    val lastFedDate: Long? = null,
+    val feedFrequencyDays: Int? = null
 )
