@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -133,12 +135,14 @@ fun SunMapScreen(onBack: () -> Unit) {
     val zones by sunViewModel.zones.collectAsState()
     val mapUri = remember { getCustomMapUri(context) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var imageIntrinsicSize by remember { mutableStateOf<androidx.compose.ui.geometry.Size?>(null) }
 
     var scale by remember { mutableStateOf(1f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var selectedCategory by remember { mutableStateOf("full_sun") }
-    var drawing by remember { mutableStateOf(false) }
+    var drawMode by remember { mutableStateOf<String?>(null) } // null | "freehand" | "tap"
     val currentStroke = remember { mutableStateListOf<Offset>() }
+    var strokeComplete by remember { mutableStateOf(false) } // freehand only: finger lifted, awaiting confirm
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     if (mapUri == null) {
@@ -150,12 +154,38 @@ fun SunMapScreen(onBack: () -> Unit) {
         return
     }
 
+    // The map image is shown with ContentScale.Fit, so unless its aspect ratio exactly matches
+    // the container's, it's letterboxed (blank margins on two sides). Zone points are stored as
+    // fractions of the actual IMAGE content, not the raw container — otherwise a zone traced
+    // against a feature in the photo would land in the wrong place once redrawn, and any letterbox
+    // margin would skew the shape (which is what made confirmed zones look "off").
+    fun fittedImageRect(): androidx.compose.ui.geometry.Rect {
+        val cw = containerSize.width.toFloat(); val ch = containerSize.height.toFloat()
+        val intrinsic = imageIntrinsicSize
+        if (intrinsic == null || cw <= 0f || ch <= 0f || intrinsic.width <= 0f || intrinsic.height <= 0f) {
+            return androidx.compose.ui.geometry.Rect(0f, 0f, cw, ch)
+        }
+        val containerAspect = cw / ch
+        val imageAspect = intrinsic.width / intrinsic.height
+        return if (imageAspect > containerAspect) {
+            val fh = cw / imageAspect
+            val oy = (ch - fh) / 2f
+            androidx.compose.ui.geometry.Rect(0f, oy, cw, oy + fh)
+        } else {
+            val fw = ch * imageAspect
+            val ox = (cw - fw) / 2f
+            androidx.compose.ui.geometry.Rect(ox, 0f, ox + fw, ch)
+        }
+    }
+
     fun screenPointToFraction(tap: Offset): Offset {
         val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
         val unscaled = (tap - panOffset - center) / scale + center
+        val rect = fittedImageRect()
+        if (rect.width <= 0f || rect.height <= 0f) return Offset(0.5f, 0.5f)
         return Offset(
-            (unscaled.x / containerSize.width).coerceIn(0f, 1f),
-            (unscaled.y / containerSize.height).coerceIn(0f, 1f)
+            ((unscaled.x - rect.left) / rect.width).coerceIn(0f, 1f),
+            ((unscaled.y - rect.top) / rect.height).coerceIn(0f, 1f)
         )
     }
 
@@ -171,26 +201,40 @@ fun SunMapScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .clipToBounds()
                 .onGloballyPositioned { containerSize = it.size }
                 .then(
-                    if (!drawing) {
-                        Modifier.pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(0.5f, 6f)
-                                panOffset += pan
-                            }
-                        }
-                    } else {
-                        Modifier.pointerInput(Unit) {
+                    when (drawMode) {
+                        "freehand" -> Modifier.pointerInput(Unit) {
                             detectDragGestures(
-                                onDragStart = { offset -> currentStroke.clear(); currentStroke.add(screenPointToFraction(offset)) },
+                                onDragStart = { offset ->
+                                    currentStroke.clear()
+                                    strokeComplete = false
+                                    currentStroke.add(screenPointToFraction(offset))
+                                },
                                 onDrag = { change, _ ->
                                     val frac = screenPointToFraction(change.position)
                                     val last = currentStroke.lastOrNull()
                                     if (last == null || (frac - last).getDistance() > 0.004f) currentStroke.add(frac)
                                 },
-                                onDragEnd = { }
+                                onDragEnd = { strokeComplete = currentStroke.size >= 3 }
                             )
+                        }
+                        "tap" -> Modifier
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = { offset -> currentStroke.add(screenPointToFraction(offset)) })
+                            }
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    scale = (scale * zoom).coerceIn(0.5f, 6f)
+                                    panOffset += pan
+                                }
+                            }
+                        else -> Modifier.pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(0.5f, 6f)
+                                panOffset += pan
+                            }
                         }
                     }
                 )
@@ -204,12 +248,18 @@ fun SunMapScreen(onBack: () -> Unit) {
                 val mapRotation = remember { getCustomMapRotation(context) }
                 AsyncImage(
                     model = ImageRequest.Builder(context).data(mapUri).transformations(RotateTransformation(mapRotation.toFloat())).build(),
-                    contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit
+                    contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        val d = state.result.drawable
+                        if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                            imageIntrinsicSize = androidx.compose.ui.geometry.Size(d.intrinsicWidth.toFloat(), d.intrinsicHeight.toFloat())
+                        }
+                    }
                 )
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width; val h = size.height
-                    fun toPx(p: Offset) = Offset(p.x * w, p.y * h)
+                    val rect = fittedImageRect()
+                    fun toPx(p: Offset) = Offset(rect.left + p.x * rect.width, rect.top + p.y * rect.height)
 
                     zones.forEach { zone ->
                         val pts = sunJsonToPoints(zone.pointsJson).map { toPx(it) }
@@ -226,21 +276,41 @@ fun SunMapScreen(onBack: () -> Unit) {
 
                     if (currentStroke.size >= 2) {
                         val pts = currentStroke.map { toPx(it) }
+                        val shouldClose = drawMode == "tap" || strokeComplete
                         val path = androidx.compose.ui.graphics.Path().apply {
                             moveTo(pts[0].x, pts[0].y)
                             for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
+                            if (shouldClose && pts.size >= 3) close()
+                        }
+                        if (shouldClose && pts.size >= 3) {
+                            drawPath(path, color = colorForSunCategory(selectedCategory).copy(alpha = 0.35f), style = Fill)
                         }
                         drawPath(path, color = colorForSunCategory(selectedCategory), style = Stroke(width = 4f, cap = StrokeCap.Round))
+                    }
+                    if (drawMode == "tap") {
+                        currentStroke.map { toPx(it) }.forEach { p ->
+                            drawCircle(color = colorForSunCategory(selectedCategory), radius = 9f, center = p)
+                            drawCircle(color = Color.White, radius = 9f, center = p, style = Stroke(width = 2f))
+                        }
                     }
                 }
             }
         }
 
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            if (drawing) {
-                Text("Drag to trace the zone's outline, then confirm.", fontSize = 12.sp, color = Color.Gray)
+            if (drawMode != null) {
+                Text(
+                    if (drawMode == "tap") "Tap to place each corner, then confirm. Pinch to zoom." else "Drag to trace the zone's outline, then confirm.",
+                    fontSize = 12.sp, color = Color.Gray
+                )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (drawMode == "tap") {
+                        OutlinedButton(
+                            onClick = { if (currentStroke.isNotEmpty()) currentStroke.removeAt(currentStroke.lastIndex) },
+                            modifier = Modifier.weight(1f), enabled = currentStroke.isNotEmpty()
+                        ) { Text("Undo point", fontSize = 12.sp) }
+                    }
                     Button(
                         onClick = {
                             if (currentStroke.size >= 3) {
@@ -249,13 +319,15 @@ fun SunMapScreen(onBack: () -> Unit) {
                                 )
                             }
                             currentStroke.clear()
-                            drawing = false
+                            strokeComplete = false
+                            drawMode = null
                         },
                         modifier = Modifier.weight(1f), enabled = currentStroke.size >= 3
                     ) { Text("Confirm zone", fontSize = 12.sp) }
-                    OutlinedButton(onClick = { currentStroke.clear(); drawing = false }, modifier = Modifier.weight(1f)) {
-                        Text("Cancel", fontSize = 12.sp)
-                    }
+                    OutlinedButton(
+                        onClick = { currentStroke.clear(); strokeComplete = false; drawMode = null },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel", fontSize = 12.sp) }
                 }
             } else {
                 Text("Zone type", fontSize = 12.sp, color = Color.Gray)
@@ -275,7 +347,10 @@ fun SunMapScreen(onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = { drawing = true }, modifier = Modifier.fillMaxWidth()) { Text("Draw zone", fontSize = 13.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { drawMode = "freehand" }, modifier = Modifier.weight(1f)) { Text("✏️ Draw freehand", fontSize = 12.sp) }
+                    Button(onClick = { currentStroke.clear(); drawMode = "tap" }, modifier = Modifier.weight(1f)) { Text("📍 Tap points", fontSize = 12.sp) }
+                }
 
                 if (zones.isNotEmpty()) {
                     Spacer(Modifier.height(14.dp))

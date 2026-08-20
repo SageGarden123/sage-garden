@@ -55,6 +55,7 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
             }
         }
 
+        refreshWateringWidgets(applicationContext)
         return Result.success()
     }
 }

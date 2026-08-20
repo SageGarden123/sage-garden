@@ -34,25 +34,26 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Fertilising & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Watering, fertilising & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("💧 Log watering", fontSize = 12.sp) }
             Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🌱 Log fertilising", fontSize = 12.sp) }
             Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("✂️ Log pruning", fontSize = 12.sp) }
         }
         Spacer(Modifier.height(20.dp))
 
         if (entries.isEmpty()) {
-            Text("No entries yet — log fertilising or pruning above.", color = Color.Gray, fontSize = 13.sp)
+            Text("No entries yet — log watering, fertilising, or pruning above.", color = Color.Gray, fontSize = 13.sp)
         } else {
             entries.forEach { entry ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (entry.type == "fertilise") "🌱" else "✂️", fontSize = 18.sp)
+                        Text(careTypeIcon(entry.type), fontSize = 18.sp)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(if (entry.type == "fertilise") "Fertilised" else "Pruned", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(careTypeLabel(entry.type), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             Text(sdf.format(Date(entry.date)), fontSize = 11.sp, color = Color.Gray)
                         }
                         TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
@@ -66,7 +67,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     pendingLogType?.let { type ->
         AlertDialog(
             onDismissRequest = { pendingLogType = null },
-            title = { Text(if (type == "fertilise") "Log fertilising" else "Log pruning") },
+            title = { Text("Log ${careTypeLabel(type).lowercase()}") },
             text = {
                 Column {
                     Text("Pick the date — defaults to today if left blank.", fontSize = 12.sp, color = Color.Gray)
@@ -84,4 +85,16 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { pendingLogType = null }) { Text("Cancel") } }
         )
     }
+}
+
+fun careTypeIcon(type: String) = when (type) {
+    "watering" -> "💧"
+    "fertilise" -> "🌱"
+    else -> "✂️"
+}
+
+fun careTypeLabel(type: String) = when (type) {
+    "watering" -> "Watered"
+    "fertilise" -> "Fertilised"
+    else -> "Pruned"
 }

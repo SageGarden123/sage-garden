@@ -148,7 +148,12 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setFilters(newFilters: DashboardFilters) { _filters.value = newFilters }
 
-    fun save(plant: PlantEntity) = viewModelScope.launch { dao.upsert(plant) }
+    /** Suspends until the write (and widget refresh) complete — for callers that need to sequence further work after the save actually lands. */
+    suspend fun saveSync(plant: PlantEntity) {
+        dao.upsert(plant)
+        refreshWateringWidgets(getApplication())
+    }
+    fun save(plant: PlantEntity) = viewModelScope.launch { saveSync(plant) }
     fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
     fun resetAll() = viewModelScope.launch { dao.deleteAll() }
 
@@ -484,6 +489,20 @@ fun setRainAmountThreshold(context: Context, value: Float) {
 }
 
 // ============================================================================
+// WATER USAGE & COST
+// ============================================================================
+
+/** Dollars per kiloliter (1000L) — 0.0 means the user hasn't set a rate yet. */
+fun getWaterRatePerKiloliter(context: Context): Double {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getFloat("water_rate_per_kl", 0f).toDouble()
+}
+fun setWaterRatePerKiloliter(context: Context, value: Double) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putFloat("water_rate_per_kl", value.toFloat()).apply()
+}
+
+// ============================================================================
 // DROPBOX CLOUD PHOTO STORAGE
 // ============================================================================
 
@@ -587,6 +606,10 @@ object DropboxLinkState {
 
 object PendingNotificationState {
     var type by mutableStateOf<String?>(null)
+}
+
+object PendingPlantEditState {
+    var plantId by mutableStateOf<String?>(null)
 }
 
 object DropboxAuthState {
@@ -696,6 +719,23 @@ fun getDropboxPhotoFolderPath(context: Context): String? {
 fun setDropboxPhotoFolderPath(context: Context, path: String?) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putString("dropbox_photo_folder_path", path).apply()
+}
+/** Null means "not set yet — falls back to the photo folder", so existing users keep their current behaviour. */
+fun getDropboxBackupFolderPath(context: Context): String? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("dropbox_backup_folder_path", null)
+}
+fun setDropboxBackupFolderPath(context: Context, path: String?) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("dropbox_backup_folder_path", path).apply()
+}
+fun getLocalBackupFolderUri(context: Context): Uri? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("local_backup_folder_uri", null)?.let { Uri.parse(it) }
+}
+fun setLocalBackupFolderUri(context: Context, uri: Uri) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("local_backup_folder_uri", uri.toString()).apply()
 }
 
 data class DropboxLinkResult(val linkedCount: Int, val matchedCount: Int, val errorMessage: String? = null)
@@ -934,6 +974,7 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
+        PendingPlantEditState.plantId = intent.getStringExtra("widget_plant_id")
         setContent {
             MaterialTheme {
                 var showSplash by remember { mutableStateOf(true) }
@@ -955,6 +996,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
+        PendingPlantEditState.plantId = intent.getStringExtra("widget_plant_id")
     }
 }
 
@@ -1090,6 +1132,14 @@ fun GardenMapperApp() {
         if (type != null) {
             navController.navigate("notification/$type")
             PendingNotificationState.type = null
+        }
+    }
+
+    LaunchedEffect(PendingPlantEditState.plantId) {
+        val id = PendingPlantEditState.plantId
+        if (id != null) {
+            navController.navigate("form_edit/$id")
+            PendingPlantEditState.plantId = null
         }
     }
 
@@ -3158,6 +3208,7 @@ fun ListScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEntity>) {
+    val context = LocalContext.current
     var zoneFilter by remember { mutableStateOf("All") }
     var dateFilter by remember { mutableStateOf("") }
     val locale = LocalConfiguration.current.locales[0]
@@ -3181,14 +3232,14 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 (dateFilter.isBlank() || sdfDate.format(Date(e.startTime)) == dateFilter)
     }.sortedByDescending { it.startTime }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("Irrigation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(12.dp))
 
-        if (dueOrOverdue.isNotEmpty()) {
-            Text("Needs watering", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            Spacer(Modifier.height(6.dp))
-            Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+        ExpandableSection(title = "Needs watering (${dueOrOverdue.size})", initiallyExpanded = true) {
+            if (dueOrOverdue.isEmpty()) {
+                Text("Nothing due right now.", fontSize = 12.sp, color = Color.Gray)
+            } else {
                 dueOrOverdue.forEach { (plant, status) ->
                     val overdue = status.nextDueMillis!! <= now
                     Card(
@@ -3214,8 +3265,8 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
+        Spacer(Modifier.height(16.dp))
 
         if (unscheduled.isNotEmpty()) {
             Text("Unscheduled (never watered)", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -3242,27 +3293,175 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             Spacer(Modifier.height(20.dp))
         }
 
-        Text("Watering history", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.height(6.dp))
-        Text("${filtered.size} watering event(s)", fontSize = 13.sp, color = Color.Gray)
-        Spacer(Modifier.height(12.dp))
+        ExpandableSection(title = "Water usage & cost (estimated)") {
+            val flowRateViewModel: WaterFlowRateViewModel = viewModel(
+                factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+            )
+            val flowRates by flowRateViewModel.flowRates.collectAsState()
+            val flowRateByKey = remember(flowRates) { flowRates.associateBy { it.zone to it.outlet } }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.weight(1f)) {
-                DropdownField(label = "Zone", options = zones, selected = zoneFilter, onSelect = { zoneFilter = it })
+            var waterRate by remember { mutableStateOf(getWaterRatePerKiloliter(context)) }
+            var waterRateText by remember { mutableStateOf(if (waterRate > 0) waterRate.toString() else "") }
+
+            Text(
+                "Estimated from your logged watering durations and a flow rate you calibrate per zone/outlet — not a metered reading.",
+                fontSize = 11.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = waterRateText,
+                onValueChange = { new ->
+                    waterRateText = new.filter { it.isDigit() || it == '.' }
+                    waterRateText.toDoubleOrNull()?.let { waterRate = it; setWaterRatePerKiloliter(context, it) }
+                },
+                label = { Text("Water rate (\$ per kL)") },
+                supportingText = {
+                    Text(
+                        "What your water utility charges per 1,000 litres (1 kilolitre) — check a recent water bill, usually shown as \"\$/kL\" or \"\$/1000L\".",
+                        fontSize = 11.sp
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(14.dp))
+
+            val zoneOutlets = remember(wateringEvents) {
+                wateringEvents.map { it.zone to it.outlet }.distinct().sortedBy { it.first + it.second }
             }
-            Box(Modifier.weight(1f)) { DatePickerField("Date", dateFilter, { dateFilter = it }) }
-        }
-        if (dateFilter.isNotBlank()) {
-            TextButton(onClick = { dateFilter = "" }) { Text("Clear date filter") }
-        }
-        Spacer(Modifier.height(10.dp))
+            Text("Flow rate calibration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "For each zone/outlet below: put a 1-litre container under it, run the water, time how many seconds it takes to fill, then enter that number and tap Save. This converts to a flow rate (litres/minute) used to turn logged watering durations into litres used.",
+                fontSize = 11.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(8.dp))
 
-        if (filtered.isEmpty()) {
-            Text("No irrigation data yet — connect Tuya zones and sync in Help.", color = Color.Gray)
-        } else {
-            LazyColumn(Modifier.weight(1f)) {
-                items(filtered) { e ->
+            if (zoneOutlets.isEmpty()) {
+                Text("No watering events logged yet.", fontSize = 12.sp, color = Color.Gray)
+            } else {
+                zoneOutlets.forEach { (zone, outlet) ->
+                    val existing = flowRateByKey[zone to outlet]
+                    var secondsText by remember(zone, outlet) {
+                        mutableStateOf(existing?.let { "%.1f".format(60.0 / it.litersPerMinute) } ?: "")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("$zone — outlet $outlet", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            if (existing != null) {
+                                Text("${"%.2f".format(existing.litersPerMinute)} L/min", fontSize = 11.sp, color = Color(0xFF3A5A40))
+                            } else {
+                                Text("Not calibrated", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                        OutlinedTextField(
+                            value = secondsText,
+                            onValueChange = { new -> secondsText = new.filter { it.isDigit() || it == '.' } },
+                            label = { Text("Secs/1L") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.width(100.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(onClick = {
+                            secondsText.toDoubleOrNull()?.takeIf { it > 0 }?.let { seconds ->
+                                flowRateViewModel.save(zone, outlet, 60.0 / seconds)
+                            }
+                        }) { Text("Save") }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            val monthStart = remember {
+                java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.DAY_OF_MONTH, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+            }
+            val monthEvents = remember(wateringEvents, monthStart) { wateringEvents.filter { it.startTime >= monthStart } }
+            val calibratedEvents = remember(monthEvents, flowRateByKey) { monthEvents.filter { flowRateByKey.containsKey(it.zone to it.outlet) } }
+            val uncalibratedCount = monthEvents.size - calibratedEvents.size
+            val totalLiters = calibratedEvents.sumOf { e -> e.durationMinutes * (flowRateByKey[e.zone to e.outlet]?.litersPerMinute ?: 0.0) }
+            val totalCost = totalLiters / 1000.0 * waterRate
+
+            val allTimeCalibrated = remember(wateringEvents, flowRateByKey) { wateringEvents.filter { flowRateByKey.containsKey(it.zone to it.outlet) } }
+            val allTimeLiters = allTimeCalibrated.sumOf { e -> e.durationMinutes * (flowRateByKey[e.zone to e.outlet]?.litersPerMinute ?: 0.0) }
+            val allTimeCost = allTimeLiters / 1000.0 * waterRate
+
+            Text("This month so far", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Spacer(Modifier.height(6.dp))
+            Text("${"%.0f".format(totalLiters)} L", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+            if (waterRate > 0) {
+                Text("≈ \$${"%.2f".format(totalCost)}", fontSize = 14.sp, color = Color(0xFF3A5A40))
+            } else {
+                Text("Enter a water rate above to see an estimated cost.", fontSize = 11.sp, color = Color.Gray)
+            }
+            when {
+                monthEvents.isEmpty() && flowRates.isEmpty() -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "No zones calibrated yet — enter a flow rate above for at least one zone/outlet.",
+                        fontSize = 11.sp, color = Color.Gray
+                    )
+                }
+                monthEvents.isEmpty() -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "No watering events logged since the start of this month — that's why this reads 0, not a calibration problem. See \"All time\" below.",
+                        fontSize = 11.sp, color = Color.Gray
+                    )
+                }
+                uncalibratedCount > 0 -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "$uncalibratedCount event(s) this month excluded — calibrate the zone/outlet above to include them.",
+                        fontSize = 11.sp, color = Color(0xFFB23B3B)
+                    )
+                }
+            }
+
+            val byZone = calibratedEvents.groupBy { it.zone }
+            if (byZone.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                byZone.forEach { (zone, zoneEvents) ->
+                    val liters = zoneEvents.sumOf { e -> e.durationMinutes * (flowRateByKey[e.zone to e.outlet]?.litersPerMinute ?: 0.0) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Text(zone, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        Text("${"%.0f".format(liters)} L", fontSize = 12.sp, color = Color.Gray)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            Text("All time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Spacer(Modifier.height(6.dp))
+            Text("${"%.0f".format(allTimeLiters)} L", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+            if (waterRate > 0) {
+                Text("≈ \$${"%.2f".format(allTimeCost)}", fontSize = 13.sp, color = Color(0xFF3A5A40))
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+
+        ExpandableSection(title = "Watering history (${filtered.size})") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) {
+                    DropdownField(label = "Zone", options = zones, selected = zoneFilter, onSelect = { zoneFilter = it })
+                }
+                Box(Modifier.weight(1f)) { DatePickerField("Date", dateFilter, { dateFilter = it }) }
+            }
+            if (dateFilter.isNotBlank()) {
+                TextButton(onClick = { dateFilter = "" }) { Text("Clear date filter") }
+            }
+            Spacer(Modifier.height(10.dp))
+
+            if (filtered.isEmpty()) {
+                Text("No irrigation data yet — connect Tuya zones and sync in Help.", color = Color.Gray)
+            } else {
+                filtered.forEach { e ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             Text(e.zone, fontWeight = FontWeight.SemiBold)
@@ -3276,6 +3475,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 }
             }
         }
+        Spacer(Modifier.height(20.dp))
     }
 }
 
@@ -3315,7 +3515,9 @@ fun DropdownField(
 @Composable
 fun DatePickerField(
     label: String, dateString: String, onDateChange: (String) -> Unit,
-    restrictToPastOrToday: Boolean = false
+    restrictToPastOrToday: Boolean = false,
+    allowNotApplicable: Boolean = false,
+    allowClear: Boolean = true
 ) {
     var showDialog by remember { mutableStateOf(false) }
     OutlinedTextField(
@@ -3348,7 +3550,10 @@ fun DatePickerField(
             },
             dismissButton = {
                 Row {
-                    if (dateString.isNotBlank()) {
+                    if (allowNotApplicable && dateString != "N/A") {
+                        TextButton(onClick = { onDateChange("N/A"); showDialog = false }) { Text("N/A") }
+                    }
+                    if (allowClear && dateString.isNotBlank()) {
                         TextButton(onClick = { onDateChange(""); showDialog = false }) { Text("Clear") }
                     }
                     TextButton(onClick = { showDialog = false }) { Text("Cancel") }
@@ -3469,6 +3674,9 @@ fun FormScreen(
 ) {
     val context = LocalContext.current
     val photoMode = remember { getPhotoStorageMode(context) }
+    val careLogViewModel: CareLogViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+    )
 
     var name by remember { mutableStateOf("") }
     var sci by remember { mutableStateOf("") }
@@ -3506,8 +3714,10 @@ fun FormScreen(
     var summerWateringFrequency by remember { mutableStateOf("") }
     var winterWateringFrequency by remember { mutableStateOf("") }
     var lastFertilisedDate by remember { mutableStateOf("") }
+    var originalLastFertilisedDate by remember { mutableStateOf("") }
     var fertiliseFrequency by remember { mutableStateOf("") }
     var lastPrunedDate by remember { mutableStateOf("") }
+    var originalLastPrunedDate by remember { mutableStateOf("") }
     var pruneFrequency by remember { mutableStateOf("") }
     var manualWateringOnly by remember { mutableStateOf(false) }
     var isIndoor by remember { mutableStateOf(false) }
@@ -3571,8 +3781,10 @@ fun FormScreen(
                 summerWateringFrequency = existing.summerWateringFrequencyDays?.toString() ?: ""
                 winterWateringFrequency = existing.winterWateringFrequencyDays?.toString() ?: ""
                 lastFertilisedDate = millisToDateString(existing.lastFertilisedDate)
+                originalLastFertilisedDate = lastFertilisedDate
                 fertiliseFrequency = existing.fertiliseFrequencyDays?.toString() ?: ""
                 lastPrunedDate = millisToDateString(existing.lastPrunedDate)
+                originalLastPrunedDate = lastPrunedDate
                 pruneFrequency = existing.pruneFrequencyDays?.toString() ?: ""
                 manualWateringOnly = existing.manualWateringOnly
                 isIndoor = existing.isIndoor
@@ -3751,7 +3963,7 @@ fun FormScreen(
         OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Source (e.g. nursery)") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
 
-        DatePickerField(label = "Date planted", dateString = date, onDateChange = { date = it })
+        DatePickerField(label = "Date planted", dateString = date, onDateChange = { date = it }, allowNotApplicable = true)
         Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
@@ -3767,7 +3979,7 @@ fun FormScreen(
         OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text("Watering System") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
 
-        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true)
+        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true, allowClear = false)
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(
             value = wateringFrequency, onValueChange = { new -> wateringFrequency = new.filter { it.isDigit() } },
@@ -3817,14 +4029,15 @@ fun FormScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
-            if (plantId != null) {
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("📋 View fertilising & pruning history")
-                }
-            }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(10.dp))
+
+        if (plantId != null) {
+            OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
+                Text("📋 View watering, fertilising & pruning history")
+            }
+            Spacer(Modifier.height(14.dp))
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -3881,13 +4094,26 @@ fun FormScreen(
                     lastPrunedDate = dateStringToMillis(lastPrunedDate),
                     pruneFrequencyDays = pruneFrequency.toIntOrNull()
                 )
-                viewModel.save(plant)
                 pendingSavedPlant = plant
+                scope.launch {
+                    // Sequenced (not fired in parallel): each log call re-reads the plant to apply its one field,
+                    // so overlapping writes here would race and could silently drop an earlier change.
+                    viewModel.saveSync(plant)
+                    if (lastWateredDate != originalLastWateredDate) {
+                        plant.lastWateredDate?.let { careLogViewModel.logCareSync(plant.id, "watering", it) }
+                    }
+                    if (lastFertilisedDate != originalLastFertilisedDate) {
+                        plant.lastFertilisedDate?.let { careLogViewModel.logCareSync(plant.id, "fertilise", it) }
+                    }
+                    if (lastPrunedDate != originalLastPrunedDate) {
+                        plant.lastPrunedDate?.let { careLogViewModel.logCareSync(plant.id, "prune", it) }
+                    }
 
-                if (plant.lastWateredDate != null && location.isNotBlank() && lastWateredDate != originalLastWateredDate) {
-                    showBulkWaterPrompt = true
-                } else {
-                    checkPlacementPrompts(plant)
+                    if (plant.lastWateredDate != null && location.isNotBlank() && lastWateredDate != originalLastWateredDate) {
+                        showBulkWaterPrompt = true
+                    } else {
+                        checkPlacementPrompts(plant)
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -3957,11 +4183,18 @@ fun FormScreen(
                     showBulkWaterPrompt = false
                     val dateMillis = plant?.lastWateredDate
                     if (dateMillis != null) {
-                        allPlants.filter { it.location == location }.forEach { p ->
-                            if (p.id != plant.id) viewModel.save(p.copy(lastWateredDate = dateMillis))
+                        scope.launch {
+                            allPlants.filter { it.location == location }.forEach { p ->
+                                if (p.id != plant.id) {
+                                    viewModel.saveSync(p.copy(lastWateredDate = dateMillis))
+                                    careLogViewModel.logCareSync(p.id, "watering", dateMillis)
+                                }
+                            }
+                            checkPlacementPrompts(plant)
                         }
+                    } else {
+                        plant?.let { checkPlacementPrompts(it) }
                     }
-                    plant?.let { checkPlacementPrompts(it) }
                 }) { Text("Yes, apply to all") }
             },
             dismissButton = {
@@ -4671,6 +4904,7 @@ fun HelpScreen(
             var weatherSkipEnabled by remember { mutableStateOf(getWeatherSkipEnabled(context)) }
             var rainThreshold by remember { mutableStateOf(getRainProbabilityThreshold(context)) }
             var gardenAddressQuery by remember { mutableStateOf(getGardenAddress(context)) }
+            var gardenAddressEditedByUser by remember { mutableStateOf(false) }
             var gardenCoords by remember { mutableStateOf(getGardenLatLng(context)) }
             var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
             var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
@@ -4702,24 +4936,35 @@ fun HelpScreen(
                 if (gardenCoords != null) { Text("Garden location set ✅", fontSize = 12.sp, color = Color(0xFF3A5A40)); Spacer(Modifier.height(6.dp)) }
 
                 LaunchedEffect(gardenAddressQuery) {
-                    if (gardenAddressQuery.length > 2) {
+                    if (gardenAddressEditedByUser && gardenAddressQuery.length > 2) {
                         delay(300)
+                        // The Places Task callbacks below aren't tied to this coroutine's cancellation, so if the
+                        // user selects a suggestion (or types something else) before this in-flight request
+                        // resolves, a late callback must not resurrect the dropdown — guard on both flags below.
+                        val queryAtRequestTime = gardenAddressQuery
+                        fun stillRelevant() = gardenAddressEditedByUser && gardenAddressQuery == queryAtRequestTime
                         val request = FindAutocompletePredictionsRequest.builder().setQuery(gardenAddressQuery).build()
                         gardenPlacesClient.findAutocompletePredictions(request)
                             .addOnSuccessListener { response: FindAutocompletePredictionsResponse ->
-                                gardenPredictions = response.autocompletePredictions
-                                gardenGeocoderPredictions = emptyList()
+                                if (stillRelevant()) {
+                                    gardenPredictions = response.autocompletePredictions
+                                    gardenGeocoderPredictions = emptyList()
+                                }
                             }
                             .addOnFailureListener {
-                                gardenPredictions = emptyList()
-                                scope.launch {
-                                    val results = withContext(Dispatchers.IO) {
-                                        try {
-                                            @Suppress("DEPRECATION")
-                                            Geocoder(context, Locale.getDefault()).getFromLocationName(gardenAddressQuery, 5)
-                                        } catch (_: Exception) { null }
+                                if (stillRelevant()) {
+                                    gardenPredictions = emptyList()
+                                    scope.launch {
+                                        val results = withContext(Dispatchers.IO) {
+                                            try {
+                                                @Suppress("DEPRECATION")
+                                                Geocoder(context, Locale.getDefault()).getFromLocationName(gardenAddressQuery, 5)
+                                            } catch (_: Exception) { null }
+                                        }
+                                        if (stillRelevant()) {
+                                            gardenGeocoderPredictions = results ?: emptyList()
+                                        }
                                     }
-                                    gardenGeocoderPredictions = results ?: emptyList()
                                 }
                             }
                     } else {
@@ -4729,7 +4974,8 @@ fun HelpScreen(
                 }
 
                 OutlinedTextField(
-                    value = gardenAddressQuery, onValueChange = { gardenAddressQuery = it },
+                    value = gardenAddressQuery,
+                    onValueChange = { gardenAddressQuery = it; gardenAddressEditedByUser = true },
                     label = { Text("Garden address") }, placeholder = { Text("Start typing to search…") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -4752,6 +4998,7 @@ fun HelpScreen(
                                         }
                                         gardenAddressQuery = prediction.getFullText(null).toString()
                                         setGardenAddress(context, gardenAddressQuery)
+                                        gardenAddressEditedByUser = false
                                         gardenPredictions = emptyList()
                                     }.padding(12.dp),
                                     fontSize = 13.sp
@@ -4766,6 +5013,7 @@ fun HelpScreen(
                                         setGardenLatLng(context, address.latitude, address.longitude)
                                         gardenAddressQuery = address.getAddressLine(0) ?: ""
                                         setGardenAddress(context, gardenAddressQuery)
+                                        gardenAddressEditedByUser = false
                                         gardenGeocoderPredictions = emptyList()
                                         scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
                                     }.padding(12.dp),
@@ -4867,7 +5115,7 @@ fun HelpScreen(
 
             Text("Backup & restore all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Backs up plants, irrigation paths, watering history, Tuya zone mappings, app settings, and your custom map drawing to your Dropbox folder.", fontSize = 12.sp, color = Color.Gray)
+            Text("Backs up all plants (including seasonal watering, fertilising, pruning, and indoor/manual-watering settings), irrigation paths and watering history, sun exposure zones, growth timeline photos, fertilise/prune history, Tuya zone mappings, your custom map drawing and its rotation, and all app preferences (weather-aware reminders, garden address, notification and reminder settings, default tab, and more) to a Dropbox folder you choose.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(6.dp))
             Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 11.sp, color = Color(0xFFB23B3B))
             Spacer(Modifier.height(10.dp))
@@ -4875,6 +5123,26 @@ fun HelpScreen(
             var backupWorking by remember { mutableStateOf(false) }
             var backupResultText by remember { mutableStateOf<String?>(null) }
             var showRestoreConfirm by remember { mutableStateOf(false) }
+            var showBackupFolderPicker by remember { mutableStateOf(false) }
+            var backupFolderPath by remember {
+                mutableStateOf(getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: "")
+            }
+
+            Text("Backup folder", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = backupFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
+                label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { showBackupFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+            if (showBackupFolderPicker) {
+                DropboxFolderPickerDialog(
+                    context = context, onDismiss = { showBackupFolderPicker = false },
+                    onFolderSelected = { path -> backupFolderPath = path; setDropboxBackupFolderPath(context, path) }
+                )
+            }
+            Spacer(Modifier.height(10.dp))
 
             Button(
                 onClick = {
@@ -4897,7 +5165,7 @@ fun HelpScreen(
                 AlertDialog(
                     onDismissRequest = { showRestoreConfirm = false },
                     title = { Text("Restore from Dropbox?") },
-                    text = { Text("This adds/updates plants, irrigation paths, watering history, and settings from your Dropbox backup. Existing entries with matching IDs will be overwritten. This can't be undone.") },
+                    text = { Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from your Dropbox backup. Existing entries with matching IDs will be overwritten. This can't be undone.") },
                     confirmButton = {
                         TextButton(onClick = {
                             showRestoreConfirm = false
@@ -4909,6 +5177,76 @@ fun HelpScreen(
                         }) { Text("Restore") }
                     },
                     dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") } }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            Text("Export backup to device", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Text("Saves the same backup to a folder you choose on this device — or a synced folder like Google Drive/OneDrive — no Dropbox connection needed. Uses the system file picker, so no extra app permissions are required.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(10.dp))
+
+            var localBackupFolder by remember { mutableStateOf(getLocalBackupFolderUri(context)) }
+            var localBackupWorking by remember { mutableStateOf(false) }
+            var localBackupResultText by remember { mutableStateOf<String?>(null) }
+            var showLocalRestoreConfirm by remember { mutableStateOf(false) }
+
+            val backupFolderPickerLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
+            ) { uri ->
+                if (uri != null) {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    setLocalBackupFolderUri(context, uri)
+                    localBackupFolder = uri
+                }
+            }
+
+            OutlinedButton(onClick = { backupFolderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (localBackupFolder != null) "Change backup folder" else "Choose backup folder")
+            }
+
+            if (localBackupFolder != null) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            localBackupWorking = true; localBackupResultText = null
+                            val result = BackupHelper.createLocalBackup(context, plants, irrigationPaths, irrigationEvents, localBackupFolder!!)
+                            localBackupWorking = false; localBackupResultText = result.message
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking
+                ) { Text(if (localBackupWorking) "Backing up…" else "Export backup now") }
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showLocalRestoreConfirm = true },
+                    modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking
+                ) { Text("Restore from this folder") }
+            }
+
+            localBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
+
+            if (showLocalRestoreConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showLocalRestoreConfirm = false },
+                    title = { Text("Restore from device backup?") },
+                    text = { Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from the backup in this folder. Existing entries with matching IDs will be overwritten. This can't be undone.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showLocalRestoreConfirm = false
+                            scope.launch {
+                                localBackupWorking = true; localBackupResultText = null
+                                val result = BackupHelper.restoreLocalBackup(context, viewModel, pathViewModel, wateringViewModel, localBackupFolder!!)
+                                localBackupWorking = false; localBackupResultText = result.message
+                            }
+                        }) { Text("Restore") }
+                    },
+                    dismissButton = { TextButton(onClick = { showLocalRestoreConfirm = false }) { Text("Cancel") } }
                 )
             }
 

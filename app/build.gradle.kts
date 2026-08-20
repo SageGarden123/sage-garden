@@ -96,6 +96,9 @@ dependencies {
 // Image loading (for camera photos)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+// Home screen widget
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+
 
 
 }

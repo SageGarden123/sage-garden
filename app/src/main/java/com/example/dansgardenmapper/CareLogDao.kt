@@ -11,6 +11,9 @@ interface CareLogDao {
     @Query("SELECT * FROM care_log WHERE plantId = :plantId ORDER BY date DESC")
     fun getForPlant(plantId: String): Flow<List<CareLogEntity>>
 
+    @Query("SELECT * FROM care_log")
+    suspend fun getAllOnce(): List<CareLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: CareLogEntity)
 

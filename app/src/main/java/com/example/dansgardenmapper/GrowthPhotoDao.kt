@@ -14,6 +14,9 @@ interface GrowthPhotoDao {
     @Query("SELECT DISTINCT plantId FROM growth_photos")
     fun getAllPlantIdsWithPhotos(): Flow<List<String>>
 
+    @Query("SELECT * FROM growth_photos")
+    suspend fun getAllOnce(): List<GrowthPhotoEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(photo: GrowthPhotoEntity)
 

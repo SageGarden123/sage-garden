@@ -58,6 +58,29 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <receiver android:name=".WateringWidgetRefreshReceiver" android:exported="false" />
+
+        <receiver
+            android:name=".WateringWidgetReceiver"
+            android:exported="false"
+            android:label="@string/watering_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/watering_widget_info" />
+        </receiver>
+
+        <activity
+            android:name=".WateringWidgetConfigActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DansGardenMapper">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

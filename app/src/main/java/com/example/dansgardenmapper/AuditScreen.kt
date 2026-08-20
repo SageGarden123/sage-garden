@@ -16,8 +16,75 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.abs
+import kotlin.math.sqrt
 
-data class AuditIssue(val title: String, val explanation: String, val plants: List<PlantEntity>)
+data class AuditIssue(val title: String, val explanation: String, val plants: List<PlantEntity>, val detailLines: List<String> = emptyList()) {
+    val count: Int get() = if (detailLines.isNotEmpty()) detailLines.size else plants.size
+}
+
+/** Fraction-of-map-diagonal distance below which two plants are considered "right next to each other" on the custom map. No real-world scale is known for that map, so this is an approximate guide, not a precise spacing measurement. */
+private const val CUSTOM_MAP_PROXIMITY_THRESHOLD = 0.05f
+
+/** Real-world distance (meters) below which two plants placed on the Google Map are considered "right next to each other". */
+private const val REAL_MAP_PROXIMITY_METERS = 2.0
+
+private fun auditSunLevel(sun: String): Float? = when (sun) {
+    "Full" -> 3f
+    "Full-Partial" -> 2.5f
+    "Partial" -> 2f
+    "Partial-Shade" -> 1f
+    "Shade" -> 0f
+    else -> null
+}
+
+private fun isFrostTender(plant: PlantEntity) = plant.frost == "Tender" || plant.frost == "Half-hardy"
+
+/** True if plants a and b are "right next to" each other, preferring real-world GPS distance when both have it, falling back to custom-map fraction distance otherwise. */
+private fun isNearby(a: PlantEntity, b: PlantEntity): Boolean {
+    val aLat = a.lat; val aLng = a.lng; val bLat = b.lat; val bLng = b.lng
+    if (aLat != null && aLng != null && bLat != null && bLng != null) {
+        val metersPerDegreeLat = 111_320.0
+        val metersPerDegreeLng = 111_320.0 * kotlin.math.cos(Math.toRadians((aLat + bLat) / 2.0))
+        val dy = (aLat - bLat) * metersPerDegreeLat
+        val dx = (aLng - bLng) * metersPerDegreeLng
+        return sqrt(dx * dx + dy * dy) <= REAL_MAP_PROXIMITY_METERS
+    }
+    val ax = a.mapX; val ay = a.mapY; val bx = b.mapX; val by = b.mapY
+    if (ax != null && ay != null && bx != null && by != null) {
+        val dx = (ax - bx).toFloat(); val dy = (ay - by).toFloat()
+        return sqrt(dx * dx + dy * dy) <= CUSTOM_MAP_PROXIMITY_THRESHOLD
+    }
+    return false
+}
+
+private fun describeExposureConflict(a: PlantEntity, b: PlantEntity): String = when {
+    isFrostTender(a) && b.sun == "Full" ->
+        "${a.name} (frost-tender) is right next to ${b.name} (full sun) — exposed spots lose the most heat on cold nights"
+    isFrostTender(b) && a.sun == "Full" ->
+        "${b.name} (frost-tender) is right next to ${a.name} (full sun) — exposed spots lose the most heat on cold nights"
+    else ->
+        "${a.name} (${a.sun.ifBlank { "unknown sun" }}) is right next to ${b.name} (${b.sun.ifBlank { "unknown sun" }}) — quite different sun needs for such close neighbors"
+}
+
+/** Flags plants placed close together on either map whose sun/frost needs clash — geometry + attributes only, no plant-size or companion-planting data. */
+private fun findExposureConflicts(plants: List<PlantEntity>): List<Pair<PlantEntity, PlantEntity>> {
+    val withCoords = plants.filter { (it.lat != null && it.lng != null) || (it.mapX != null && it.mapY != null) }
+    val pairs = mutableListOf<Pair<PlantEntity, PlantEntity>>()
+    for (i in withCoords.indices) {
+        for (j in i + 1 until withCoords.size) {
+            val a = withCoords[i]; val b = withCoords[j]
+            if (!isNearby(a, b)) continue
+
+            val frostClash = (isFrostTender(a) && b.sun == "Full") || (isFrostTender(b) && a.sun == "Full")
+            val levelA = auditSunLevel(a.sun); val levelB = auditSunLevel(b.sun)
+            val sunClash = levelA != null && levelB != null && abs(levelA - levelB) >= 2f
+
+            if (frostClash || sunClash) pairs.add(a to b)
+        }
+    }
+    return pairs
+}
 
 @Composable
 fun AuditScreen() {
@@ -42,6 +109,16 @@ fun AuditScreen() {
             val sunMismatched = plants.mapNotNull { p -> sunMismatchLabel(p, zones)?.let { p } }
             if (sunMismatched.isNotEmpty()) add(
                 AuditIssue("Sun exposure mismatch", "Based on your sun map, these plants may be getting more or less sun than they need.", sunMismatched)
+            )
+
+            val exposureConflicts = findExposureConflicts(plants)
+            if (exposureConflicts.isNotEmpty()) add(
+                AuditIssue(
+                    "Placement conflicts",
+                    "Plants placed close together on the map with clashing sun or frost needs. Based on map position only — there's no plant-size or true companion-planting data yet, so treat this as a rough guide.",
+                    plants = exposureConflicts.flatMap { (a, b) -> listOf(a, b) }.distinctBy { it.id },
+                    detailLines = exposureConflicts.map { (a, b) -> describeExposureConflict(a, b) }
+                )
             )
 
             val noPhoto = plants.filter { it.photoUri == null && it.photoUris.isEmpty() }
@@ -78,13 +155,13 @@ fun AuditScreen() {
             if (frostRisk.isNotEmpty()) add(
                 AuditIssue("Frost-tender & outdoors", "Worth keeping an eye on the forecast for these — consider covering on cold nights.", frostRisk)
             )
-        }
+        }.sortedBy { it.title }
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("Garden audit", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(4.dp))
-        Text("${issues.sumOf { it.plants.size }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = Color.Gray)
+        Text("${issues.sumOf { it.count }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = Color.Gray)
         Spacer(Modifier.height(16.dp))
 
         if (issues.isEmpty()) {
@@ -100,15 +177,21 @@ fun AuditScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("${issue.title} (${issue.plants.size})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("${issue.title} (${issue.count})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text(issue.explanation, fontSize = 11.sp, color = Color.Gray)
                         }
                         Text(if (expanded) "▾" else "▸", color = Color.Gray)
                     }
                     if (expanded) {
                         Spacer(Modifier.height(10.dp))
-                        issue.plants.forEach { p ->
-                            Text("• ${p.name}${if (p.location.isNotBlank()) " (${p.location})" else ""}", fontSize = 12.sp, modifier = Modifier.padding(vertical = 2.dp))
+                        if (issue.detailLines.isNotEmpty()) {
+                            issue.detailLines.forEach { line ->
+                                Text("• $line", fontSize = 12.sp, modifier = Modifier.padding(vertical = 2.dp))
+                            }
+                        } else {
+                            issue.plants.forEach { p ->
+                                Text("• ${p.name}${if (p.location.isNotBlank()) " (${p.location})" else ""}", fontSize = 12.sp, modifier = Modifier.padding(vertical = 2.dp))
+                            }
                         }
                     }
                 }
