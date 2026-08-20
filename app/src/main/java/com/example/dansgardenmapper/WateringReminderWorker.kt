@@ -21,19 +21,20 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
             else overdueRepeatEnabled && (-diffDays) % overdueRepeatDays == 0
         }
 
+        val weatherSkipEnabled = getWeatherSkipEnabled(applicationContext)
+        val frostWarningsEnabled = getFrostWarningsEnabled(applicationContext)
+        val forecast = if (weatherSkipEnabled || frostWarningsEnabled) {
+            getGardenLatLng(applicationContext)?.let { (lat, lng) -> WeatherHelper.fetchTodayForecast(lat, lng) }
+        } else null
+
         val duePlants = plants.filter { isDue(computeWateringStatus(it, now)) }
         if (duePlants.isNotEmpty()) {
             val outdoorDuePlants = duePlants.filter { !it.isIndoor }
-            var rainWarning = false
-            if (getWeatherSkipEnabled(applicationContext) && outdoorDuePlants.isNotEmpty()) {
-                getGardenLatLng(applicationContext)?.let { (lat, lng) ->
-                    val forecast = WeatherHelper.fetchTodayForecast(lat, lng)
-                    if (forecast != null && forecast.maxProbabilityPercent >= getRainProbabilityThreshold(applicationContext)) {
-                        rainWarning = true
-                    }
-                }
-            }
-            NotificationHelper.showWateringReminder(applicationContext, duePlants, rainWarning)
+            val rainWarningMm = if (weatherSkipEnabled && outdoorDuePlants.isNotEmpty() && forecast != null &&
+                forecast.maxProbabilityPercent >= getRainProbabilityThreshold(applicationContext) &&
+                forecast.totalPrecipitationMm >= getRainAmountThreshold(applicationContext)
+            ) forecast.totalPrecipitationMm else null
+            NotificationHelper.showWateringReminder(applicationContext, duePlants, rainWarningMm)
         }
 
         if (getFertiliseRemindersEnabled(applicationContext)) {
@@ -44,6 +45,14 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
         if (getPruneRemindersEnabled(applicationContext)) {
             val duePrune = plants.filter { isDue(computePruneStatus(it, now)) }
             if (duePrune.isNotEmpty()) NotificationHelper.showPruneReminder(applicationContext, duePrune)
+        }
+
+        if (frostWarningsEnabled) {
+            val minTemp = forecast?.minTempCelsius
+            if (minTemp != null && minTemp <= getFrostTempThreshold(applicationContext)) {
+                val atRisk = frostTenderOutdoorPlants(plants)
+                if (atRisk.isNotEmpty()) NotificationHelper.showFrostWarning(applicationContext, atRisk)
+            }
         }
 
         return Result.success()

@@ -51,7 +51,7 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
                     dateStr?.let { SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(it)?.time }
                 }
             } else null
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         } ?: System.currentTimeMillis()
     }

@@ -79,6 +79,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.dropbox.core.DbxRequestConfig
 import com.dropbox.core.android.Auth
 import com.dropbox.core.v2.DbxClientV2
@@ -216,6 +217,14 @@ fun isUsingCustomMap(context: Context): Boolean {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getBoolean("use_custom_map", false)
 }
+fun getCustomMapRotation(context: Context): Int {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getInt("custom_map_rotation", 0)
+}
+fun setCustomMapRotation(context: Context, degrees: Int) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putInt("custom_map_rotation", ((degrees % 360) + 360) % 360).apply()
+}
 fun setUsingCustomMap(context: Context, value: Boolean) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putBoolean("use_custom_map", value).apply()
@@ -296,7 +305,7 @@ suspend fun identifyPlantFromUri(context: Context, uri: Uri): Pair<String, Strin
 
                 Pair(commonName, sciName)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -383,25 +392,47 @@ fun setNotificationTime(context: Context, hour: Int, minute: Int) {
     prefs.edit().putInt("notification_hour", hour).putInt("notification_minute", minute).apply()
 }
 
-fun scheduleWateringReminders(context: Context) {
+/** Next occurrence (today if still ahead, else tomorrow) of the saved notification time. */
+fun nextWateringAlarmTarget(context: Context): Long {
     val target = java.util.Calendar.getInstance().apply {
         set(java.util.Calendar.HOUR_OF_DAY, getNotificationHour(context))
         set(java.util.Calendar.MINUTE, getNotificationMinute(context))
         set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
         if (before(java.util.Calendar.getInstance())) add(java.util.Calendar.DAY_OF_YEAR, 1)
     }
-    val initialDelay = target.timeInMillis - System.currentTimeMillis()
+    return target.timeInMillis
+}
 
-    val request = androidx.work.PeriodicWorkRequestBuilder<WateringReminderWorker>(24, java.util.concurrent.TimeUnit.HOURS)
-        .setInitialDelay(initialDelay, java.util.concurrent.TimeUnit.MILLISECONDS)
-        .build()
-
-    androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-        "watering_reminders", androidx.work.ExistingPeriodicWorkPolicy.UPDATE, request
+private fun wateringAlarmPendingIntent(context: Context): android.app.PendingIntent {
+    val intent = android.content.Intent(context, WateringReminderReceiver::class.java)
+    return android.app.PendingIntent.getBroadcast(
+        context, 2001, intent,
+        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
     )
 }
+
+/**
+ * Uses an exact AlarmManager alarm rather than a periodic WorkManager job — periodic work's
+ * initial delay is only a lower bound and the OS can defer it well past the requested time
+ * (especially under Doze/App Standby), so reminders would silently miss the configured time.
+ * The receiver re-arms the next day's alarm each time it fires, and BootReceiver re-arms it
+ * after a reboot since exact alarms don't survive a restart.
+ */
+fun scheduleWateringReminders(context: Context) {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+    val pendingIntent = wateringAlarmPendingIntent(context)
+    val targetMillis = nextWateringAlarmTarget(context)
+    val canScheduleExact = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+    if (canScheduleExact) {
+        alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, targetMillis, pendingIntent)
+    } else {
+        alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, targetMillis, pendingIntent)
+    }
+}
 fun cancelWateringReminders(context: Context) {
-    androidx.work.WorkManager.getInstance(context).cancelUniqueWork("watering_reminders")
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+    alarmManager.cancel(wateringAlarmPendingIntent(context))
 }
 
 // ============================================================================
@@ -418,6 +449,14 @@ fun setGardenLatLng(context: Context, lat: Double, lng: Double) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putString("garden_lat", lat.toString()).putString("garden_lng", lng.toString()).apply()
 }
+fun getGardenAddress(context: Context): String {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("garden_address", "") ?: ""
+}
+fun setGardenAddress(context: Context, address: String) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("garden_address", address).apply()
+}
 fun getWeatherSkipEnabled(context: Context): Boolean {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getBoolean("weather_skip_enabled", false)
@@ -433,6 +472,15 @@ fun getRainProbabilityThreshold(context: Context): Int {
 fun setRainProbabilityThreshold(context: Context, value: Int) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putInt("rain_probability_threshold", value).apply()
+}
+/** Minimum forecast rainfall (mm) required before a reminder is flagged — filters out high-probability drizzle. */
+fun getRainAmountThreshold(context: Context): Float {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getFloat("rain_amount_threshold_mm", 1.0f)
+}
+fun setRainAmountThreshold(context: Context, value: Float) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putFloat("rain_amount_threshold_mm", value).apply()
 }
 
 // ============================================================================
@@ -493,7 +541,7 @@ suspend fun ensureDropboxTokenFresh(context: Context) = withContext(Dispatchers.
                 }
             }
         }
-    } catch (e: Exception) { /* keep the existing token; the next Dropbox call will surface any real problem */ }
+    } catch (_: Exception) { /* keep the existing token; the next Dropbox call will surface any real problem */ }
 }
 
 /** Builds a Dropbox client, refreshing the access token first if it's due to expire soon. */
@@ -537,6 +585,10 @@ object DropboxLinkState {
     }
 }
 
+object PendingNotificationState {
+    var type by mutableStateOf<String?>(null)
+}
+
 object DropboxAuthState {
     var token by mutableStateOf<String?>(null)
         private set
@@ -573,7 +625,7 @@ suspend fun uploadPhotoToDropbox(context: Context, localUri: Uri): String? {
             client.files().uploadBuilder(fileName).uploadAndFinish(bytes.inputStream())
             val sharedLink = client.sharing().createSharedLinkWithSettings(fileName)
             toDirectDropboxLink(sharedLink.url)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -625,7 +677,7 @@ suspend fun autoLinkLocalPhotos(
             context.contentResolver.takePersistableUriPermission(
                 file.uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-        } catch (e: Exception) { /* some providers don't support this — ignore */ }
+        } catch (_: Exception) { /* some providers don't support this — ignore */ }
 
         val updated = plant.copy(
             photoUris = plant.photoUris + file.uri.toString(),
@@ -697,7 +749,7 @@ suspend fun autoLinkDropboxPhotos(
             val filePath = "$folderPath/$name".replace("//", "/")
             val link = try {
                 toDirectDropboxLink(client.sharing().createSharedLinkWithSettings(filePath).url)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 client.sharing().listSharedLinksBuilder().withPath(filePath).start()
                     .links.firstOrNull()?.url?.let { toDirectDropboxLink(it) }
             }
@@ -767,7 +819,7 @@ fun parseFlexibleDateTime(value: String): Long? {
             val sdf = SimpleDateFormat(pattern, Locale.US)
             sdf.isLenient = false
             return sdf.parse(trimmed)?.time
-        } catch (e: Exception) { /* try next pattern */ }
+        } catch (_: Exception) { /* try next pattern */ }
     }
     return null
 }
@@ -835,7 +887,7 @@ suspend fun saveIrrigationCsvLocal(context: Context, newEvents: List<WateringEve
         val target = existingFile ?: folder.createFile("text/csv", "irrigation_log.csv") ?: return@withContext false
         context.contentResolver.openOutputStream(target.uri, "wt")?.use { it.write(wateringEventsToCsv(merged).toByteArray()) }
         true
-    } catch (e: Exception) { false }
+    } catch (_: Exception) { false }
 }
 
 suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringEvent>): Boolean = withContext(Dispatchers.IO) {
@@ -846,7 +898,7 @@ suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringE
             val out = java.io.ByteArrayOutputStream()
             client.files().download(filePath).download(out)
             out.toString("UTF-8")
-        } catch (e: Exception) { null }
+        } catch (_: Exception) { null }
         val existingEvents = existingText?.let { text ->
             (parseIrrigationCsv(text) as? CsvImportResult.Success)?.items ?: emptyList()
         } ?: emptyList()
@@ -855,7 +907,7 @@ suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringE
             .values.sortedByDescending { it.startTime }
         client.files().uploadBuilder(filePath).uploadAndFinish(wateringEventsToCsv(merged).toByteArray().inputStream())
         true
-    } catch (e: Exception) { false }
+    } catch (_: Exception) { false }
 }
 
 suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withContext(Dispatchers.IO) {
@@ -865,7 +917,7 @@ suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withConte
         val out = java.io.ByteArrayOutputStream()
         client.files().download(filePath).download(out)
         out.toString("UTF-8")
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null }
 }
 
 // ============================================================================
@@ -881,6 +933,7 @@ class MainActivity : ComponentActivity() {
         }
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
+        PendingNotificationState.type = intent.getStringExtra("notification_type")
         setContent {
             MaterialTheme {
                 var showSplash by remember { mutableStateOf(true) }
@@ -896,6 +949,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DropboxAuthState.checkAndRefresh(applicationContext)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        PendingNotificationState.type = intent.getStringExtra("notification_type")
     }
 }
 
@@ -1024,7 +1083,15 @@ fun GardenMapperApp() {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "help")
+    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help")
+
+    LaunchedEffect(PendingNotificationState.type) {
+        val type = PendingNotificationState.type
+        if (type != null) {
+            navController.navigate("notification/$type")
+            PendingNotificationState.type = null
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -1035,7 +1102,7 @@ fun GardenMapperApp() {
                     NavigationBarItem(
                         selected = currentRoute == "dashboard",
                         onClick = { navController.navigate("dashboard") { popUpTo("map") } },
-                        icon = { Text("📊") }, label = { Text("Dashboard") }
+                        icon = { Text("📊") }, label = { Text("Report") }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "map",
@@ -1050,7 +1117,12 @@ fun GardenMapperApp() {
                     NavigationBarItem(
                         selected = currentRoute == "irrigation",
                         onClick = { navController.navigate("irrigation") { popUpTo("map") } },
-                        icon = { Text("💧") }, label = { Text("Irrigation") }
+                        icon = { Text("💧") }, label = { Text("Water") }
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == "audit",
+                        onClick = { navController.navigate("audit") { popUpTo("map") } },
+                        icon = { Text("🔍") }, label = { Text("Audit") }
                     )
                     NavigationBarItem(
                         selected = currentRoute == "help",
@@ -1073,7 +1145,8 @@ fun GardenMapperApp() {
                     onMarkerClick = { id -> navController.navigate("form_edit/$id") },
                     onAddPlantAtLatLng = { lat, lng -> navController.navigate("form_new?lat=$lat&lng=$lng") },
                     onAddPlantAtFraction = { x, y -> navController.navigate("form_new?mapX=$x&mapY=$y") },
-                    startOnCustom = isUsingCustomMap(context)
+                    startOnCustom = isUsingCustomMap(context),
+                    onOpenSunMap = { navController.navigate("sunmap") }
                 )
             }
             composable("list") {
@@ -1091,6 +1164,7 @@ fun GardenMapperApp() {
                 val plants by viewModel.plants.collectAsState()
                 IrrigationScreen(wateringEvents = events, plants = plants)
             }
+            composable("audit") { AuditScreen() }
             composable(
                 "form_new?lat={lat}&lng={lng}&mapX={mapX}&mapY={mapY}",
                 arguments = listOf(
@@ -1159,6 +1233,16 @@ fun GardenMapperApp() {
             }
             composable("faq") {
                 FaqScreen(onBack = { navController.popBackStack() })
+            }
+            composable("sunmap") {
+                SunMapScreen(onBack = { navController.popBackStack() })
+            }
+            composable(
+                "notification/{type}",
+                arguments = listOf(navArgument("type") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val notifType = backStackEntry.arguments?.getString("type") ?: "watering"
+                NotificationDetailsScreen(type = notifType, onBack = { navController.popBackStack() })
             }
             composable("growth/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
@@ -1824,7 +1908,7 @@ fun MapScreen(
                             try {
                                 @Suppress("DEPRECATION")
                                 Geocoder(context, Locale.getDefault()).getFromLocationName(searchQuery, 5)
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                                 null
                             }
                         }
@@ -1885,7 +1969,7 @@ fun MapScreen(
                         )
                     }
                 }
-            } catch (e: SecurityException) { /* permission revoked mid-flight, ignore */ }
+            } catch (_: SecurityException) { /* permission revoked mid-flight, ignore */ }
         }
     }
 
@@ -1896,7 +1980,7 @@ fun MapScreen(
                 try {
                     @Suppress("DEPRECATION")
                     Geocoder(context, Locale.getDefault()).getFromLocationName(searchQuery, 1)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             }
@@ -2053,7 +2137,8 @@ fun MapTabScreen(
     onAddPlantAtFraction: (Double, Double) -> Unit = { _, _ -> },
     placementModeForPlantId: String? = null,
     onPlacementSaved: (() -> Unit)? = null,
-    startOnCustom: Boolean = false
+    startOnCustom: Boolean = false,
+    onOpenSunMap: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val pathViewModel: IrrigationPathViewModel = viewModel(
@@ -2089,6 +2174,8 @@ fun MapTabScreen(
                         contentColor = if (showingCustom) Color.White else Color.Black
                     )
                 ) { Text("My Drawing", fontSize = 12.sp) }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = onOpenSunMap) { Text("☀️ Sun map", fontSize = 12.sp) }
             }
         }
         Box(Modifier.weight(1f)) {
@@ -2121,7 +2208,12 @@ fun colorForZone(zone: String): Color {
     return zoneColorPalette[idx]
 }
 
-data class PathSegment(val type: String, val points: List<Offset>, val targetPlantIds: List<String> = emptyList())
+data class PathSegment(
+    val type: String, // "main" | "drip" | "sprinkler" | "impact_sprinkler"
+    val points: List<Offset>,
+    val targetPlantIds: List<String> = emptyList(),
+    val radius: Float? = null // fraction of map width — used by "sprinkler" only
+)
 
 fun segmentsToJson(segments: List<PathSegment>): String {
     val arr = org.json.JSONArray()
@@ -2138,6 +2230,7 @@ fun segmentsToJson(segments: List<PathSegment>): String {
         val targets = org.json.JSONArray()
         seg.targetPlantIds.forEach { targets.put(it) }
         obj.put("targets", targets)
+        seg.radius?.let { obj.put("radius", it.toDouble()) }
         arr.put(obj)
     }
     return arr.toString()
@@ -2157,9 +2250,10 @@ fun jsonToSegments(json: String): List<PathSegment> {
             }
             val targetsArr = obj.optJSONArray("targets") ?: org.json.JSONArray()
             val targets = (0 until targetsArr.length()).map { targetsArr.getString(it) }
-            PathSegment(type, points, targets)
+            val radius = if (obj.has("radius")) obj.optDouble("radius").toFloat() else null
+            PathSegment(type, points, targets, radius)
         }
-    } catch (e: Exception) { emptyList() }
+    } catch (_: Exception) { emptyList() }
 }
 
 fun distancePointToSegment(p: Offset, a: Offset, b: Offset): Float {
@@ -2212,7 +2306,10 @@ fun CustomMapScreen(
     var draftOutlet by remember { mutableStateOf<Offset?>(null) }
     var placingOutlet by remember { mutableStateOf(false) }
     var isDrafting by remember { mutableStateOf(false) }
-    var drawMode by remember { mutableStateOf<String?>(null) } // null | "main" | "drip"
+    var drawMode by remember { mutableStateOf<String?>(null) } // null | "main" | "drip" | "impact_sprinkler"
+    var placingSprinklerCenter by remember { mutableStateOf(false) }
+    var draftSprinklerCenter by remember { mutableStateOf<Offset?>(null) }
+    var draftSprinklerRadius by remember { mutableStateOf(0.08f) }
     val draftSegments = remember { mutableStateListOf<PathSegment>() }
     val currentStroke = remember { mutableStateListOf<Offset>() }
     var attachingDripSegment by remember { mutableStateOf<List<Offset>?>(null) }
@@ -2239,6 +2336,9 @@ fun CustomMapScreen(
         pendingDripTargets.clear()
         editingPathId = null
         segmentPendingRemovalIndex = null
+        placingSprinklerCenter = false
+        draftSprinklerCenter = null
+        draftSprinklerRadius = 0.08f
     }
 
     if (mapUri == null) {
@@ -2282,18 +2382,31 @@ fun CustomMapScreen(
                     }
                 } else Modifier
             )
-            .pointerInput(editingPaths, placingOutlet, isDrafting, drawMode, attachingDripSegment, draftSegments.size) {
+            .then(
+                if (draftSprinklerCenter != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoom, _ ->
+                            draftSprinklerRadius = (draftSprinklerRadius * zoom).coerceIn(0.02f, 0.4f)
+                        }
+                    }
+                } else Modifier
+            )
+            .pointerInput(editingPaths, placingOutlet, isDrafting, drawMode, attachingDripSegment, draftSegments.size, placingSprinklerCenter, draftSprinklerCenter) {
                 detectTapGestures { tap ->
                     if (containerSize.width == 0) return@detectTapGestures
                     val frac = screenPointToFraction(tap)
                     if (editingPaths) {
                         when {
+                            placingSprinklerCenter -> {
+                                draftSprinklerCenter = frac
+                                placingSprinklerCenter = false
+                            }
                             placingOutlet -> {
                                 draftOutlet = frac
                                 placingOutlet = false
                                 isDrafting = true
                             }
-                            isDrafting && drawMode == null && attachingDripSegment == null -> {
+                            isDrafting && drawMode == null && attachingDripSegment == null && draftSprinklerCenter == null -> {
                                 // Tap-to-remove — only active while editing a specific path's draft
                                 val localPoint = Offset(frac.x * containerSize.width, frac.y * containerSize.height)
                                 var closestIndex = -1
@@ -2341,6 +2454,10 @@ fun CustomMapScreen(
                                             pendingDripTargets.clear()
                                             drawMode = null
                                         }
+                                        "impact_sprinkler" -> {
+                                            draftSegments.add(PathSegment("impact_sprinkler", currentStroke.toList()))
+                                            drawMode = null
+                                        }
                                     }
                                 } else {
                                     drawMode = null
@@ -2361,7 +2478,11 @@ fun CustomMapScreen(
                     translationX = panOffset.x, translationY = panOffset.y
                 )
         ) {
-            AsyncImage(model = mapUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            val mapRotation = remember { getCustomMapRotation(context) }
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(mapUri).transformations(RotateTransformation(mapRotation.toFloat())).build(),
+                contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit
+            )
 
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
@@ -2380,21 +2501,31 @@ fun CustomMapScreen(
                 paths.forEach { pathEntity ->
                     val color = colorForZone(pathEntity.zone)
                     jsonToSegments(pathEntity.segmentsJson).forEach { seg ->
-                        val pxPoints = seg.points.map { toPx(it) }
-                        if (pxPoints.size >= 2) {
-                            val isMain = seg.type == "main"
-                            drawPath(
-                                path = buildPath(pxPoints),
-                                color = color,
-                                style = Stroke(
-                                    width = if (isMain) 12f else 5f,
-                                    cap = StrokeCap.Round,
-                                    pathEffect = PathEffect.dashPathEffect(
-                                        if (isMain) floatArrayOf(26f, 14f) else floatArrayOf(9f, 11f),
-                                        phase = dashPhase
+                        if (seg.type == "sprinkler" && seg.points.isNotEmpty()) {
+                            val center = toPx(seg.points[0])
+                            val radiusPx = (seg.radius ?: 0.08f) * w
+                            drawCircle(color = color.copy(alpha = 0.22f), radius = radiusPx, center = center)
+                            drawCircle(color = color, radius = radiusPx, center = center, style = Stroke(width = 3f))
+                            drawCircle(color = color, radius = 6f, center = center)
+                        } else {
+                            val pxPoints = seg.points.map { toPx(it) }
+                            if (pxPoints.size >= 2) {
+                                val isMain = seg.type == "main"
+                                val isImpact = seg.type == "impact_sprinkler"
+                                drawPath(
+                                    path = buildPath(pxPoints),
+                                    color = if (isImpact) color.copy(alpha = 0.35f) else color,
+                                    style = Stroke(
+                                        width = if (isMain) 12f else if (isImpact) 26f else 5f,
+                                        cap = StrokeCap.Round,
+                                        pathEffect = when {
+                                            isImpact -> null
+                                            isMain -> PathEffect.dashPathEffect(floatArrayOf(26f, 14f), phase = 0f)
+                                            else -> PathEffect.dashPathEffect(floatArrayOf(9f, 11f), phase = dashPhase)
+                                        }
                                     )
                                 )
-                            )
+                            }
                         }
                     }
                     val outletPx = toPx(Offset(pathEntity.outletX.toFloat(), pathEntity.outletY.toFloat()))
@@ -2404,26 +2535,43 @@ fun CustomMapScreen(
 
                 // In-progress draft
                 draftSegments.forEachIndexed { idx, seg ->
-                    val pxPoints = seg.points.map { toPx(it) }
-                    if (pxPoints.size >= 2) {
-                        val isSelected = segmentPendingRemovalIndex == idx
-                        drawPath(
-                            path = buildPath(pxPoints),
-                            color = if (isSelected) Color(0xFFE53935) else Color(0xFF888888),
-                            style = Stroke(
-                                width = (if (seg.type == "main") 12f else 5f) + if (isSelected) 4f else 0f,
-                                cap = StrokeCap.Round
+                    val isSelected = segmentPendingRemovalIndex == idx
+                    if (seg.type == "sprinkler" && seg.points.isNotEmpty()) {
+                        val center = toPx(seg.points[0])
+                        val radiusPx = (seg.radius ?: 0.08f) * w
+                        val col = if (isSelected) Color(0xFFE53935) else Color(0xFF888888)
+                        drawCircle(color = col.copy(alpha = 0.22f), radius = radiusPx, center = center)
+                        drawCircle(color = col, radius = radiusPx, center = center, style = Stroke(width = 3f))
+                    } else {
+                        val pxPoints = seg.points.map { toPx(it) }
+                        if (pxPoints.size >= 2) {
+                            drawPath(
+                                path = buildPath(pxPoints),
+                                color = if (isSelected) Color(0xFFE53935) else Color(0xFF888888),
+                                style = Stroke(
+                                    width = (if (seg.type == "main") 12f else if (seg.type == "impact_sprinkler") 26f else 5f) + if (isSelected) 4f else 0f,
+                                    cap = StrokeCap.Round
+                                )
                             )
-                        )
+                        }
                     }
                 }
                 draftOutlet?.let { o -> drawCircle(color = Color(0xFF3D8FB0), radius = 10f, center = toPx(o)) }
+                draftSprinklerCenter?.let { c ->
+                    val center = toPx(c)
+                    val radiusPx = draftSprinklerRadius * w
+                    drawCircle(color = Color(0xFFFF7A45).copy(alpha = 0.25f), radius = radiusPx, center = center)
+                    drawCircle(color = Color(0xFFFF7A45), radius = radiusPx, center = center, style = Stroke(width = 3f))
+                }
 
                 if (currentStroke.size >= 2) {
                     drawPath(
                         path = buildPath(currentStroke.map { toPx(it) }),
                         color = Color(0xFFFF7A45),
-                        style = Stroke(width = if (drawMode == "main") 12f else 5f, cap = StrokeCap.Round)
+                        style = Stroke(
+                            width = when (drawMode) { "main" -> 12f; "impact_sprinkler" -> 26f; else -> 5f },
+                            cap = StrokeCap.Round
+                        )
                     )
                 }
                 attachingDripSegment?.let { pts ->
@@ -2468,8 +2616,8 @@ fun CustomMapScreen(
             }
 
             pendingFraction?.let { frac ->
-                val xDp = with(density) { (frac.x * containerSize.width).toFloat().toDp() }
-                val yDp = with(density) { (frac.y * containerSize.height).toFloat().toDp() }
+                val xDp = with(density) { (frac.x * containerSize.width).toDp() }
+                val yDp = with(density) { (frac.y * containerSize.height).toDp() }
                 Box(
                     modifier = Modifier.offset(x = xDp - 10.dp, y = yDp - 10.dp).size(20.dp)
                         .clip(RoundedCornerShape(50)).background(Color(0xFFFF7A45).copy(alpha = 0.7f))
@@ -2570,10 +2718,38 @@ fun CustomMapScreen(
                                         Text("Cancel", fontSize = 12.sp)
                                     }
                                 }
+                                placingSprinklerCenter -> {
+                                    Text("Tap the drawing to place the sprinkler 💧", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedButton(onClick = { placingSprinklerCenter = false }, modifier = Modifier.fillMaxWidth()) {
+                                        Text("Cancel", fontSize = 12.sp)
+                                    }
+                                }
+                                draftSprinklerCenter != null -> {
+                                    Text("Pinch to adjust the spread, then confirm", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                draftSegments.add(PathSegment("sprinkler", listOf(draftSprinklerCenter!!), radius = draftSprinklerRadius))
+                                                draftSprinklerCenter = null
+                                                draftSprinklerRadius = 0.08f
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Confirm", fontSize = 12.sp) }
+                                        OutlinedButton(
+                                            onClick = { draftSprinklerCenter = null; draftSprinklerRadius = 0.08f },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Cancel", fontSize = 12.sp) }
+                                    }
+                                }
                                 drawMode != null -> {
                                     Text(
-                                        if (drawMode == "main") "Drawing main pipe — drag along the pipe, lift when done"
-                                        else "Drawing drip line — drag from the pipe toward the plant(s), lift when done",
+                                        when (drawMode) {
+                                            "main" -> "Drawing main pipe — drag along the pipe, lift when done"
+                                            "impact_sprinkler" -> "Drawing impact sprinkler sweep — drag along its arc, lift when done"
+                                            else -> "Drawing drip line — drag from the pipe toward the plant(s), lift when done"
+                                        },
                                         fontWeight = FontWeight.SemiBold, fontSize = 13.sp
                                     )
                                     Spacer(Modifier.height(8.dp))
@@ -2603,13 +2779,19 @@ fun CustomMapScreen(
                                 isDrafting -> {
                                     Text("Editing path for \"$draftZone\"", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                     Text(
-                                        "${draftSegments.count { it.type == "main" }} main segment(s), ${draftSegments.count { it.type == "drip" }} drip line(s)",
+                                        "${draftSegments.count { it.type == "main" }} main segment(s), ${draftSegments.count { it.type == "drip" }} drip line(s), " +
+                                                "${draftSegments.count { it.type == "sprinkler" || it.type == "impact_sprinkler" }} sprinkler(s)",
                                         fontSize = 11.sp, color = Color.Gray
                                     )
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(onClick = { drawMode = "main" }, modifier = Modifier.weight(1f)) { Text("Draw main pipe", fontSize = 11.sp) }
                                         Button(onClick = { drawMode = "drip" }, modifier = Modifier.weight(1f)) { Text("Draw drip line", fontSize = 11.sp) }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = { placingSprinklerCenter = true }, modifier = Modifier.weight(1f)) { Text("Add sprinkler", fontSize = 11.sp) }
+                                        Button(onClick = { drawMode = "impact_sprinkler" }, modifier = Modifier.weight(1f)) { Text("Draw impact sprinkler", fontSize = 11.sp) }
                                     }
                                     Spacer(Modifier.height(6.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3164,7 +3346,14 @@ fun DatePickerField(
                     showDialog = false
                 }) { Text("OK") }
             },
-            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } }
+            dismissButton = {
+                Row {
+                    if (dateString.isNotBlank()) {
+                        TextButton(onClick = { onDateChange(""); showDialog = false }) { Text("Clear") }
+                    }
+                    TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                }
+            }
         ) { DatePicker(state = datePickerState) }
     }
 }
@@ -3179,7 +3368,7 @@ fun dateStringToMillis(s: String): Long? {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         sdf.timeZone = TimeZone.getTimeZone("UTC")
         sdf.parse(s)?.time
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null }
 }
 
 fun millisToDateString(millis: Long?): String {
@@ -3240,6 +3429,26 @@ fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTi
         else -> "Due in $diffDays day(s)"
     }
     return WateringStatus(nextDueMillis = nextDue, label = label)
+}
+
+fun frostTenderOutdoorPlants(plants: List<PlantEntity>): List<PlantEntity> =
+    plants.filter { (it.frost == "Tender" || it.frost == "Half-hardy") && !it.isIndoor }
+
+fun getFrostWarningsEnabled(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getBoolean("frost_warnings_enabled", true)
+}
+fun setFrostWarningsEnabled(context: Context, value: Boolean) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("frost_warnings_enabled", value).apply()
+}
+fun getFrostTempThreshold(context: Context): Double {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getFloat("frost_temp_threshold", 2.0f).toDouble()
+}
+fun setFrostTempThreshold(context: Context, value: Double) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putFloat("frost_temp_threshold", value.toFloat()).apply()
 }
 
 // ============================================================================
@@ -3404,7 +3613,7 @@ fun FormScreen(
         if (uri != null) {
             try {
                 context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) { }
+            } catch (_: Exception) { }
             // Photos picked from the device are used as-is — no auto-upload.
             // Auto-upload is reserved for camera captures; for cloud-stored
             // photos, users have the explicit "Choose from Dropbox" button.
@@ -3802,7 +4011,8 @@ val faqItems = listOf(
         "Where are my photos stored, and what's recommended?",
         "By default, photos you take or upload are stored locally on this device and only referenced from within the app. This means they won't automatically back up or " +
                 "sync to another device, and could be lost if this device is lost, reset, or the app is uninstalled. For safer, more portable storage, it's recommended to " +
-                "connect a personal cloud service like OneDrive or Dropbox in the Photo storage section below - photos you take will then be saved there automatically."
+                "connect a personal cloud service like OneDrive or Dropbox in the Photo storage section below - photos you take will then be saved there automatically." +
+                "If using Dropbox, I recommend compressing your photos to <1MB, so you can save more photos on the cloud."
     ),
     FaqItem(
         "How do I find a plant I've already added?",
@@ -4083,6 +4293,8 @@ fun HelpScreen(
             var notifMinute by remember { mutableStateOf(getNotificationMinute(context)) }
             val hasNotifPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val hasExactAlarmPermission = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Enable notifications", fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -4102,6 +4314,20 @@ fun HelpScreen(
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && notifsEnabled && !hasNotifPermission) {
                 Spacer(Modifier.height(6.dp))
                 Text("Notification permission isn't granted — enable it in system settings for reminders to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && notifsEnabled && !hasExactAlarmPermission) {
+                Spacer(Modifier.height(6.dp))
+                Text("Exact alarm permission isn't granted — reminders may fire late or not at all.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                            android.net.Uri.parse("package:${context.packageName}")
+                        )
+                    )
+                }) { Text("Grant exact alarm permission") }
             }
 
             if (notifsEnabled) {
@@ -4312,7 +4538,7 @@ fun HelpScreen(
                 if (DropboxLinkState.linking) {
                     Spacer(Modifier.height(10.dp))
                     val current = DropboxLinkState.current; val total = DropboxLinkState.total
-                    LinearProgressIndicator(progress = if (total > 0) current.toFloat() / total.toFloat() else 0f, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(progress = { if (total > 0) current.toFloat() / total.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(4.dp))
                     Text("$current of $total images linked", fontSize = 12.sp, color = Color.Gray)
                 }
@@ -4444,7 +4670,7 @@ fun HelpScreen(
 
             var weatherSkipEnabled by remember { mutableStateOf(getWeatherSkipEnabled(context)) }
             var rainThreshold by remember { mutableStateOf(getRainProbabilityThreshold(context)) }
-            var gardenAddressQuery by remember { mutableStateOf("") }
+            var gardenAddressQuery by remember { mutableStateOf(getGardenAddress(context)) }
             var gardenCoords by remember { mutableStateOf(getGardenLatLng(context)) }
             var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
             var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
@@ -4453,6 +4679,22 @@ fun HelpScreen(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; setWeatherSkipEnabled(context, it) })
+            }
+            var frostWarningsEnabled by remember { mutableStateOf(getFrostWarningsEnabled(context)) }
+            var frostThreshold by remember { mutableStateOf(getFrostTempThreshold(context).toFloat()) }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("Warn about frost risk for tender outdoor plants", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Switch(checked = frostWarningsEnabled, onCheckedChange = { frostWarningsEnabled = it; setFrostWarningsEnabled(context, it) })
+            }
+            if (frostWarningsEnabled) {
+                Spacer(Modifier.height(8.dp))
+                Text("Warn when the forecast minimum is at or below ${"%.1f".format(frostThreshold)}°C", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(4.dp))
+                Slider(
+                    value = frostThreshold, onValueChange = { frostThreshold = it },
+                    onValueChangeFinished = { setFrostTempThreshold(context, frostThreshold.toDouble()) },
+                    valueRange = -5f..8f, steps = 12
+                )
             }
 
             if (weatherSkipEnabled) {
@@ -4475,7 +4717,7 @@ fun HelpScreen(
                                         try {
                                             @Suppress("DEPRECATION")
                                             Geocoder(context, Locale.getDefault()).getFromLocationName(gardenAddressQuery, 5)
-                                        } catch (e: Exception) { null }
+                                        } catch (_: Exception) { null }
                                     }
                                     gardenGeocoderPredictions = results ?: emptyList()
                                 }
@@ -4509,6 +4751,7 @@ fun HelpScreen(
                                             }
                                         }
                                         gardenAddressQuery = prediction.getFullText(null).toString()
+                                        setGardenAddress(context, gardenAddressQuery)
                                         gardenPredictions = emptyList()
                                     }.padding(12.dp),
                                     fontSize = 13.sp
@@ -4522,6 +4765,7 @@ fun HelpScreen(
                                         gardenCoords = address.latitude to address.longitude
                                         setGardenLatLng(context, address.latitude, address.longitude)
                                         gardenAddressQuery = address.getAddressLine(0) ?: ""
+                                        setGardenAddress(context, gardenAddressQuery)
                                         gardenGeocoderPredictions = emptyList()
                                         scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
                                     }.padding(12.dp),
@@ -4541,6 +4785,19 @@ fun HelpScreen(
                     onValueChangeFinished = { setRainProbabilityThreshold(context, rainThreshold) },
                     valueRange = 10f..100f, steps = 8
                 )
+
+                Spacer(Modifier.height(8.dp))
+                var rainAmountThreshold by remember { mutableStateOf(getRainAmountThreshold(context)) }
+                Text(
+                    "And at least ${"%.1f".format(rainAmountThreshold)}mm forecast (filters out high-probability drizzle)",
+                    fontSize = 12.sp, color = Color.Gray
+                )
+                Spacer(Modifier.height(4.dp))
+                Slider(
+                    value = rainAmountThreshold, onValueChange = { rainAmountThreshold = it },
+                    onValueChangeFinished = { setRainAmountThreshold(context, rainAmountThreshold) },
+                    valueRange = 0f..20f, steps = 39
+                )
             }
         }
 
@@ -4553,7 +4810,7 @@ fun HelpScreen(
             var useCustomMap by remember { mutableStateOf(isUsingCustomMap(context)) }
             val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
-                    try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: Exception) { }
+                    try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
                     setCustomMapUri(context, uri); customMapUri = uri
                 }
             }
@@ -4566,6 +4823,21 @@ fun HelpScreen(
                     Text("Use custom map instead of real-world map", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = useCustomMap, onCheckedChange = { useCustomMap = it; setUsingCustomMap(context, it) })
                 }
+                Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(10.dp))
+                var mapRotationDeg by remember { mutableStateOf(getCustomMapRotation(context)) }
+                Text("Orientation", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        mapRotationDeg = (mapRotationDeg + 90) % 360
+                        setCustomMapRotation(context, mapRotationDeg)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Rotate 90° (currently ${mapRotationDeg}°)") }
+                Text(
+                    "Rotating shifts what's shown at each spot on the map — recheck any markers, paths, or sun zones you've already placed after rotating.",
+                    fontSize = 11.sp, color = Color(0xFFB23B3B), modifier = Modifier.padding(top = 6.dp)
+                )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = { setCustomMapUri(context, null); setUsingCustomMap(context, false); customMapUri = null; useCustomMap = false },
@@ -4730,7 +5002,7 @@ suspend fun listDropboxEntries(context: Context, path: String): Result<List<Drop
                 is com.dropbox.core.v2.files.FolderMetadata -> DropboxEntry.Folder(entry.name, entry.pathLower ?: "")
                 is com.dropbox.core.v2.files.FileMetadata ->
                     if (entry.name.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") })
-                        DropboxEntry.Image(entry.name, entry.pathLower ?: "", entry.clientModified?.time) else null
+                        DropboxEntry.Image(entry.name, entry.pathLower ?: "", entry.clientModified.time) else null
                 else -> null
             }
         }.sortedWith(compareBy({ it !is DropboxEntry.Folder }, {
@@ -4745,11 +5017,11 @@ suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = 
         val client = getDropboxClient(context) ?: return@withContext null
         val link = try {
             client.sharing().createSharedLinkWithSettings(filePath).url
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             client.sharing().listSharedLinksBuilder().withPath(filePath).start().links.firstOrNull()?.url
         }
         link?.let { toDirectDropboxLink(it) }
-    } catch (e: Exception) { null }
+    } catch (_: Exception) { null }
 }
 
 @Composable

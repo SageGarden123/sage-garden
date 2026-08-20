@@ -131,7 +131,7 @@ object BackupHelper {
             val out = java.io.ByteArrayOutputStream()
             try {
                 client.files().download(jsonPath).download(out)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 return@withContext RestoreResult(false, "No backup found in this Dropbox folder")
             }
             val root = JSONObject(out.toString("UTF-8"))
@@ -220,7 +220,7 @@ object BackupHelper {
                     val localFile = File(context.filesDir, mapFileName)
                     localFile.writeBytes(mapOut.toByteArray())
                     setCustomMapUri(context, Uri.fromFile(localFile))
-                } catch (e: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
+                } catch (_: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
             }
 
             RestoreResult(true, "Restore complete — ${plantsArr.length()} plant(s), ${pathsArr.length()} irrigation path(s), ${eventsArr.length()} watering event(s)")

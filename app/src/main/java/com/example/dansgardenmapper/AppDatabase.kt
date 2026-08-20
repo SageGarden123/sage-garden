@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class], version = 14, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class], version = 15, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -16,6 +16,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun irrigationPathDao(): IrrigationPathDao
     abstract fun growthPhotoDao(): GrowthPhotoDao
     abstract fun careLogDao(): CareLogDao
+    abstract fun sunZoneDao(): SunZoneDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -26,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .build().also { INSTANCE = it }
             }
         }
@@ -89,5 +90,18 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_care_log_plantId` ON `care_log` (`plantId`)")
+    }
+}
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `sun_zones` (
+                `id` TEXT NOT NULL, `category` TEXT NOT NULL, `pointsJson` TEXT NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
     }
 }
