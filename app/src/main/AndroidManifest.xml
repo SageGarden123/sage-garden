@@ -20,7 +20,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DansGardenMapper">
+        android:theme="@style/Theme.SageGarden">
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
@@ -42,7 +42,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.DansGardenMapper"
+            android:theme="@style/Theme.SageGarden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -76,7 +76,7 @@
         <activity
             android:name=".WateringWidgetConfigActivity"
             android:exported="false"
-            android:theme="@style/Theme.DansGardenMapper">
+            android:theme="@style/Theme.SageGarden">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>

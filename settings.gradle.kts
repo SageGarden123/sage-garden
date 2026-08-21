@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Dan\'s Garden Mapper"
+rootProject.name = "Sage Garden"
 include(":app")

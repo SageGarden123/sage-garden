@@ -9,7 +9,7 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="86400000"
-    android:configure="com.example.dansgardenmapper.WateringWidgetConfigActivity"
+    android:configure="com.example.sagegarden.WateringWidgetConfigActivity"
     android:initialLayout="@layout/widget_loading"
     android:previewLayout="@layout/widget_loading"
     android:description="@string/watering_widget_description" />

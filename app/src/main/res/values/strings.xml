@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Dan\'s Garden Mapper</string>
+    <string name="app_name">Sage Garden</string>
     <string name="watering_widget_name">Plants needing water</string>
     <string name="watering_widget_description">Shows plants due or soon due for watering, with a photo of each. Tap a plant to update its last-watered date.</string>
 </resources>

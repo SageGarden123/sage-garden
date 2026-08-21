@@ -14,11 +14,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.dansgardenmapper"
+    namespace = "com.example.sagegarden"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.dansgardenmapper"
+        applicationId = "com.example.sagegarden"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -27,11 +27,22 @@ android {
         buildConfigField("String", "PLANTNET_API_KEY", "\"${localProperties.getProperty("PLANTNET_API_KEY", "")}\"")
         buildConfigField("String", "DROPBOX_APP_KEY", "\"${localProperties.getProperty("DROPBOX_APP_KEY", "")}\"")
         buildConfigField("String", "MAPS_API_KEY", "\"${localProperties.getProperty("MAPS_API_KEY", "")}\"")
+        buildConfigField("String", "SAGE_API_BASE_URL", "\"${localProperties.getProperty("SAGE_API_BASE_URL", "")}\"")
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(localProperties.getProperty("RELEASE_STORE_FILE", "release-keystore-not-configured.jks"))
+            storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD", "")
+            keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS", "")
+            keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD", "")
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }
