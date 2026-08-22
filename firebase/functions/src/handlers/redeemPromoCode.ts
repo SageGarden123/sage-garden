@@ -34,13 +34,6 @@ export const redeemPromoCode = onRequest({ cors: false }, async (req, res) => {
   const codeRef = db.collection("promoCodes").doc(code);
   const deviceRef = db.collection("devices").doc(deviceId);
 
-  // TEMPORARY diagnostic — remove once the not_found mismatch is resolved.
-  console.log("redeemPromoCode debug: looked-up code =", JSON.stringify(code), "length =", code.length);
-  const allCodes = await db.collection("promoCodes").listDocuments();
-  console.log("redeemPromoCode debug: existing promoCodes doc IDs =", JSON.stringify(allCodes.map((d) => d.id)));
-  const rootCollections = await db.listCollections();
-  console.log("redeemPromoCode debug: root collections in this database =", JSON.stringify(rootCollections.map((c) => c.id)));
-
   try {
     await db.runTransaction(async (tx) => {
       const codeSnap = await tx.get(codeRef);
