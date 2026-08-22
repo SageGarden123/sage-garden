@@ -93,6 +93,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompletePrediction
+import com.google.android.libraries.places.api.model.AutocompleteSessionToken
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FetchPlaceResponse
@@ -2094,6 +2095,10 @@ fun MapScreen(
     var predictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
     var geocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
     var tooltipPlant by remember { mutableStateOf<PlantEntity?>(null) }
+    // A session token bundles every autocomplete keystroke plus the final place-details fetch into
+    // one billed "session" instead of separate per-request charges — a new token starts each time a
+    // fresh search begins (see onPredictionClick, which rotates it once a place is picked).
+    var sessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
 
     LaunchedEffect(searchQuery) {
         if (searchQuery.length > 2) {
@@ -2102,6 +2107,7 @@ fun MapScreen(
             // 1. Try Places SDK (requires Places API enabled in Google Cloud Console)
             val request = FindAutocompletePredictionsRequest.builder()
                 .setQuery(searchQuery)
+                .setSessionToken(sessionToken)
                 .build()
             placesClient.findAutocompletePredictions(request)
                 .addOnSuccessListener { response: FindAutocompletePredictionsResponse ->
@@ -2143,7 +2149,7 @@ fun MapScreen(
         predictions = emptyList()
         // LAT_LNG was replaced by LOCATION in Places SDK 5.0+
         val placeFields = listOf(Place.Field.LOCATION)
-        val request = FetchPlaceRequest.newInstance(prediction.placeId, placeFields)
+        val request = FetchPlaceRequest.builder(prediction.placeId, placeFields).setSessionToken(sessionToken).build()
         placesClient.fetchPlace(request)
             .addOnSuccessListener { response: FetchPlaceResponse ->
                 val latLng = response.place.location
@@ -2151,6 +2157,7 @@ fun MapScreen(
                     cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, 18f)
                 }
             }
+        sessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
     }
 
     var hasLocationPermission by remember {
@@ -5058,6 +5065,7 @@ fun HelpScreen(
             var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
             var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
             val gardenPlacesClient = remember { Places.createClient(context) }
+            var gardenSessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -5092,7 +5100,7 @@ fun HelpScreen(
                         // resolves, a late callback must not resurrect the dropdown — guard on both flags below.
                         val queryAtRequestTime = gardenAddressQuery
                         fun stillRelevant() = gardenAddressEditedByUser && gardenAddressQuery == queryAtRequestTime
-                        val request = FindAutocompletePredictionsRequest.builder().setQuery(gardenAddressQuery).build()
+                        val request = FindAutocompletePredictionsRequest.builder().setQuery(gardenAddressQuery).setSessionToken(gardenSessionToken).build()
                         gardenPlacesClient.findAutocompletePredictions(request)
                             .addOnSuccessListener { response: FindAutocompletePredictionsResponse ->
                                 if (stillRelevant()) {
@@ -5136,7 +5144,7 @@ fun HelpScreen(
                                 Text(
                                     text = prediction.getFullText(null).toString(),
                                     modifier = Modifier.fillMaxWidth().clickable {
-                                        val request = FetchPlaceRequest.newInstance(prediction.placeId, listOf(Place.Field.LOCATION))
+                                        val request = FetchPlaceRequest.builder(prediction.placeId, listOf(Place.Field.LOCATION)).setSessionToken(gardenSessionToken).build()
                                         gardenPlacesClient.fetchPlace(request).addOnSuccessListener { response: FetchPlaceResponse ->
                                             val latLng = response.place.location
                                             if (latLng != null) {
@@ -5145,6 +5153,7 @@ fun HelpScreen(
                                                 scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
                                             }
                                         }
+                                        gardenSessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
                                         gardenAddressQuery = prediction.getFullText(null).toString()
                                         setGardenAddress(context, gardenAddressQuery)
                                         gardenAddressEditedByUser = false
