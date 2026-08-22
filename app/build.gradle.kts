@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -107,6 +108,10 @@ dependencies {
 
 // Home screen widget
     implementation("androidx.glance:glance-appwidget:1.1.1")
+
+// Firebase App Check (Play Integrity) — attests requests to the Sage Cloud Functions backend
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.appcheck.playintegrity)
 
 
 

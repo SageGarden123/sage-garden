@@ -1015,6 +1015,7 @@ class MainActivity : ComponentActivity() {
             Places.initializeWithNewPlacesApiEnabled(applicationContext, BuildConfig.MAPS_API_KEY)
             DropboxAuthState.checkAndRefresh(applicationContext)
         }
+        AppCheckClient.init(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")

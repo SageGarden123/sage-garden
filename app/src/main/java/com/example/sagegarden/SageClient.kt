@@ -63,6 +63,13 @@ object SageClient {
     private fun jsonBody(json: JSONObject) =
         json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
+    /** Attaches an App Check attestation token when one's available — see AppCheckClient. Requests still go out without it on failure; the server treats a missing/invalid token as unverified rather than rejecting outright while App Check is being rolled out (see APP_CHECK_ENFORCED in each Function). */
+    private suspend fun requestBuilder(path: String, body: JSONObject): Request.Builder {
+        val builder = Request.Builder().url("$BASE_URL$path").post(jsonBody(body))
+        AppCheckClient.token()?.let { builder.header("X-Firebase-AppCheck", it) }
+        return builder
+    }
+
     private fun parseSnapshot(json: JSONObject): EntitlementSnapshot {
         val source = when (json.optString("source", "none")) {
             "trial" -> EntitlementSource.TRIAL
@@ -83,7 +90,7 @@ object SageClient {
     suspend fun syncEntitlement(context: Context): EntitlementSyncResult = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().put("deviceId", getOrCreateInstallId(context))
-            val request = Request.Builder().url("$BASE_URL/syncEntitlement").post(jsonBody(body)).build()
+            val request = requestBuilder("/syncEntitlement", body).build()
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string()
                 if (!response.isSuccessful || text == null) return@withContext EntitlementSyncResult.ServerError
@@ -97,7 +104,7 @@ object SageClient {
     suspend fun redeemPromoCode(context: Context, code: String): PromoRedeemResult = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().put("deviceId", getOrCreateInstallId(context)).put("code", code)
-            val request = Request.Builder().url("$BASE_URL/redeemPromoCode").post(jsonBody(body)).build()
+            val request = requestBuilder("/redeemPromoCode", body).build()
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string() ?: return@withContext PromoRedeemResult.NetworkError
                 if (response.isSuccessful) {
@@ -118,7 +125,7 @@ object SageClient {
     suspend fun chat(context: Context, message: String): SageChatResult = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().put("deviceId", getOrCreateInstallId(context)).put("message", message)
-            val request = Request.Builder().url("$BASE_URL/sageChat").post(jsonBody(body)).build()
+            val request = requestBuilder("/sageChat", body).build()
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string() ?: return@withContext SageChatResult.NetworkError
                 val json = JSONObject(text)
@@ -140,7 +147,7 @@ object SageClient {
     suspend fun autoFillFrequencies(context: Context, sciName: String): SageAutoFillResult = withContext(Dispatchers.IO) {
         try {
             val body = JSONObject().put("deviceId", getOrCreateInstallId(context)).put("sciName", sciName)
-            val request = Request.Builder().url("$BASE_URL/sageAutoFill").post(jsonBody(body)).build()
+            val request = requestBuilder("/sageAutoFill", body).build()
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string() ?: return@withContext SageAutoFillResult.NetworkError
                 val json = JSONObject(text)

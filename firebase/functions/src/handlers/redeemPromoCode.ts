@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { resolveEntitlement } from "../entitlement";
+import { verifyAppCheck } from "../verifyAppCheck";
 
 class PromoError extends Error {
   constructor(public code: string) {
@@ -13,6 +14,7 @@ export const redeemPromoCode = onRequest({ cors: false }, async (req, res) => {
     res.status(405).json({ error: "method_not_allowed" });
     return;
   }
+  if (!(await verifyAppCheck(req, res))) return;
 
   const deviceId = typeof req.body?.deviceId === "string" ? req.body.deviceId : null;
   const rawCode = typeof req.body?.code === "string" ? req.body.code : null;

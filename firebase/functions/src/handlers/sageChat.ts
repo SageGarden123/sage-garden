@@ -4,6 +4,7 @@ import { resolveEntitlement, incrementSagePromptCount } from "../entitlement";
 import { getCachedChatResponse, setCachedChatResponse } from "../cache";
 import { tryReserveDailySpend } from "../spend";
 import { askSage } from "../anthropic";
+import { verifyAppCheck } from "../verifyAppCheck";
 
 export const sageChat = onRequest(
   { secrets: [anthropicApiKey], cors: false },
@@ -12,6 +13,7 @@ export const sageChat = onRequest(
       res.status(405).json({ error: "method_not_allowed" });
       return;
     }
+    if (!(await verifyAppCheck(req, res))) return;
 
     const deviceId = typeof req.body?.deviceId === "string" ? req.body.deviceId : null;
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";

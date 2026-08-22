@@ -4,6 +4,7 @@ import { resolveEntitlement, incrementSagePromptCount } from "../entitlement";
 import { getCachedFrequencies, setCachedFrequencies } from "../cache";
 import { tryReserveDailySpend } from "../spend";
 import { suggestFrequencies } from "../anthropic";
+import { verifyAppCheck } from "../verifyAppCheck";
 
 export const sageAutoFill = onRequest(
   { secrets: [anthropicApiKey], cors: false },
@@ -12,6 +13,7 @@ export const sageAutoFill = onRequest(
       res.status(405).json({ error: "method_not_allowed" });
       return;
     }
+    if (!(await verifyAppCheck(req, res))) return;
 
     const deviceId = typeof req.body?.deviceId === "string" ? req.body.deviceId : null;
     const sciName = typeof req.body?.sciName === "string" ? req.body.sciName.trim() : "";

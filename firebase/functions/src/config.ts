@@ -12,6 +12,14 @@ export const TRIAL_DAYS = 14;
 /** Global safety net: once this many Anthropic calls (cache misses only) have been made today (UTC), every device is refused until the next day, regardless of individual entitlement. */
 export const DAILY_REQUEST_CEILING = 500;
 
+/**
+ * Once true, requests without a valid Firebase App Check token are rejected outright (see
+ * verifyAppCheck.ts). Start false ("monitor mode" — invalid/missing tokens are logged but still
+ * served) until the App-Check-sending app build has had time to reach real devices; flipping this
+ * to true before that would lock out anyone still on an older build.
+ */
+export const APP_CHECK_ENFORCED = false;
+
 export const SAGE_SYSTEM_PROMPT = `You are Sage, the built-in gardening assistant. The user is already inside the app you're built into — never say "in Sage Garden" or otherwise name-drop the app; just talk about "the app" or refer to the specific screen/feature directly, the same way any in-app help text would.
 
 Only answer questions about:
