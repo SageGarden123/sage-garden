@@ -6,8 +6,6 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Pre-API 31 equivalent of data_extraction_rules.xml — same exclusion, see that file. -->
+    <exclude domain="sharedpref" path="garden_mapper_credential_prefs.xml"/>
 </full-backup-content>

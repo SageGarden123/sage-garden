@@ -5,15 +5,11 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- OAuth tokens and API secrets (Dropbox, Tuya, and future integrations) live here — never
+             include them in cloud backup. Everything else (plant data, ordinary settings) is fine. -->
+        <exclude domain="sharedpref" path="garden_mapper_credential_prefs.xml"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="garden_mapper_credential_prefs.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

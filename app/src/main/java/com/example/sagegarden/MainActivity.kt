@@ -241,12 +241,50 @@ fun setUsingCustomMap(context: Context, value: Boolean) {
 }
 
 // ============================================================================
+// IRRIGATION SYSTEM SELECTION
+// ============================================================================
+// Pure visibility toggle for the Help screen's Irrigation section — switching
+// it never deletes either vendor's stored credentials or zone mappings below.
+
+enum class IrrigationSystem { NONE, TUYA, RACHIO }
+
+/** Defaults to TUYA when the device already has non-blank Tuya credentials saved (pre-existing testers see zero change), else NONE. */
+fun getIrrigationSystem(context: Context): IrrigationSystem {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    val stored = prefs.getString("irrigation_system", null)
+    if (stored != null) return IrrigationSystem.entries.firstOrNull { it.name == stored } ?: IrrigationSystem.NONE
+    return if (getTuyaClientId(context).isNotBlank() && getTuyaClientSecret(context).isNotBlank()) IrrigationSystem.TUYA else IrrigationSystem.NONE
+}
+fun setIrrigationSystem(context: Context, value: IrrigationSystem) {
+    context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE).edit().putString("irrigation_system", value.name).apply()
+}
+
+// ============================================================================
 // TUYA ZONE MAPPING (outlet-level granularity)
 // ============================================================================
 // Each physical Tuya device has up to two independent outlets. A "zone" is a
 // friendly, user-chosen name for ONE outlet on ONE device (e.g. "Front Garden"
 // = deviceId X, outlet "1"; "Front Patch" = same deviceId X, outlet "2").
 // Stored as: "zoneA=deviceId:outlet|zoneB=deviceId:outlet|..."
+
+/**
+ * Dedicated prefs file for actual secrets (OAuth tokens, API client secrets) — kept separate from
+ * "garden_mapper_prefs" so it alone can be excluded from Android's backup/device-transfer (see
+ * data_extraction_rules.xml / backup_rules.xml), without losing ordinary settings on restore.
+ * [migrateCredential] is a one-time fallback for any install with an already-installed build that
+ * wrote a given key into the old general prefs file, so existing testers aren't silently signed out.
+ */
+private fun credentialPrefs(context: Context) = context.getSharedPreferences("garden_mapper_credential_prefs", Context.MODE_PRIVATE)
+
+private fun migrateCredential(context: Context, key: String): String? {
+    val creds = credentialPrefs(context)
+    creds.getString(key, null)?.let { return it }
+    val general = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    val legacy = general.getString(key, null) ?: return null
+    creds.edit().putString(key, legacy).apply()
+    general.edit().remove(key).apply()
+    return legacy
+}
 
 data class TuyaZoneMapping(val zone: String, val deviceId: String, val outlet: String)
 
@@ -271,21 +309,48 @@ fun setTuyaZoneMappings(context: Context, mappings: List<TuyaZoneMapping>) {
 }
 
 /** Each user connects their own Tuya Cloud project — nothing is shared between installs. */
-fun getTuyaClientId(context: Context): String {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("tuya_client_id", "") ?: ""
-}
+fun getTuyaClientId(context: Context): String = migrateCredential(context, "tuya_client_id") ?: ""
 fun setTuyaClientId(context: Context, value: String) {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("tuya_client_id", value).apply()
+    credentialPrefs(context).edit().putString("tuya_client_id", value).apply()
 }
-fun getTuyaClientSecret(context: Context): String {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("tuya_client_secret", "") ?: ""
-}
+fun getTuyaClientSecret(context: Context): String = migrateCredential(context, "tuya_client_secret") ?: ""
 fun setTuyaClientSecret(context: Context, value: String) {
+    credentialPrefs(context).edit().putString("tuya_client_secret", value).apply()
+}
+
+// ============================================================================
+// RACHIO ZONE MAPPING
+// ============================================================================
+// Unlike Tuya, a Rachio zone already carries its own vendor-assigned name and
+// id — a "zone" here is just that zone on a given device (deviceId + zoneId).
+// Stored as: "zoneA=deviceId:zoneId|zoneB=deviceId:zoneId|..."
+
+data class RachioZoneMapping(val zone: String, val deviceId: String, val zoneId: String)
+
+fun getRachioZoneMappings(context: Context): List<RachioZoneMapping> {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("tuya_client_secret", value).apply()
+    val raw = prefs.getString("rachio_device_mapping", "") ?: ""
+    return raw.split("|").filter { it.contains("=") }.mapNotNull { entry ->
+        val parts = entry.split("=", limit = 2)
+        if (parts.size != 2) return@mapNotNull null
+        val (zone, rest) = parts
+        val restParts = rest.split(":")
+        val deviceId = restParts.getOrNull(0) ?: return@mapNotNull null
+        val zoneId = restParts.getOrNull(1) ?: ""
+        if (zone.isBlank() || deviceId.isBlank() || zoneId.isBlank()) null else RachioZoneMapping(zone, deviceId, zoneId)
+    }
+}
+
+fun setRachioZoneMappings(context: Context, mappings: List<RachioZoneMapping>) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    val raw = mappings.joinToString("|") { "${it.zone}=${it.deviceId}:${it.zoneId}" }
+    prefs.edit().putString("rachio_device_mapping", raw).apply()
+}
+
+/** Each user connects their own Rachio account via a personal API token — nothing is shared between installs. */
+fun getRachioApiToken(context: Context): String = credentialPrefs(context).getString("rachio_api_token", "") ?: ""
+fun setRachioApiToken(context: Context, value: String) {
+    credentialPrefs(context).edit().putString("rachio_api_token", value).apply()
 }
 
 // ============================================================================
@@ -603,19 +668,12 @@ fun setWaterRatePerKiloliter(context: Context, value: Double) {
 
 const val DROPBOX_APP_KEY = BuildConfig.DROPBOX_APP_KEY
 
-fun getDropboxAccessToken(context: Context): String? {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("dropbox_access_token", null)
-}
+fun getDropboxAccessToken(context: Context): String? = migrateCredential(context, "dropbox_access_token")
 
-fun getDropboxRefreshToken(context: Context): String? {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("dropbox_refresh_token", null)
-}
+fun getDropboxRefreshToken(context: Context): String? = migrateCredential(context, "dropbox_refresh_token")
 
 fun saveDropboxTokens(context: Context, accessToken: String?, refreshToken: String?, savedAtMillis: Long) {
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    prefs.edit()
+    credentialPrefs(context).edit()
         .putString("dropbox_access_token", accessToken)
         .putString("dropbox_refresh_token", refreshToken)
         .putLong("dropbox_token_saved_at", savedAtMillis)
@@ -631,8 +689,7 @@ private const val DROPBOX_TOKEN_REFRESH_AFTER_MS = 3L * 60 * 60 * 1000
 
 suspend fun ensureDropboxTokenFresh(context: Context) = withContext(Dispatchers.IO) {
     val refreshToken = getDropboxRefreshToken(context) ?: return@withContext
-    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    val savedAt = prefs.getLong("dropbox_token_saved_at", 0L)
+    val savedAt = credentialPrefs(context).getLong("dropbox_token_saved_at", 0L)
     if (System.currentTimeMillis() - savedAt < DROPBOX_TOKEN_REFRESH_AFTER_MS) return@withContext
 
     try {
@@ -4809,6 +4866,10 @@ fun HelpScreen(
         val initial = getTuyaZoneMappings(context).map { Triple(it.zone, it.deviceId, it.outlet) }
         mutableStateListOf(*(if (initial.isEmpty()) listOf(Triple("", "", "1")) else initial).toTypedArray())
     }
+    val rachioZoneRows = remember {
+        val initial = getRachioZoneMappings(context).map { Triple(it.zone, it.deviceId, it.zoneId) }
+        mutableStateListOf(*(if (initial.isEmpty()) listOf(Triple("", "", "")) else initial).toTypedArray())
+    }
     val irrigationEvents by wateringViewModel.events.collectAsState()
     val irrigationPaths by pathViewModel.paths.collectAsState()
 
@@ -5462,9 +5523,29 @@ fun HelpScreen(
             ) { Text("Clear auto-linked photos (keep plants)") }
         }
 
-        // 3) Irrigation (Advanced mode + Pro only — hiding it never touches the saved Tuya credentials below)
+        // 3) Irrigation (Advanced mode + Pro only — hiding it never touches the saved Tuya or Rachio credentials/zones below)
         if (FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
         ExpandableSection(title = "Irrigation") {
+            var irrigationSystem by remember { mutableStateOf(getIrrigationSystem(context)) }
+            Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = irrigationSystem == IrrigationSystem.TUYA,
+                    onClick = { irrigationSystem = IrrigationSystem.TUYA; setIrrigationSystem(context, IrrigationSystem.TUYA) },
+                    label = { Text("Tuya", fontSize = 12.sp) }
+                )
+                FilterChip(
+                    selected = irrigationSystem == IrrigationSystem.RACHIO,
+                    onClick = { irrigationSystem = IrrigationSystem.RACHIO; setIrrigationSystem(context, IrrigationSystem.RACHIO) },
+                    label = { Text("Rachio", fontSize = 12.sp) }
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Switching doesn't delete the other system's saved credentials or zones — it just hides them.", fontSize = 11.sp, color = Color.Gray)
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            if (irrigationSystem == IrrigationSystem.TUYA) {
             var tuyaClientId by remember { mutableStateOf(getTuyaClientId(context)) }
             var tuyaClientSecret by remember { mutableStateOf(getTuyaClientSecret(context)) }
             var tuyaSecretVisible by remember { mutableStateOf(false) }
@@ -5567,12 +5648,131 @@ fun HelpScreen(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
                 ) { Text("Clear all zones") }
             }
+            }
+
+            if (irrigationSystem == IrrigationSystem.RACHIO) {
+            var rachioApiToken by remember { mutableStateOf(getRachioApiToken(context)) }
+            var rachioTokenVisible by remember { mutableStateOf(false) }
+            var rachioEditing by remember { mutableStateOf(getRachioApiToken(context).isBlank()) }
+            var rachioTesting by remember { mutableStateOf(false) }
+            var rachioTestResult by remember { mutableStateOf<String?>(null) }
+
+            Text("Rachio connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Connect your Rachio account with the API key from the Rachio app (Profile → API key) to sync smart-irrigation history. Stored only on this device — never shared with other users of this app, and not included in backups.",
+                fontSize = 12.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = rachioApiToken,
+                onValueChange = { rachioApiToken = it },
+                label = { Text("Rachio API token") },
+                singleLine = true,
+                readOnly = !rachioEditing,
+                visualTransformation = if (rachioTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    TextButton(onClick = { rachioTokenVisible = !rachioTokenVisible }) {
+                        Text(if (rachioTokenVisible) "Hide" else "Show", fontSize = 11.sp)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (rachioApiToken.isBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text("An API token is required to sync irrigation history.", fontSize = 11.sp, color = Color.Gray)
+            }
+            Spacer(Modifier.height(8.dp))
+            if (rachioEditing) {
+                Button(
+                    onClick = {
+                        setRachioApiToken(context, rachioApiToken)
+                        rachioEditing = false
+                        rachioTestResult = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save Rachio API token") }
+            } else {
+                OutlinedButton(onClick = { rachioEditing = true }, modifier = Modifier.fillMaxWidth()) { Text("Edit Rachio API token") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            rachioTesting = true
+                            rachioTestResult = try {
+                                val devices = RachioClient.getDevices(context)
+                                val zoneCount = devices.sumOf { it.zones.size }
+                                "Connected — found ${devices.size} device(s), $zoneCount zone(s)."
+                            } catch (e: Exception) {
+                                "Test failed: ${e.message ?: "unknown error"}"
+                            }
+                            rachioTesting = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(), enabled = !rachioTesting
+                ) { Text(if (rachioTesting) "Testing…" else "Test connection") }
+                rachioTestResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
+            }
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            var rachioZonesExpanded by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { rachioZonesExpanded = !rachioZonesExpanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Irrigation zones (Rachio)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(if (rachioZonesExpanded) "▾" else "▸ ${rachioZoneRows.count { it.first.isNotBlank() }}", color = Color.Gray, fontSize = 13.sp)
+            }
+            if (rachioZonesExpanded) {
+                Spacer(Modifier.height(6.dp))
+                Text("Add a friendly zone name for each Rachio zone (use Test connection above to find your device/zone IDs). Zone names should match your Watering System field values.", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(10.dp))
+                rachioZoneRows.forEachIndexed { index, (zoneName, deviceId, zoneId) ->
+                    Column(Modifier.padding(bottom = 12.dp)) {
+                        OutlinedTextField(value = zoneName, onValueChange = { rachioZoneRows[index] = Triple(it, deviceId, zoneId) }, label = { Text("Zone name") }, placeholder = { Text("e.g. Front Garden") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedTextField(value = deviceId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, it, zoneId) }, label = { Text("Rachio Device ID") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(value = zoneId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, deviceId, it) }, label = { Text("Rachio Zone ID") }, modifier = Modifier.weight(1f))
+                            if (rachioZoneRows.size > 1) IconButton(onClick = { rachioZoneRows.removeAt(index) }) { Text("✕") }
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { rachioZoneRows.add(Triple("", "", "")) }, modifier = Modifier.fillMaxWidth()) { Text("+ Add zone") }
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        val mappings = rachioZoneRows.filter { it.first.isNotBlank() && it.second.isNotBlank() && it.third.isNotBlank() }.map { RachioZoneMapping(it.first, it.second, it.third) }
+                        setRachioZoneMappings(context, mappings)
+                        scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save zone mapping") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        rachioZoneRows.clear(); rachioZoneRows.add(Triple("", "", "")); setRachioZoneMappings(context, emptyList())
+                        scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                ) { Text("Clear all zones") }
+            }
+            }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             Text("Sync irrigation history", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Pulls the last 30 days of watering activity from Tuya and appends new sessions to irrigation_log.csv so history isn't lost once Tuya's ~7-day retention rolls over.", fontSize = 12.sp, color = Color.Gray)
+            Text(
+                if (irrigationSystem == IrrigationSystem.RACHIO)
+                    "Pulls the last 30 days of watering activity from Rachio and appends new sessions to irrigation_log.csv."
+                else
+                    "Pulls the last 30 days of watering activity from Tuya and appends new sessions to irrigation_log.csv so history isn't lost once Tuya's ~7-day retention rolls over.",
+                fontSize = 12.sp, color = Color.Gray
+            )
             Spacer(Modifier.height(10.dp))
             val syncing by wateringViewModel.syncing.collectAsState()
             val syncResult by wateringViewModel.lastSyncResult.collectAsState()

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 data class WateringEvent(
     @PrimaryKey val id: String,
     val zone: String,           // friendly location name — matches PlantEntity.wateringSystem values
-    val outlet: String = "1",   // "1" or "2" — which outlet on the physical Tuya device this came from
+    val outlet: String = "1",   // Tuya: "1" or "2" (physical outlet on the device). Rachio: the vendor zoneId.
     val startTime: Long,        // epoch millis
     val durationMinutes: Int,
     val source: String = "Tuya"
