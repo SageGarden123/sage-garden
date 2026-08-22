@@ -47,4 +47,4 @@ If this policy changes, the "Last updated" date above will change accordingly.
 
 ## Contact
 
-Questions about this policy or your data: **lutond@gmail.com**
+Questions about this policy or your data: **gardenwizardry685@gmail.com**

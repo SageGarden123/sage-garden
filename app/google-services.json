@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "311690206815",
+    "project_id": "gardenmapper-a68ec",
+    "storage_bucket": "gardenmapper-a68ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311690206815:android:f97a1c155f552aa38f85ea",
+        "android_client_info": {
+          "package_name": "com.example.sagegarden"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUITXqiFiwHV5_7o_hivOLFm2KPPJ-vDM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
