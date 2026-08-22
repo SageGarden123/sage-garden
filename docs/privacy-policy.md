@@ -6,7 +6,7 @@ title: Sage Garden — Privacy Policy
 
 **Last updated: 22 August 2026**
 
-Sage Garden ("the app") is a personal garden-tracking app developed by Daniel Luton. This page explains what data the app collects, why, and who it's shared with.
+Sage Garden ("the app") is a personal garden-tracking app developed by Sage Garden. This page explains what data the app collects, why, and who it's shared with.
 
 ## Data the app collects
 
