@@ -53,7 +53,13 @@ import androidx.work.WorkerParameters
 data class WidgetConfig(
     val intervalDays: Int = 1,
     val maxPlants: Int = 8,
-    val lookaheadDays: Int = 2
+    val lookaheadDays: Int = 2,
+    // Watering defaults on (matches every widget placed before these existed); the others default
+    // off so existing widgets keep showing exactly what they showed before.
+    val includeWatering: Boolean = true,
+    val includePruning: Boolean = false,
+    val includeFertilising: Boolean = false,
+    val includeFeeding: Boolean = false
 )
 
 private fun widgetPrefs(context: Context) = context.getSharedPreferences("garden_mapper_widget_prefs", Context.MODE_PRIVATE)
@@ -63,7 +69,11 @@ fun getWidgetConfig(context: Context, appWidgetId: Int): WidgetConfig {
     return WidgetConfig(
         intervalDays = prefs.getInt("widget_${appWidgetId}_interval_days", 1),
         maxPlants = prefs.getInt("widget_${appWidgetId}_max_plants", 8),
-        lookaheadDays = prefs.getInt("widget_${appWidgetId}_lookahead_days", 2)
+        lookaheadDays = prefs.getInt("widget_${appWidgetId}_lookahead_days", 2),
+        includeWatering = prefs.getBoolean("widget_${appWidgetId}_include_watering", true),
+        includePruning = prefs.getBoolean("widget_${appWidgetId}_include_pruning", false),
+        includeFertilising = prefs.getBoolean("widget_${appWidgetId}_include_fertilising", false),
+        includeFeeding = prefs.getBoolean("widget_${appWidgetId}_include_feeding", false)
     )
 }
 
@@ -72,6 +82,10 @@ fun setWidgetConfig(context: Context, appWidgetId: Int, config: WidgetConfig) {
         .putInt("widget_${appWidgetId}_interval_days", config.intervalDays)
         .putInt("widget_${appWidgetId}_max_plants", config.maxPlants)
         .putInt("widget_${appWidgetId}_lookahead_days", config.lookaheadDays)
+        .putBoolean("widget_${appWidgetId}_include_watering", config.includeWatering)
+        .putBoolean("widget_${appWidgetId}_include_pruning", config.includePruning)
+        .putBoolean("widget_${appWidgetId}_include_fertilising", config.includeFertilising)
+        .putBoolean("widget_${appWidgetId}_include_feeding", config.includeFeeding)
         .apply()
 }
 
@@ -80,8 +94,18 @@ fun clearWidgetConfig(context: Context, appWidgetId: Int) {
         .remove("widget_${appWidgetId}_interval_days")
         .remove("widget_${appWidgetId}_max_plants")
         .remove("widget_${appWidgetId}_lookahead_days")
+        .remove("widget_${appWidgetId}_include_watering")
+        .remove("widget_${appWidgetId}_include_pruning")
+        .remove("widget_${appWidgetId}_include_fertilising")
+        .remove("widget_${appWidgetId}_include_feeding")
         .apply()
 }
+
+/** All widget instance IDs currently placed on a home screen, for the in-app "manage widgets" list. */
+fun getPlacedWidgetIds(context: Context): List<Int> =
+    android.appwidget.AppWidgetManager.getInstance(context)
+        .getAppWidgetIds(android.content.ComponentName(context, WateringWidgetReceiver::class.java))
+        .toList()
 
 // ============================================================================
 // REFRESH SCHEDULING (AlarmManager — inexact is fine for a daily-ish widget refresh)
@@ -144,6 +168,9 @@ class WateringWidgetRefreshWorker(context: Context, params: WorkerParameters) : 
 // WIDGET
 // ============================================================================
 
+/** One row's worth of due-care info — the widget can mix care types together in one list. */
+private data class WidgetDueItem(val plant: PlantEntity, val status: WateringStatus, val careIcon: String, val careLabel: String)
+
 class WateringWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
@@ -151,16 +178,31 @@ class WateringWidget : GlanceAppWidget() {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val config = getWidgetConfig(context, appWidgetId)
         val now = System.currentTimeMillis()
+        val cutoff = now + config.lookaheadDays * 86_400_000L
 
         val allPlants = AppDatabase.getInstance(context).plantDao().getAllOnce()
+        // Fresh prefs read, not HemisphereState — provideGlance can run in a cold-started process with no synced singleton.
+        val hemisphere = getHemisphere(context)
+
+        val careTypes = buildList {
+            if (config.includeWatering) add(Triple("💧", "Water", { p: PlantEntity, t: Long -> computeWateringStatus(p, t, hemisphere) }))
+            if (config.includePruning) add(Triple("✂️", "Prune", ::computePruneStatus))
+            if (config.includeFertilising) add(Triple("🌱", "Fertilise", ::computeFertiliseStatus))
+            if (config.includeFeeding) add(Triple("🍽️", "Feed", ::computeFeedStatus))
+        }
+
         val dueSoon = allPlants
-            .mapNotNull { p -> computeWateringStatus(p, now)?.let { p to it } }
-            .filter { (_, status) -> status.nextDueMillis == null || status.nextDueMillis <= now + config.lookaheadDays * 86_400_000L }
-            .sortedBy { (_, status) -> status.sortKey() }
+            .flatMap { p ->
+                careTypes.mapNotNull { (icon, label, compute) ->
+                    compute(p, now)?.let { status -> WidgetDueItem(p, status, icon, label) }
+                }
+            }
+            .filter { it.status.nextDueMillis == null || it.status.nextDueMillis <= cutoff }
+            .sortedBy { it.status.sortKey() }
             .take(config.maxPlants)
 
         provideContent {
-            WateringWidgetContent(allPlants.isEmpty(), dueSoon)
+            WateringWidgetContent(allPlants.isEmpty(), careTypes.isEmpty(), dueSoon)
         }
     }
 }
@@ -168,23 +210,25 @@ class WateringWidget : GlanceAppWidget() {
 @Composable
 private fun WateringWidgetContent(
     noPlantsAtAll: Boolean,
-    dueSoon: List<Pair<PlantEntity, WateringStatus>>
+    noCareTypesSelected: Boolean,
+    dueSoon: List<WidgetDueItem>
 ) {
     Column(
         modifier = GlanceModifier.fillMaxSize().background(Color(0xFFF5F5F0)).padding(10.dp)
     ) {
         Text(
-            "💧 Needs watering",
+            "🌿 Care due",
             style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorProvider(Color(0xFF233821)))
         )
         Spacer(GlanceModifier.height(6.dp))
 
         when {
             noPlantsAtAll -> Text("Add plants in the app to get started.", style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray)))
+            noCareTypesSelected -> Text("Edit this widget to choose what to show.", style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray)))
             dueSoon.isEmpty() -> Text("All caught up 🌿", style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color(0xFF3A5A40))))
             else -> LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                items(dueSoon, itemId = { (plant, _) -> plant.id.hashCode().toLong() }) { (plant, status) ->
-                    WateringWidgetRow(plant, status)
+                items(dueSoon, itemId = { item -> (item.plant.id.hashCode() * 31 + item.careLabel.hashCode()).toLong() }) { item ->
+                    WateringWidgetRow(item)
                 }
             }
         }
@@ -192,9 +236,10 @@ private fun WateringWidgetContent(
 }
 
 @Composable
-private fun WateringWidgetRow(plant: PlantEntity, status: WateringStatus) {
+private fun WateringWidgetRow(item: WidgetDueItem) {
     val context = LocalContext.current
-    val overdue = status.label.startsWith("Overdue") || status.label.startsWith("Never watered")
+    val (plant, status, careIcon, careLabel) = item
+    val overdue = status.label.startsWith("Overdue") || status.label.startsWith("Never")
     val intent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         putExtra("widget_plant_id", plant.id)
@@ -207,7 +252,7 @@ private fun WateringWidgetRow(plant: PlantEntity, status: WateringStatus) {
         Box(
             modifier = GlanceModifier.size(36.dp).background(Color(0xFFE3DDCF)).cornerRadius(18.dp),
             contentAlignment = Alignment.Center
-        ) { Text("🌿", style = TextStyle(fontSize = 15.sp)) }
+        ) { Text(careIcon, style = TextStyle(fontSize = 15.sp)) }
         Spacer(GlanceModifier.width(8.dp))
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
@@ -215,7 +260,7 @@ private fun WateringWidgetRow(plant: PlantEntity, status: WateringStatus) {
                 style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ColorProvider(Color(0xFF233821)))
             )
             Text(
-                status.label, maxLines = 1,
+                "$careLabel: ${status.label}", maxLines = 1,
                 style = TextStyle(fontSize = 11.sp, color = ColorProvider(if (overdue) Color(0xFFB23B3B) else Color.Gray))
             )
         }

@@ -27,7 +27,8 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
             getGardenLatLng(applicationContext)?.let { (lat, lng) -> WeatherHelper.fetchTodayForecast(lat, lng) }
         } else null
 
-        val duePlants = plants.filter { isDue(computeWateringStatus(it, now)) }
+        val hemisphere = getHemisphere(applicationContext) // fresh prefs read, not HemisphereState — this worker may run in a cold-started process with no synced singleton
+        val duePlants = plants.filter { isDue(computeWateringStatus(it, now, hemisphere)) }
         if (duePlants.isNotEmpty()) {
             val outdoorDuePlants = duePlants.filter { !it.isIndoor }
             val rainWarningMm = if (weatherSkipEnabled && outdoorDuePlants.isNotEmpty() && forecast != null &&

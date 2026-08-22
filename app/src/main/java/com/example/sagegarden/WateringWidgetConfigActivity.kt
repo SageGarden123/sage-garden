@@ -77,6 +77,10 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
     var intervalDays by remember { mutableStateOf(initialConfig.intervalDays) }
     var maxPlants by remember { mutableStateOf(minOf(initialConfig.maxPlants, maxPlantsCap)) }
     var lookaheadDays by remember { mutableStateOf(initialConfig.lookaheadDays) }
+    var includeWatering by remember { mutableStateOf(initialConfig.includeWatering) }
+    var includePruning by remember { mutableStateOf(initialConfig.includePruning) }
+    var includeFertilising by remember { mutableStateOf(initialConfig.includeFertilising) }
+    var includeFeeding by remember { mutableStateOf(initialConfig.includeFeeding) }
 
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
@@ -112,9 +116,33 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
                 FilterChip(selected = lookaheadDays == days, onClick = { lookaheadDays = days }, label = { Text(label, fontSize = 12.sp) })
             }
         }
+        Spacer(Modifier.height(20.dp))
+
+        Text("Show plants due for", fontSize = 13.sp, color = Color.Gray)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text("💧 Watering", fontSize = 12.sp) })
+            FilterChip(selected = includePruning, onClick = { includePruning = !includePruning }, label = { Text("✂️ Pruning", fontSize = 12.sp) })
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = includeFertilising, onClick = { includeFertilising = !includeFertilising }, label = { Text("🌱 Fertilising", fontSize = 12.sp) })
+            FilterChip(selected = includeFeeding, onClick = { includeFeeding = !includeFeeding }, label = { Text("🍽️ Feeding", fontSize = 12.sp) })
+        }
+        if (!includeWatering && !includePruning && !includeFertilising && !includeFeeding) {
+            Spacer(Modifier.height(4.dp))
+            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+        }
         Spacer(Modifier.height(28.dp))
         Button(
-            onClick = { onSave(WidgetConfig(intervalDays, maxPlants, lookaheadDays)) },
+            onClick = {
+                onSave(
+                    WidgetConfig(
+                        intervalDays, maxPlants, lookaheadDays,
+                        includeWatering, includePruning, includeFertilising, includeFeeding
+                    )
+                )
+            },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Save") }
     }

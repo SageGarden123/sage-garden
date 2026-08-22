@@ -396,6 +396,17 @@ suspend fun identifyPlantFromUri(context: Context, uri: Uri): PlantIdResult {
 // NOTIFICATIONS/REMINDERS
 // ============================================================================
 
+/** Default Southern to match every install's behaviour before this setting existed (the app started out AU-only). */
+fun getHemisphere(context: Context): Hemisphere {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return if (prefs.getString("garden_hemisphere", Hemisphere.SOUTHERN.name) == Hemisphere.NORTHERN.name) Hemisphere.NORTHERN else Hemisphere.SOUTHERN
+}
+fun setHemisphere(context: Context, value: Hemisphere) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("garden_hemisphere", value.name).apply()
+    HemisphereState.value = value
+}
+
 fun getNotificationsEnabled(context: Context): Boolean {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getBoolean("notifications_enabled", false)
@@ -1229,6 +1240,8 @@ fun GardenMapperApp() {
 
     LaunchedEffect(Unit) {
         SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(context)
+        AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(context)
+        HemisphereState.value = getHemisphere(context)
         val state = EntitlementManager.sync(context)
         trialNudge = EntitlementManager.checkTrialNudge(context, state)
     }
@@ -1430,7 +1443,23 @@ fun GardenMapperApp() {
                 HelpScreen(
                     viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
                     snackbarHostState = snackbarHostState, scope = scope,
-                    onOpenFaq = { navController.navigate("faq") }
+                    onOpenFaq = { navController.navigate("faq") },
+                    onOpenWidgetSettings = { widgetId -> navController.navigate("widget_settings/$widgetId") }
+                )
+            }
+            composable(
+                "widget_settings/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val widgetId = backStackEntry.arguments?.getInt("id") ?: return@composable
+                WidgetConfigScreen(
+                    initialConfig = getWidgetConfig(context, widgetId),
+                    onSave = { config ->
+                        setWidgetConfig(context, widgetId, config)
+                        scheduleWidgetRefresh(context, widgetId, config.intervalDays)
+                        scope.launch { refreshWateringWidgets(context) }
+                        navController.popBackStack()
+                    }
                 )
             }
             composable("faq") {
@@ -3802,14 +3831,22 @@ data class WateringStatus(val nextDueMillis: Long?, val label: String) {
     fun sortKey(): Long = nextDueMillis ?: Long.MIN_VALUE
 }
 
-/** Southern-hemisphere seasons: Dec/Jan/Feb = summer, Jun/Jul/Aug = winter, else base frequency. */
-fun effectiveWateringFrequencyDays(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): Int? {
+/**
+ * Dec/Jan/Feb = summer + Jun/Jul/Aug = winter for a Southern-hemisphere garden, flipped for a
+ * Northern-hemisphere one (Help → Weather-aware reminders); else base frequency. [hemisphere]
+ * defaults to the live [HemisphereState] singleton, which is correct for any Compose call site —
+ * a background caller with no composition (the reminder worker) should pass [getHemisphere]'s
+ * result explicitly instead, since the singleton may not be synced yet in a cold-started process.
+ */
+fun effectiveWateringFrequencyDays(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis(), hemisphere: Hemisphere = HemisphereState.value): Int? {
     val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
-    return when (cal.get(java.util.Calendar.MONTH)) {
-        java.util.Calendar.DECEMBER, java.util.Calendar.JANUARY, java.util.Calendar.FEBRUARY ->
-            plant.summerWateringFrequencyDays ?: plant.wateringFrequencyDays
-        java.util.Calendar.JUNE, java.util.Calendar.JULY, java.util.Calendar.AUGUST ->
-            plant.winterWateringFrequencyDays ?: plant.wateringFrequencyDays
+    val isDecJanFeb = cal.get(java.util.Calendar.MONTH) in listOf(java.util.Calendar.DECEMBER, java.util.Calendar.JANUARY, java.util.Calendar.FEBRUARY)
+    val isJunJulAug = cal.get(java.util.Calendar.MONTH) in listOf(java.util.Calendar.JUNE, java.util.Calendar.JULY, java.util.Calendar.AUGUST)
+    val isSummer = if (hemisphere == Hemisphere.SOUTHERN) isDecJanFeb else isJunJulAug
+    val isWinter = if (hemisphere == Hemisphere.SOUTHERN) isJunJulAug else isDecJanFeb
+    return when {
+        isSummer -> plant.summerWateringFrequencyDays ?: plant.wateringFrequencyDays
+        isWinter -> plant.winterWateringFrequencyDays ?: plant.wateringFrequencyDays
         else -> plant.wateringFrequencyDays
     }
 }
@@ -3837,9 +3874,9 @@ fun computePruneStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeM
 fun computeFeedStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
     computeCareStatus(plant.lastFedDate, plant.feedFrequencyDays, nowMillis)
 
-/** Returns null if no watering frequency is configured (nothing to schedule). */
-fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? {
-    val freq = effectiveWateringFrequencyDays(plant, nowMillis) ?: return null
+/** Returns null if no watering frequency is configured (nothing to schedule). See [effectiveWateringFrequencyDays] for the [hemisphere] default's caveat for background callers. */
+fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis(), hemisphere: Hemisphere = HemisphereState.value): WateringStatus? {
+    val freq = effectiveWateringFrequencyDays(plant, nowMillis, hemisphere) ?: return null
     val last = plant.lastWateredDate
         ?: return WateringStatus(nextDueMillis = null, label = "Never watered — water now")
 
@@ -4759,7 +4796,8 @@ fun ExpandableSection(
 fun HelpScreen(
     viewModel: PlantViewModel, wateringViewModel: WateringZoneViewModel, pathViewModel: IrrigationPathViewModel,
     snackbarHostState: SnackbarHostState, scope: CoroutineScope,
-    onOpenFaq: () -> Unit
+    onOpenFaq: () -> Unit,
+    onOpenWidgetSettings: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     val plants by viewModel.plants.collectAsState()
@@ -5101,6 +5139,44 @@ fun HelpScreen(
                         }
                     }
                 }
+            }
+            }
+
+            ExpandableSection(title = "Watering widget") {
+            Text("Edit an existing home-screen widget's settings — which plants it shows, how often it refreshes, and which care types (watering, pruning, fertilising, feeding) it includes.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(10.dp))
+            val placedWidgetIds = remember { getPlacedWidgetIds(context) }
+            if (placedWidgetIds.isEmpty()) {
+                Text("No watering widgets are on your home screen yet. Add one from your launcher's widget picker.", fontSize = 12.sp, color = Color.Gray)
+            } else {
+                placedWidgetIds.forEachIndexed { index, widgetId ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            if (placedWidgetIds.size > 1) "Widget ${index + 1}" else "Watering widget",
+                            fontSize = 13.sp, modifier = Modifier.weight(1f)
+                        )
+                        OutlinedButton(onClick = { onOpenWidgetSettings(widgetId) }) { Text("Edit") }
+                    }
+                    if (index < placedWidgetIds.lastIndex) Spacer(Modifier.height(6.dp))
+                }
+            }
+            }
+
+            ExpandableSection(title = "Hemisphere") {
+            Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(10.dp))
+            var hemisphere by remember { mutableStateOf(getHemisphere(context)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = hemisphere == Hemisphere.SOUTHERN,
+                    onClick = { hemisphere = Hemisphere.SOUTHERN; setHemisphere(context, Hemisphere.SOUTHERN) },
+                    label = { Text("Southern (e.g. Australia)", fontSize = 12.sp) }
+                )
+                FilterChip(
+                    selected = hemisphere == Hemisphere.NORTHERN,
+                    onClick = { hemisphere = Hemisphere.NORTHERN; setHemisphere(context, Hemisphere.NORTHERN) },
+                    label = { Text("Northern", fontSize = 12.sp) }
+                )
             }
             }
 

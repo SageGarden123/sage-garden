@@ -20,6 +20,32 @@ object SageEnabledState {
     var enabled by mutableStateOf(true)
 }
 
+/**
+ * Live, Compose-observable mirror of the Basic/Advanced UI mode preference — same rationale as
+ * [SageEnabledState]. Without this, toggling the mode in the Help screen only reached other
+ * composables (dashboard, map, list, audit, irrigation tabs) once navigation happened to remount
+ * them, since reading raw SharedPreferences doesn't itself trigger recomposition elsewhere.
+ * Synced from persisted prefs once at app startup; [FeatureVisibility.setAdvancedModeEnabled]
+ * keeps it in sync on every change after that.
+ */
+object AdvancedModeState {
+    var enabled by mutableStateOf(false)
+}
+
+enum class Hemisphere { SOUTHERN, NORTHERN }
+
+/**
+ * Live, Compose-observable mirror of the garden's hemisphere setting — same rationale as
+ * [SageEnabledState] and [AdvancedModeState]. Composables that show "due" status (dashboard,
+ * widget preview inside the app, audit) need to recompute the moment this changes in Help, not
+ * just on next navigation. Background call sites with no running Compose tree (the reminder
+ * worker) should read [getHemisphere] directly from prefs instead of this, since the singleton
+ * may not have been synced yet in a cold-started worker process.
+ */
+object HemisphereState {
+    var value by mutableStateOf(Hemisphere.SOUTHERN)
+}
+
 enum class Feature {
     SUN_MAP,
     TUYA_INTEGRATION,
@@ -51,6 +77,7 @@ object FeatureVisibility {
 
     fun setAdvancedModeEnabled(context: Context, enabled: Boolean) {
         generalPrefs(context).edit().putBoolean(KEY_UI_MODE_ADVANCED, enabled).apply()
+        AdvancedModeState.enabled = enabled
     }
 
     /** User-level "do I want Sage at all" preference — independent of, and checked in addition to, Pro entitlement. Defaults on. */
@@ -79,13 +106,15 @@ object FeatureVisibility {
      * toggle — it's gated on Pro status (trial or promo code) AND the user's own "Sage enabled"
      * preference, so it stays available in Basic mode as soon as a device is entitled, but can be
      * turned off entirely from Help regardless of mode. Every other feature requires Advanced mode,
-     * with Tuya additionally requiring Pro.
+     * with Tuya additionally requiring Pro. TUYA_INTEGRATION also gates the whole Irrigation section
+     * (Rachio included) — it's really "irrigation integration enabled", not Tuya-specific; which
+     * vendor's controls show within that section is a separate, non-gating IrrigationSystem choice.
      */
     fun shouldShow(context: Context, feature: Feature): Boolean {
         if (feature == Feature.SAGE_ASSISTANT) {
             return SageEnabledState.enabled && EntitlementManager.getCached(context).isPro
         }
-        if (!isAdvancedModeEnabled(context)) return false
+        if (!AdvancedModeState.enabled) return false
         return when (feature) {
             Feature.TUYA_INTEGRATION -> EntitlementManager.getCached(context).tuyaEnabled
             else -> true
