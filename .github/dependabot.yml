@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Cloud Functions dependencies (firebase-admin, firebase-functions, @anthropic-ai/sdk, zod, etc.)
+  - package-ecosystem: "npm"
+    directory: "/firebase/functions"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      firebase:
+        patterns:
+          - "firebase-*"
+
+  # Android/Gradle dependencies (version catalog in gradle/libs.versions.toml)
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
