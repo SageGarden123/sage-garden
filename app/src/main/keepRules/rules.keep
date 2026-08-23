@@ -10,3 +10,17 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# Glance app widgets translate Compose-like code into RemoteViews at runtime via reflection/
+# internal state-persistence machinery that isn't fully covered by Glance's own default R8 rules
+# in this version — after enabling R8, the widget showed "can't load widget" in the picker and got
+# stuck on its loading layout forever. Keep Glance and this app's own widget classes whole.
+-keep class androidx.glance.** { *; }
+-keep interface androidx.glance.** { *; }
+-dontwarn androidx.glance.**
+
+-keep class com.example.sagegarden.WateringWidget { *; }
+-keep class com.example.sagegarden.WateringWidgetReceiver { *; }
+-keep class com.example.sagegarden.WateringWidgetRefreshReceiver { *; }
+-keep class com.example.sagegarden.WateringWidgetRefreshWorker { *; }
+-keep class com.example.sagegarden.WateringWidgetConfigActivity { *; }

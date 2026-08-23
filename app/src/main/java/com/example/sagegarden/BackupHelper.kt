@@ -3,6 +3,7 @@ package com.example.sagegarden
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.dropbox.core.v2.files.WriteMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -341,13 +342,16 @@ object BackupHelper {
             val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
             val payload = buildBackupPayload(context, plants, paths, events)
 
+            // This backup is meant to be a single rolling snapshot, not an accumulating history —
+            // WriteMode.OVERWRITE replaces the existing file in place instead of the default ADD
+            // mode, which throws a conflict error on every backup after the first.
             if (payload.mapBytes != null && payload.mapFileName != null) {
                 val mapPath = "$folderPath/${payload.mapFileName}".replace("//", "/")
-                client.files().uploadBuilder(mapPath).uploadAndFinish(payload.mapBytes.inputStream())
+                client.files().uploadBuilder(mapPath).withMode(WriteMode.OVERWRITE).uploadAndFinish(payload.mapBytes.inputStream())
             }
 
             val jsonPath = "$folderPath/$BACKUP_JSON_FILENAME".replace("//", "/")
-            client.files().uploadBuilder(jsonPath).uploadAndFinish(payload.root.toString().toByteArray().inputStream())
+            client.files().uploadBuilder(jsonPath).withMode(WriteMode.OVERWRITE).uploadAndFinish(payload.root.toString().toByteArray().inputStream())
 
             BackupResult(true, "Backup complete — ${payload.counts.summary()}")
         } catch (e: Exception) {

@@ -90,6 +90,7 @@ import coil.request.ImageRequest
 import com.dropbox.core.DbxRequestConfig
 import com.dropbox.core.android.Auth
 import com.dropbox.core.v2.DbxClientV2
+import com.dropbox.core.v2.files.WriteMode
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -1104,7 +1105,9 @@ suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringE
         val merged = (existingEvents + newEvents)
             .associateBy { "${it.zone}|${it.outlet}|${it.startTime}" }
             .values.sortedByDescending { it.startTime }
-        client.files().uploadBuilder(filePath).uploadAndFinish(wateringEventsToCsv(merged).toByteArray().inputStream())
+        // Same rolling-snapshot intent as the main Dropbox backup — overwrite in place rather than
+        // erroring on every sync after the first, since this always re-uploads to the same path.
+        client.files().uploadBuilder(filePath).withMode(WriteMode.OVERWRITE).uploadAndFinish(wateringEventsToCsv(merged).toByteArray().inputStream())
         true
     } catch (_: Exception) { false }
 }
@@ -6247,6 +6250,25 @@ fun HelpScreen(
                 onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
             ) { Text("Reset garden") }
+        }
+
+        ExpandableSection(title = "Contact & feedback") {
+            Text("Found a bug, or have an idea for the app? We'd love to hear from you.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    val emailIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                        data = Uri.parse("mailto:gardenwizardry685@gmail.com")
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "Sage Garden feedback")
+                    }
+                    try {
+                        context.startActivity(emailIntent)
+                    } catch (_: Exception) {
+                        scope.launch { snackbarHostState.showSnackbar("No email app found — you can reach us at gardenwizardry685@gmail.com") }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Email gardenwizardry685@gmail.com") }
         }
 
         Spacer(Modifier.height(20.dp))

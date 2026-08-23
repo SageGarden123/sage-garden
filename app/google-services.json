@@ -16,6 +16,31 @@
       "api_key": [
         {
           "current_key": "AIzaSyCUITXqiFiwHV5_7o_hivOLFm2KPPJ-vDM"
+        },
+        {
+          "current_key": "AIzaSyCKu4bJabzP70hAmA-lzGEWqo7Ixy_bJ5U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311690206815:android:e1f4cb27062c6c508f85ea",
+        "android_client_info": {
+          "package_name": "com.sagegarden.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUITXqiFiwHV5_7o_hivOLFm2KPPJ-vDM"
+        },
+        {
+          "current_key": "AIzaSyCKu4bJabzP70hAmA-lzGEWqo7Ixy_bJ5U"
         }
       ],
       "services": {
