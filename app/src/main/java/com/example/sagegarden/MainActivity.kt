@@ -2755,7 +2755,7 @@ fun CustomMapScreen(
                 if (drawMode == null && attachingDripSegment == null && !editingPaths) {
                     Modifier.pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, rot ->
-                            scale = (scale * zoom).coerceIn(0.5f, 6f)
+                            scale = (scale * zoom).coerceIn(0.5f, 14f)
                             rotation += rot
                             panOffset += pan
                         }
@@ -2999,8 +2999,9 @@ fun CustomMapScreen(
                 val xDp = with(density) { (frac.x * containerSize.width).toDp() }
                 val yDp = with(density) { (frac.y * containerSize.height).toDp() }
                 Box(
-                    modifier = Modifier.offset(x = xDp - 10.dp, y = yDp - 10.dp).size(20.dp)
-                        .clip(RoundedCornerShape(50)).background(Color(0xFFFF7A45).copy(alpha = 0.7f))
+                    modifier = Modifier.offset(x = xDp - 4.dp, y = yDp - 4.dp).size(8.dp)
+                        .clip(RoundedCornerShape(50)).background(Color(0xFFFF7A45).copy(alpha = 0.85f))
+                        .border(1.dp, Color.White, RoundedCornerShape(50))
                 )
             }
         }
