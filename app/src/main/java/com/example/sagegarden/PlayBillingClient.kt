@@ -67,7 +67,11 @@ object PlayBillingClient {
         if (billingClient?.isReady == true) return
         val client = BillingClient.newBuilder(context.applicationContext)
             .setListener(purchasesUpdatedListener)
-            .enablePendingPurchases(PendingPurchasesParams.newBuilder().build())
+            // enableOneTimeProducts() is required by PendingPurchasesParams.Builder.build() in
+            // Billing Library 9 even though this app only sells a subscription — omitting it
+            // throws IllegalArgumentException("Pending purchases for one-time products must be
+            // supported") at BillingClient construction, crashing the app on launch.
+            .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
             .enableAutoServiceReconnection()
             .build()
         billingClient = client
