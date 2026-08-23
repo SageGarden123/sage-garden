@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 data class EntitlementSnapshot(
     val isPro: Boolean,
@@ -57,7 +58,14 @@ sealed class SageAutoFillResult {
 
 /** Thin proxy to the Sage Cloud Functions backend — same OkHttp + org.json shape as WeatherHelper/TuyaClient. The Anthropic key never appears here; it lives only server-side. */
 object SageClient {
-    private val httpClient = OkHttpClient()
+    // Cloud Functions Gen2 cold-starts (first call after a deploy, or after being idle) can take
+    // longer than OkHttp's 10s default read timeout, especially with Firebase Admin + the Anthropic
+    // SDK to load — surfaces to the user as a spurious "couldn't reach Sage" NetworkError.
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .build()
     private const val BASE_URL = BuildConfig.SAGE_API_BASE_URL
 
     private fun jsonBody(json: JSONObject) =
