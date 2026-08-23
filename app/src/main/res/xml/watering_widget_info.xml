@@ -12,5 +12,5 @@
     android:configure="com.example.sagegarden.WateringWidgetConfigActivity"
     android:widgetFeatures="reconfigurable"
     android:initialLayout="@layout/widget_loading"
-    android:previewLayout="@layout/widget_loading"
+    android:previewLayout="@layout/widget_preview"
     android:description="@string/watering_widget_description" />

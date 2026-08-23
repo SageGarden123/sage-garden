@@ -84,7 +84,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
 
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
-        Text("Plants needing water", fontSize = 12.sp, color = Color.Gray)
+        Text("Plants requiring care", fontSize = 12.sp, color = Color.Gray)
         Spacer(Modifier.height(16.dp))
 
         Text("Refresh every", fontSize = 13.sp, color = Color.Gray)

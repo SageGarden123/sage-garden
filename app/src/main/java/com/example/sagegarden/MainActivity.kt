@@ -4766,11 +4766,11 @@ val faqItems = listOf(
     ),
     FaqItem(
         "What format should my CSV files be in?",
-        "For plant imports, the file needs a header row with at least a \"Plant\" column (name); optional columns are Plant ID, Scientific name, Location, Date planted, Source, Sun, Soil, Water, Frost, Native/Exotic, Pollinator-Friendly, Notes, Latitude, Longitude, and Watering System — export a CSV first to see the exact layout. \"For irrigation log imports, the header row needs Zone, StartTime, and DurationMinutes; Outlet and Source are optional. StartTime accepts either epoch milliseconds or a DateTime like \\\"2024-01-31 06:30:00\\\".\" Column order and capitalisation don't matter, but names need to match — if something's missing or the file is empty, you'll get a pop-up explaining exactly what's wrong."
+        "For plant imports, the file needs a header row with at least a \"Plant\" column (name); optional columns are Plant ID, Scientific name, Location, Date planted, Source, Sun, Soil, Water, Frost, Native/Exotic, Pollinator-Friendly, Notes, Latitude, Longitude, and Watering System — export a CSV first to see the exact layout. \" For irrigation log imports, the header row needs Zone, StartTime, and DurationMinutes; Outlet and Source are optional. StartTime accepts either epoch milliseconds or a DateTime like \\\"2024-01-31 06:30:00\\\".\" Column order and capitalisation don't matter, but names need to match — if something's missing or the file is empty, you'll get a pop-up explaining exactly what's wrong."
     ),
     FaqItem(
         "What's included with Pro, and what's free?",
-        "Free gives you up to 25 plants, your last 20 care log entries per plant, watering reminders, the photo log, and weather-aware skipping — plus the watering widget (up to 10 plants) and Dropbox backup, which stay free either way. Pro adds unlimited plants, full log history, Tuya smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and the Sage AI assistant. Every install starts with a 14-day free Pro trial — after that, enter a promo code in Help → Sage & Pro status to unlock Pro permanently."
+        "Free gives you up to 25 plants, your last 20 care log entries per plant, watering reminders and the photo log — plus the plant care widget (up to 10 plants) and Dropbox backup, which stay free either way. Pro adds unlimited plants, full log history, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and the Sage AI assistant. Every install starts with a 14-day free Pro trial — after that, enter a promo code in Help → Sage & Pro status to unlock Pro permanently."
     )
 )
 
@@ -5230,17 +5230,17 @@ fun HelpScreen(
             }
             }
 
-            ExpandableSection(title = "Watering widget") {
+            ExpandableSection(title = "Plant care widget") {
             Text("Edit an existing home-screen widget's settings — which plants it shows, how often it refreshes, and which care types (watering, pruning, fertilising, feeding) it includes.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
             val placedWidgetIds = remember { getPlacedWidgetIds(context) }
             if (placedWidgetIds.isEmpty()) {
-                Text("No watering widgets are on your home screen yet. Add one from your launcher's widget picker.", fontSize = 12.sp, color = Color.Gray)
+                Text("No plant care widgets are on your home screen yet. Add one from your launcher's widget picker.", fontSize = 12.sp, color = Color.Gray)
             } else {
                 placedWidgetIds.forEachIndexed { index, widgetId ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            if (placedWidgetIds.size > 1) "Widget ${index + 1}" else "Watering widget",
+                            if (placedWidgetIds.size > 1) "Widget ${index + 1}" else "Plant care widget",
                             fontSize = 13.sp, modifier = Modifier.weight(1f)
                         )
                         OutlinedButton(onClick = { onOpenWidgetSettings(widgetId) }) { Text("Edit") }
@@ -5865,6 +5865,17 @@ fun HelpScreen(
                 )
                 Spacer(Modifier.height(10.dp))
             }
+            val installId = remember { getOrCreateInstallId(context) }
+            Text(
+                "Install ID: $installId (tap to copy — quote this if you contact support)",
+                fontSize = 10.sp, color = Color.Gray,
+                modifier = Modifier.clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", installId))
+                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = {
                     refreshing = true
@@ -5964,7 +5975,7 @@ fun HelpScreen(
             val isPro = EntitlementManager.getCached(context).isPro
 
             Text(
-                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, watering widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and weather-aware reminders.",
+                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and weather-aware reminders.",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(6.dp))
