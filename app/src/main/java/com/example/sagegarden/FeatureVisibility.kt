@@ -53,6 +53,7 @@ enum class Feature {
     COST_WATER_TRACKING,
     GROWTH_TIMELINES,
     WATERING_HISTORY,
+    WEATHER_AWARE_REMINDERS,
     DROPBOX_BACKUP,
     SAGE_ASSISTANT
 }
@@ -62,7 +63,9 @@ enum class Feature {
  * into a single check so call sites never duplicate boolean logic. This gates *rendering only*;
  * it must never be used to condition a read or write of the underlying data (Tuya credentials,
  * sun zones, watering history, etc.), so switching modes never loses anything — see the plan's
- * "gating never touches data" guarantee.
+ * "gating never touches data" guarantee. This means once a trial lapses, everything a user
+ * entered into a now-hidden feature is still sitting there untouched, ready to reappear the
+ * moment they're Pro again (renewed trial, promo code, or a future purchase).
  *
  * Lives in the general "garden_mapper_prefs" file (existing convention) since the Basic/Advanced
  * toggle is a UI preference, not an entitlement fact — entitlement itself is cached separately by
@@ -105,18 +108,27 @@ object FeatureVisibility {
      * True when the feature should render. Sage is intentionally independent of the Basic/Advanced
      * toggle — it's gated on Pro status (trial or promo code) AND the user's own "Sage enabled"
      * preference, so it stays available in Basic mode as soon as a device is entitled, but can be
-     * turned off entirely from Help regardless of mode. Every other feature requires Advanced mode,
-     * with Tuya additionally requiring Pro. TUYA_INTEGRATION also gates the whole Irrigation section
-     * (Rachio included) — it's really "irrigation integration enabled", not Tuya-specific; which
-     * vendor's controls show within that section is a separate, non-gating IrrigationSystem choice.
+     * turned off entirely from Help regardless of mode. Weather-aware reminders is similarly
+     * independent of the toggle — it's a Pro perk available in Basic mode too, not something Advanced
+     * mode unlocks. Every other feature requires Advanced mode AND Pro: once a trial lapses, these
+     * features (and the toggle itself) become unavailable — see [setAdvancedModeEnabled]'s doc comment
+     * for why nothing entered while they were visible gets lost. TUYA_INTEGRATION also gates the whole
+     * Irrigation section (Rachio included) — it's really "irrigation integration enabled", not
+     * Tuya-specific; which vendor's controls show within that section is a separate,
+     * non-gating IrrigationSystem choice.
      */
     fun shouldShow(context: Context, feature: Feature): Boolean {
         if (feature == Feature.SAGE_ASSISTANT) {
             return SageEnabledState.enabled && EntitlementManager.getCached(context).isPro
         }
+        if (feature == Feature.WEATHER_AWARE_REMINDERS) {
+            return EntitlementManager.getCached(context).isPro
+        }
         if (!AdvancedModeState.enabled) return false
         return when (feature) {
             Feature.TUYA_INTEGRATION -> EntitlementManager.getCached(context).tuyaEnabled
+            Feature.SUN_MAP, Feature.AUDIT_SCREEN, Feature.COST_WATER_TRACKING,
+            Feature.GROWTH_TIMELINES, Feature.WATERING_HISTORY -> EntitlementManager.getCached(context).isPro
             else -> true
         }
     }

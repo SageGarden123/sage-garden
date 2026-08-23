@@ -5241,6 +5241,7 @@ fun HelpScreen(
             }
             }
 
+            if (FeatureVisibility.shouldShow(context, Feature.WEATHER_AWARE_REMINDERS)) {
             ExpandableSection(title = "Weather-aware reminders") {
             Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
@@ -5394,6 +5395,7 @@ fun HelpScreen(
                 )
             }
             }
+        }
         }
 
         // 2) Photos & cloud storage
@@ -5904,9 +5906,10 @@ fun HelpScreen(
         // 3b) Basic / Advanced mode
         ExpandableSection(title = "Basic / Advanced mode") {
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
+            val isPro = EntitlementManager.getCached(context).isPro
 
             Text(
-                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, weather-aware skipping, watering widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, and watering history.",
+                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, watering widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and weather-aware reminders.",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(6.dp))
@@ -5915,10 +5918,18 @@ fun HelpScreen(
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(10.dp))
+            if (!isPro) {
+                Text(
+                    "Your trial has ended, so Advanced mode is paused until you upgrade to Pro. Nothing you've entered is lost — your sun map, audit results, cost tracking, growth photos and watering history are all still saved, and will be right there the moment you upgrade.",
+                    fontSize = 12.sp, color = Color(0xFFB23B3B)
+                )
+                Spacer(Modifier.height(10.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(if (advancedMode) "Advanced mode" else "Basic mode", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(
                     checked = advancedMode,
+                    enabled = isPro,
                     onCheckedChange = {
                         advancedMode = it
                         FeatureVisibility.setAdvancedModeEnabled(context, it)
@@ -5927,7 +5938,7 @@ fun HelpScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Nothing is deleted when you switch — your Tuya setup, sun map, and history stay saved.",
+                "Nothing is deleted when you switch — your Tuya/Rachio setup, sun map, and history stay saved.",
                 fontSize = 11.sp, color = Color.Gray
             )
 
