@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static raster-style fallback for launchers/API levels that don't render android:previewLayout
+     (a newer, less universally-supported attribute) — without this, some show a plain grey box
+     in the widget picker instead of any preview at all. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#F5F5F0" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="64dp" android:height="64dp">
+        <shape android:shape="oval">
+            <solid android:color="#E3DDCF" />
+        </shape>
+    </item>
+</layer-list>

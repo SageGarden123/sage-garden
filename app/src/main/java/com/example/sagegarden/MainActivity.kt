@@ -6134,16 +6134,56 @@ fun HelpScreen(
             }
             Spacer(Modifier.height(10.dp))
 
+            var checkingExistingBackup by remember { mutableStateOf(false) }
+            var existingBackupDate by remember { mutableStateOf<Date?>(null) }
+            var showReplaceBackupConfirm by remember { mutableStateOf(false) }
+
+            fun runDropboxBackup() {
+                scope.launch {
+                    backupWorking = true; backupResultText = null
+                    val result = BackupHelper.createBackup(context, plants, irrigationPaths, irrigationEvents)
+                    backupWorking = false; backupResultText = result.message
+                }
+            }
+
             Button(
                 onClick = {
                     scope.launch {
-                        backupWorking = true; backupResultText = null
-                        val result = BackupHelper.createBackup(context, plants, irrigationPaths, irrigationEvents)
-                        backupWorking = false; backupResultText = result.message
+                        checkingExistingBackup = true
+                        val existing = BackupHelper.existingBackupModifiedAt(context)
+                        checkingExistingBackup = false
+                        if (existing != null) {
+                            existingBackupDate = existing
+                            showReplaceBackupConfirm = true
+                        } else {
+                            runDropboxBackup()
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && DropboxAuthState.token != null
-            ) { Text(if (backupWorking) "Backing up…" else "Back up to Dropbox now") }
+                modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !checkingExistingBackup && DropboxAuthState.token != null
+            ) {
+                Text(
+                    when {
+                        backupWorking -> "Backing up…"
+                        checkingExistingBackup -> "Checking…"
+                        else -> "Back up to Dropbox now"
+                    }
+                )
+            }
+            if (showReplaceBackupConfirm) {
+                val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
+                AlertDialog(
+                    onDismissRequest = { showReplaceBackupConfirm = false },
+                    title = { Text("Replace existing backup?") },
+                    text = {
+                        Text(
+                            "A backup from ${existingBackupDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replacing it can't be undone."
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { showReplaceBackupConfirm = false; runDropboxBackup() }) { Text("Replace") } },
+                    dismissButton = { TextButton(onClick = { showReplaceBackupConfirm = false }) { Text("Cancel") } }
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && DropboxAuthState.token != null) { Text("Restore from Dropbox") }

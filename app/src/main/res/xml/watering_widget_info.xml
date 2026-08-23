@@ -13,4 +13,5 @@
     android:widgetFeatures="reconfigurable"
     android:initialLayout="@layout/widget_loading"
     android:previewLayout="@layout/widget_preview"
+    android:previewImage="@drawable/widget_preview_image"
     android:description="@string/watering_widget_description" />

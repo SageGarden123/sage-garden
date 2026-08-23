@@ -3,7 +3,9 @@ package com.example.sagegarden
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.dropbox.core.v2.files.FileMetadata
 import com.dropbox.core.v2.files.WriteMode
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -329,6 +331,18 @@ object BackupHelper {
         }
 
         return BackupCounts(plantsArr.length(), pathsArr.length(), eventsArr.length(), sunZonesArr.length(), growthPhotosArr.length())
+    }
+
+    /** Null if no backup exists yet at the configured Dropbox path — otherwise when the existing one was last modified, for a "replace existing backup?" confirmation prompt before overwriting it. */
+    suspend fun existingBackupModifiedAt(context: Context): Date? = withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
+            val jsonPath = "$folderPath/$BACKUP_JSON_FILENAME".replace("//", "/")
+            (client.files().getMetadata(jsonPath) as? FileMetadata)?.serverModified
+        } catch (_: Exception) {
+            null // not found (or unreachable) — either way, nothing to confirm replacing
+        }
     }
 
     suspend fun createBackup(
