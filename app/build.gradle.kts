@@ -19,7 +19,12 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.sagegarden"
+        // The Play Store identity — deliberately kept separate from `namespace` above (which stays
+        // com.example.sagegarden, matching every Kotlin file's actual package declaration) rather
+        // than renaming the whole source tree. Google rejects any com.example.* applicationId
+        // outright for real publishing (it's a reserved placeholder, not just usually-taken), which
+        // is why this looked like a generic "already in use" collision even with random suffixes.
+        applicationId = "com.sagegarden.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

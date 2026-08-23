@@ -5,7 +5,7 @@ import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { resolveEntitlement } from "../entitlement";
 import { verifyAppCheck } from "../verifyAppCheck";
 
-const PACKAGE_NAME = "com.example.sagegarden";
+const PACKAGE_NAME = "com.sagegarden.app"; // the Play Store applicationId, not the com.example.sagegarden Kotlin package
 
 // Anything else (SUBSCRIPTION_STATE_CANCELED/EXPIRED/ON_HOLD/PAUSED/PENDING) is not paid access —
 // grace period is the one non-obvious inclusion: Play keeps billing but access should continue.
