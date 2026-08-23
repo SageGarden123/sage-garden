@@ -11,6 +11,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** Common shape both TuyaZoneMapping and RachioZoneMapping reduce to, so sync() has one loop instead of one per vendor. */
+private data class VendorZoneMapping(val zone: String, val deviceId: String, val key: String)
+
+private data class VendorSyncConfig(
+    val mappings: List<VendorZoneMapping>,
+    val missingCredentialMessage: String?,
+    val fetchEvents: suspend (mapping: VendorZoneMapping, startMs: Long, endMs: Long) -> List<WateringEvent>
+)
+
 class WateringZoneViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).wateringEventDao()
 
@@ -33,59 +42,45 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
                 return@launch
             }
 
+            val config = if (system == IrrigationSystem.TUYA) {
+                VendorSyncConfig(
+                    mappings = getTuyaZoneMappings(context).map { VendorZoneMapping(it.zone, it.deviceId, it.outlet) },
+                    missingCredentialMessage = if (getTuyaClientId(context).isBlank() || getTuyaClientSecret(context).isBlank())
+                        "Tuya isn't connected — add your Client ID and Secret in Help first." else null
+                ) { mapping, start, end -> TuyaClient.fetchWateringEvents(context, mapping.deviceId, mapping.zone, mapping.key, start, end) }
+            } else {
+                VendorSyncConfig(
+                    mappings = getRachioZoneMappings(context).map { VendorZoneMapping(it.zone, it.deviceId, it.zoneId) },
+                    missingCredentialMessage = if (getRachioApiToken(context).isBlank())
+                        "Rachio isn't connected — add your API token in Help first." else null
+                ) { mapping, start, end -> RachioClient.fetchWateringEvents(context, mapping.deviceId, mapping.key, mapping.zone, start, end) }
+            }
+
+            if (config.mappings.isEmpty()) {
+                _lastSyncResult.value = "No zones configured yet — add ${if (system == IrrigationSystem.TUYA) "device IDs" else "zone IDs"} in Help."
+                _syncing.value = false
+                return@launch
+            }
+            if (config.missingCredentialMessage != null) {
+                _lastSyncResult.value = config.missingCredentialMessage
+                _syncing.value = false
+                return@launch
+            }
+
             val end = System.currentTimeMillis()
             val start = end - (30L * 24 * 60 * 60 * 1000)
             var successCount = 0
             val errorZones = mutableListOf<String>()
             val allNewEvents = mutableListOf<WateringEvent>()
 
-            if (system == IrrigationSystem.TUYA) {
-                val mappings = getTuyaZoneMappings(context)
-                if (mappings.isEmpty()) {
-                    _lastSyncResult.value = "No zones configured yet — add device IDs in Help."
-                    _syncing.value = false
-                    return@launch
-                }
-                if (getTuyaClientId(context).isBlank() || getTuyaClientSecret(context).isBlank()) {
-                    _lastSyncResult.value = "Tuya isn't connected — add your Client ID and Secret in Help first."
-                    _syncing.value = false
-                    return@launch
-                }
-                mappings.forEach { mapping ->
-                    try {
-                        val zoneEvents = TuyaClient.fetchWateringEvents(
-                            context, mapping.deviceId, mapping.zone, mapping.outlet, start, end
-                        )
-                        dao.insertAll(zoneEvents)
-                        allNewEvents.addAll(zoneEvents)
-                        successCount++
-                    } catch (e: Exception) {
-                        errorZones.add("${mapping.zone} (${e.message ?: "unknown error"})")
-                    }
-                }
-            } else {
-                val mappings = getRachioZoneMappings(context)
-                if (mappings.isEmpty()) {
-                    _lastSyncResult.value = "No zones configured yet — add zone IDs in Help."
-                    _syncing.value = false
-                    return@launch
-                }
-                if (getRachioApiToken(context).isBlank()) {
-                    _lastSyncResult.value = "Rachio isn't connected — add your API token in Help first."
-                    _syncing.value = false
-                    return@launch
-                }
-                mappings.forEach { mapping ->
-                    try {
-                        val zoneEvents = RachioClient.fetchWateringEvents(
-                            context, mapping.deviceId, mapping.zoneId, mapping.zone, start, end
-                        )
-                        dao.insertAll(zoneEvents)
-                        allNewEvents.addAll(zoneEvents)
-                        successCount++
-                    } catch (e: Exception) {
-                        errorZones.add("${mapping.zone} (${e.message ?: "unknown error"})")
-                    }
+            config.mappings.forEach { mapping ->
+                try {
+                    val zoneEvents = config.fetchEvents(mapping, start, end)
+                    dao.insertAll(zoneEvents)
+                    allNewEvents.addAll(zoneEvents)
+                    successCount++
+                } catch (e: Exception) {
+                    errorZones.add("${mapping.zone} (${e.message ?: "unknown error"})")
                 }
             }
 

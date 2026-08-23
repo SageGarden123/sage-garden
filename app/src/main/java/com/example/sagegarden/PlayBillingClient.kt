@@ -16,6 +16,8 @@ import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Product/base-plan IDs must exactly match what's created in Play Console (Monetization →
@@ -50,6 +52,7 @@ object PlayBillingClient {
     private var billingClient: BillingClient? = null
     private var onPurchaseUpdated: ((Purchase) -> Unit)? = null
     private var cachedProductDetails: ProductDetails? = null
+    private var connected = CompletableDeferred<Unit>()
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
         if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
@@ -76,7 +79,9 @@ object PlayBillingClient {
             .build()
         billingClient = client
         client.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(billingResult: BillingResult) {}
+            override fun onBillingSetupFinished(billingResult: BillingResult) {
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) connected.complete(Unit)
+            }
             override fun onBillingServiceDisconnected() {} // enableAutoServiceReconnection() handles retrying
         })
     }
@@ -144,6 +149,11 @@ object PlayBillingClient {
      * gets re-verified against the server rather than relying solely on the purchase-time callback.
      */
     suspend fun queryExistingPurchases(): List<Purchase> {
+        // On a cold launch, onResume can run before startConnection()'s async callback fires —
+        // without this wait, the very first re-verification of the app's life would silently see
+        // no purchases at all, and with no server-side RTDN handler yet, that's the only mechanism
+        // that catches a cancellation/lapse that happened while the app was closed.
+        if (billingClient?.isReady != true) withTimeoutOrNull(5000) { connected.await() }
         val client = billingClient?.takeIf { it.isReady } ?: return emptyList()
         val params = QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
         return client.queryPurchasesAsync(params).purchasesList

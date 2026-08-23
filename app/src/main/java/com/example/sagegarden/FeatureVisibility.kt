@@ -126,8 +126,10 @@ object FeatureVisibility {
         }
         if (!AdvancedModeState.enabled) return false
         return when (feature) {
-            Feature.TUYA_INTEGRATION -> EntitlementManager.getCached(context).tuyaEnabled
-            Feature.SUN_MAP, Feature.AUDIT_SCREEN, Feature.COST_WATER_TRACKING,
+            // tuyaEnabled is always exactly isPro (see EntitlementManager.getCached) — TUYA_INTEGRATION
+            // is listed alongside the others rather than branching on tuyaEnabled specifically, since
+            // there's no case where the two could actually differ.
+            Feature.TUYA_INTEGRATION, Feature.SUN_MAP, Feature.AUDIT_SCREEN, Feature.COST_WATER_TRACKING,
             Feature.GROWTH_TIMELINES, Feature.WATERING_HISTORY -> EntitlementManager.getCached(context).isPro
             else -> true
         }

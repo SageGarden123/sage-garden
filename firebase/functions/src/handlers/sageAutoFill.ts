@@ -24,7 +24,7 @@ export const sageAutoFill = onRequest(
 
     const entitlement = await resolveEntitlement(deviceId);
     if (!entitlement.isPro && entitlement.sagePromptCount >= entitlement.sagePromptLimit) {
-      res.status(403).json({ error: "free_limit_reached" });
+      res.status(403).json({ error: "free_limit_reached", promptsRemaining: 0 });
       return;
     }
 

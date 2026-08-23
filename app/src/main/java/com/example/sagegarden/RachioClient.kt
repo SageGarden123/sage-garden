@@ -87,7 +87,13 @@ object RachioClient {
         for (i in 0 until arr.length()) {
             val e = arr.getJSONObject(i)
             if (e.optString("type") != "ZONE_STATUS") continue
-            if (!e.optString("summary").startsWith(zoneName)) continue
+            val summary = e.optString("summary")
+            // A plain startsWith would also match "Zone 10"/"Zone 11" summaries when zoneName is
+            // "Zone 1" — require the character right after the name to not be alphanumeric (or the
+            // name to be the whole string) so it's a real word-boundary match, not just a prefix.
+            val matchesZone = summary.startsWith(zoneName) &&
+                (summary.length == zoneName.length || !summary[zoneName.length].isLetterOrDigit())
+            if (!matchesZone) continue
             val subType = e.optString("subType")
             if (subType != "ZONE_STARTED" && subType != "ZONE_STOPPED" && subType != "ZONE_COMPLETED") continue
             zoneStatusEvents.add(ZoneStatusEvent(e.optLong("eventDate"), subType))

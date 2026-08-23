@@ -378,7 +378,7 @@ private fun todayKey(): String {
 
 fun plantIdDailyLimit(context: Context): Int =
     when (EntitlementManager.getCached(context).source) {
-        EntitlementSource.PROMO_CODE, EntitlementSource.OVERRIDE -> PLANTNET_PRO_DAILY_LIMIT
+        EntitlementSource.PROMO_CODE, EntitlementSource.PURCHASE, EntitlementSource.OVERRIDE -> PLANTNET_PRO_DAILY_LIMIT
         else -> PLANTNET_TRIAL_DAILY_LIMIT
     }
 
@@ -1152,6 +1152,14 @@ class MainActivity : ComponentActivity() {
         PlayBillingClient.init(applicationContext) { purchase ->
             lifecycleScope.launch { handlePlayPurchase(applicationContext, purchase) }
         }
+        // Synced here (synchronously, before the first composition) rather than in a LaunchedEffect
+        // inside GardenMapperApp — these are plain SharedPreferences reads, and doing them before
+        // setContent avoids a startup window where a deep-linked route (e.g. a notification opening
+        // straight into "audit") could evaluate FeatureVisibility.shouldShow() against these
+        // singletons' default values before an effect had a chance to sync them.
+        SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(applicationContext)
+        AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(applicationContext)
+        HemisphereState.value = getHemisphere(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
@@ -1323,9 +1331,8 @@ fun GardenMapperApp() {
     val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help")
 
     LaunchedEffect(Unit) {
-        SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(context)
-        AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(context)
-        HemisphereState.value = getHemisphere(context)
+        // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
+        // MainActivity.onCreate(), before this composable's first composition — see the comment there.
         val state = EntitlementManager.sync(context)
         trialNudge = EntitlementManager.checkTrialNudge(context, state)
     }
@@ -3785,7 +3792,11 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             Spacer(Modifier.height(10.dp))
 
             if (filtered.isEmpty()) {
-                Text("No irrigation data yet — connect Tuya zones and sync in Help.", color = Color.Gray)
+                val irrigationSystemName = when (getIrrigationSystem(context)) {
+                    IrrigationSystem.RACHIO -> "Rachio"
+                    else -> "Tuya"
+                }
+                Text("No irrigation data yet — connect $irrigationSystemName zones and sync in Help.", color = Color.Gray)
             } else {
                 filtered.forEach { e ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -4320,7 +4331,7 @@ fun FormScreen(
                         is PlantIdResult.DailyLimitReached -> {
                             snackbarHostState.showSnackbar(
                                 if (result.isProLimit) "You've reached today's AI photo ID limit (${result.limit}/day) — try again tomorrow."
-                                else "You've reached today's AI photo ID limit (${result.limit}/day) during your trial. Pro raises this to $PLANTNET_PRO_DAILY_LIMIT/day."
+                                else "You've reached today's AI photo ID limit (${result.limit}/day). Pro raises this to $PLANTNET_PRO_DAILY_LIMIT/day."
                             )
                         }
                     }
@@ -5844,6 +5855,10 @@ fun HelpScreen(
         }
 
         // 3a) Sage & Pro status
+        // Hoisted above the ExpandableSection (rather than inside its content lambda) so collapsing
+        // and re-expanding the card doesn't tear down this state and re-fire a live Play network call.
+        var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
+        LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
         ExpandableSection(title = "Sage & Pro status") {
             var entitlementState by remember { mutableStateOf(EntitlementManager.getCached(context)) }
             var refreshing by remember { mutableStateOf(false) }
@@ -5890,9 +5905,6 @@ fun HelpScreen(
 
             if (entitlementState.source == EntitlementSource.TRIAL || entitlementState.source == EntitlementSource.NONE) {
                 Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
-                var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
-                LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
 
                 Text("Upgrade to Pro", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))
