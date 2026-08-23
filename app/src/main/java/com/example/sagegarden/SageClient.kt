@@ -40,6 +40,13 @@ sealed class PromoRedeemResult {
     data object NetworkError : PromoRedeemResult()
 }
 
+sealed class VerifyPurchaseResult {
+    data class Success(val snapshot: EntitlementSnapshot) : VerifyPurchaseResult()
+    data object NotActive : VerifyPurchaseResult()
+    data object NetworkError : VerifyPurchaseResult()
+    data object ServerError : VerifyPurchaseResult()
+}
+
 sealed class SageChatResult {
     data class Success(val reply: String, val promptsRemaining: Int?) : SageChatResult()
     data object FreeLimitReached : SageChatResult()
@@ -82,6 +89,7 @@ object SageClient {
         val source = when (json.optString("source", "none")) {
             "trial" -> EntitlementSource.TRIAL
             "promo" -> EntitlementSource.PROMO_CODE
+            "purchase" -> EntitlementSource.PURCHASE
             "override" -> EntitlementSource.OVERRIDE
             else -> EntitlementSource.NONE
         }
@@ -127,6 +135,30 @@ object SageClient {
             }
         } catch (_: Exception) {
             PromoRedeemResult.NetworkError
+        }
+    }
+
+    /** Server-side verifies [purchaseToken] against the Google Play Developer API before granting entitlement — never trust a client-reported purchase state alone. Call after every purchase, and once at app startup to catch cancellations/renewals since the last verify. */
+    suspend fun verifyPurchase(context: Context, productId: String, purchaseToken: String): VerifyPurchaseResult = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject()
+                .put("deviceId", getOrCreateInstallId(context))
+                .put("productId", productId)
+                .put("purchaseToken", purchaseToken)
+            val request = requestBuilder("/verifyPurchase", body).build()
+            httpClient.newCall(request).execute().use { response ->
+                val text = response.body?.string() ?: return@withContext VerifyPurchaseResult.NetworkError
+                val json = JSONObject(text)
+                if (response.isSuccessful) {
+                    return@withContext VerifyPurchaseResult.Success(parseSnapshot(json))
+                }
+                return@withContext when (json.optString("error", "")) {
+                    "not_active" -> VerifyPurchaseResult.NotActive
+                    else -> VerifyPurchaseResult.ServerError
+                }
+            }
+        } catch (_: Exception) {
+            VerifyPurchaseResult.NetworkError
         }
     }
 

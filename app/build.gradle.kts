@@ -113,6 +113,9 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.appcheck.playintegrity)
 
+// Play Billing — Pro subscription purchases
+    implementation(libs.billing.ktx)
+
 
 
 }

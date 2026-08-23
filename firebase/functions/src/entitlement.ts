@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { FREE_PROMPT_LIMIT, TRIAL_DAYS } from "./config";
 
-export type EntitlementSource = "trial" | "promo" | "override" | "none";
+export type EntitlementSource = "trial" | "promo" | "purchase" | "override" | "none";
 
 export interface EntitlementSnapshot {
   isPro: boolean;
@@ -19,6 +19,8 @@ interface DeviceDoc {
   isProOverride?: boolean | null;
   sagePromptCount?: number;
   lastSeenAt?: Timestamp;
+  /** Set by verifyPurchase.ts after re-verifying against the Google Play Developer API — never trust a client-reported purchase state directly. Zero/absent means no active Play Billing subscription. */
+  purchaseExpiresAt?: Timestamp;
 }
 
 /**
@@ -58,12 +60,16 @@ export async function resolveEntitlement(deviceId: string, touch = true): Promis
 
   const inTrial = !!data.trialExpiresAt && data.trialExpiresAt.toMillis() > now.toMillis();
   const hasPromo = !!data.promoCode;
+  const hasActivePurchase = !!data.purchaseExpiresAt && data.purchaseExpiresAt.toMillis() > now.toMillis();
 
   let isPro = false;
   let source: EntitlementSource = "none";
   if (data.isProOverride === true) {
     isPro = true;
     source = "override";
+  } else if (hasActivePurchase) {
+    isPro = true;
+    source = "purchase";
   } else if (hasPromo) {
     isPro = true;
     source = "promo";

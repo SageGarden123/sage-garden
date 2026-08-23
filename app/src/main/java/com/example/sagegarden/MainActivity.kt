@@ -5,6 +5,7 @@
 package com.example.sagegarden
 
 import android.Manifest
+import android.app.Activity
 import android.app.Application
 import android.content.ContentValues
 import android.content.Context
@@ -74,8 +75,10 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android.billingclient.api.Purchase
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -1120,6 +1123,24 @@ suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withConte
 // MAIN ACTIVITY
 // ============================================================================
 
+/**
+ * Verifies a Play purchase server-side before touching entitlement — a client-reported PURCHASED
+ * state is never trusted on its own, since both the app and BillingClient run on a device an
+ * attacker could control. Only acknowledges (required within 3 days or Play auto-refunds it) once
+ * the server confirms the subscription is genuinely active.
+ */
+suspend fun handlePlayPurchase(context: Context, purchase: Purchase) {
+    if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
+    val productId = purchase.products.firstOrNull() ?: return
+    when (val result = SageClient.verifyPurchase(context, productId, purchase.purchaseToken)) {
+        is VerifyPurchaseResult.Success -> {
+            EntitlementManager.applySnapshot(context, result.snapshot)
+            PlayBillingClient.acknowledge(purchase)
+        }
+        else -> {} // leave unacknowledged — re-verified on next app launch via queryExistingPurchases, or the user can retry
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1128,6 +1149,9 @@ class MainActivity : ComponentActivity() {
             DropboxAuthState.checkAndRefresh(applicationContext)
         }
         AppCheckClient.init(applicationContext)
+        PlayBillingClient.init(applicationContext) { purchase ->
+            lifecycleScope.launch { handlePlayPurchase(applicationContext, purchase) }
+        }
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
@@ -1147,6 +1171,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DropboxAuthState.checkAndRefresh(applicationContext)
+        lifecycleScope.launch {
+            PlayBillingClient.queryExistingPurchases().forEach { handlePlayPurchase(applicationContext, it) }
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -5849,6 +5876,34 @@ fun HelpScreen(
                 enabled = !refreshing,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (refreshing) "Refreshing…" else "Refresh status") }
+
+            if (entitlementState.source == EntitlementSource.TRIAL || entitlementState.source == EntitlementSource.NONE) {
+                Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+                var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
+                LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
+
+                Text("Upgrade to Pro", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Keeps the sun map, smart-irrigation integration, companion planting/spacing audit, cost & water tracking, growth timelines, watering history and weather-aware reminders — plus unlimited Sage.",
+                    fontSize = 12.sp, color = Color.Gray
+                )
+                Spacer(Modifier.height(10.dp))
+                when {
+                    proOffers == null -> Text("Loading subscription options…", fontSize = 12.sp, color = Color.Gray)
+                    proOffers!!.isEmpty() -> Text("Pro subscriptions aren't available yet — check back soon.", fontSize = 12.sp, color = Color.Gray)
+                    else -> proOffers!!.forEach { offer ->
+                        Button(
+                            onClick = {
+                                (context as? Activity)?.let { activity -> PlayBillingClient.launchPurchase(activity, offer.offerToken) }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("${offer.formattedPrice} / ${readableBillingPeriod(offer.billingPeriodIso8601)}") }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 

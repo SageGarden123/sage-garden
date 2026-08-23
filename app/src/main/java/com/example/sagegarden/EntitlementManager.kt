@@ -12,7 +12,7 @@ private const val KEY_LAST_SYNCED_AT = "entitlement_last_synced_at"
 private const val KEY_DAY7_NUDGE_SHOWN = "entitlement_day7_nudge_shown"
 private const val KEY_TRIAL_ENDED_NUDGE_SHOWN = "entitlement_trial_ended_nudge_shown"
 
-enum class EntitlementSource { TRIAL, PROMO_CODE, OVERRIDE, NONE }
+enum class EntitlementSource { TRIAL, PROMO_CODE, PURCHASE, OVERRIDE, NONE }
 
 /** A one-time trial-status message to surface to the user, per [EntitlementManager.checkTrialNudge]. */
 enum class TrialNudge { DAY_SEVEN, TRIAL_ENDED }
@@ -115,6 +115,12 @@ object EntitlementManager {
         if (result is EntitlementSyncResult.Success) {
             writeSnapshot(context, result.snapshot)
         }
+        return getCached(context)
+    }
+
+    /** Persists a snapshot already obtained from a successful [SageClient.verifyPurchase] call — same effect as [sync] without a redundant network round-trip. */
+    fun applySnapshot(context: Context, snapshot: EntitlementSnapshot): EntitlementState {
+        writeSnapshot(context, snapshot)
         return getCached(context)
     }
 
