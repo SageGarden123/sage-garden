@@ -129,6 +129,7 @@ object BackupHelper {
         root.put("tuyaZoneMappings", tuyaArr)
 
         val settings = JSONObject()
+        settings.put("irrigationSystem", getIrrigationSystem(context).name)
         settings.put("photoStorageMode", getPhotoStorageMode(context))
         settings.put("dropboxPhotoFolderPath", getDropboxPhotoFolderPath(context) ?: "")
         settings.put("localPhotoFolderUri", getLocalPhotoFolderUri(context)?.toString() ?: "")
@@ -295,6 +296,12 @@ object BackupHelper {
         setTuyaZoneMappings(context, tuyaMappings)
 
         root.optJSONObject("settings")?.let { s ->
+            // Restored before Tuya/Rachio credentials (deliberately excluded from backup for
+            // security) so the zone-mapping panel just above shows under the right vendor instead
+            // of silently defaulting to "None" once those wiped credentials fail the fallback
+            // heuristic in getIrrigationSystem() — which made restored zone mappings look lost.
+            IrrigationSystem.entries.firstOrNull { it.name == s.optString("irrigationSystem", "") }
+                ?.let { setIrrigationSystem(context, it) }
             setPhotoStorageMode(context, s.optString("photoStorageMode", "local"))
             s.optString("localPhotoFolderUri", "").takeIf { it.isNotBlank() }
                 ?.let { setLocalPhotoFolderUri(context, Uri.parse(it)) }
@@ -309,7 +316,9 @@ object BackupHelper {
             setListGroupBy(context, s.optString("listGroupBy", "location"))
             setListSortBy(context, s.optString("listSortBy", "name"))
             setDefaultLandingTab(context, s.optString("defaultLandingTab", "map"))
-            setNotificationsEnabled(context, s.optBoolean("notificationsEnabled", false))
+            // Deliberately not restored: the OS permission is never granted on a fresh install/restore,
+            // so restoring "enabled" would show a red permission warning the user didn't ask for.
+            // Leave it off; they can flip it back on (which re-prompts for permission) if they want it.
             setNotificationStyle(context, s.optString("notificationStyle", "lockscreen"))
             s.optString("notificationOffsets", "0").split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
                 .let { if (it.isNotEmpty()) setNotificationOffsets(context, it) }
