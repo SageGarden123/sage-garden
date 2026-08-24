@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.pm.PackageManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Circle
@@ -50,6 +54,19 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.launch
+
+/** Persists the Real Map camera across leaving/re-entering SunMapScreen entirely — navigating away
+ * (back, or switching bottom-nav tabs) disposes the whole composable, which would otherwise reset
+ * cameraPositionState (and with it pan/zoom) back to the default every time. Same rationale as
+ * HemisphereState/AdvancedModeState etc. [initialized] guards the one-time GPS-based initial
+ * position so re-entering the screen never overrides wherever the user last panned to. */
+object SunMapCameraState {
+    var lat by mutableStateOf(40.785091)
+    var lng by mutableStateOf(-73.968285)
+    var zoom by mutableStateOf(18f)
+    var initialized by mutableStateOf(false)
+}
 
 // ---- Sun zone data + matching helpers (also used by the audit tab) ----
 
@@ -208,6 +225,8 @@ fun SunMapScreen(onBack: () -> Unit) {
     var drawMode by remember { mutableStateOf<String?>(null) } // null | "freehand" | "tap"
     var strokeComplete by remember { mutableStateOf(false) } // freehand only: finger lifted, awaiting confirm
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var selectedZoneId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Custom-map (image) drawing state
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -218,10 +237,15 @@ fun SunMapScreen(onBack: () -> Unit) {
 
     // Real-map (Google Map) drawing state
     val currentStrokeReal = remember { mutableStateListOf<LatLng>() }
-    val defaultLocation = LatLng(40.785091, -73.968285) // Central Park, NYC
-    val cameraPositionState = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(defaultLocation, 18f) }
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LatLng(SunMapCameraState.lat, SunMapCameraState.lng), SunMapCameraState.zoom)
+    }
 
+    // Only ever runs once per process (not on every re-entry to this screen), so it never overrides
+    // wherever the user last panned/zoomed to — see SunMapCameraState's doc comment.
     LaunchedEffect(Unit) {
+        if (SunMapCameraState.initialized) return@LaunchedEffect
+        SunMapCameraState.initialized = true
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             try {
                 LocationServices.getFusedLocationProviderClient(context).lastLocation.addOnSuccessListener { location ->
@@ -231,6 +255,14 @@ fun SunMapScreen(onBack: () -> Unit) {
                 }
             } catch (_: SecurityException) { /* permission revoked mid-flight, ignore */ }
         }
+    }
+
+    // Mirrors every camera move back into the persistent singleton above.
+    LaunchedEffect(cameraPositionState.position) {
+        val pos = cameraPositionState.position
+        SunMapCameraState.lat = pos.target.latitude
+        SunMapCameraState.lng = pos.target.longitude
+        SunMapCameraState.zoom = pos.zoom
     }
 
     // The map image is shown with ContentScale.Fit, so unless its aspect ratio exactly matches
@@ -267,6 +299,23 @@ fun SunMapScreen(onBack: () -> Unit) {
             ((unscaled.y - rect.top) / rect.height).coerceIn(0f, 1f)
         )
     }
+
+    // Inverse of screenPointToFraction, solved for the panOffset that puts a given fraction-space
+    // point at the container's center — used to bring a selected zone into view when tapped/picked.
+    fun centerOnFraction(frac: Offset) {
+        val rect = fittedImageRect()
+        val unscaled = Offset(rect.left + frac.x * rect.width, rect.top + frac.y * rect.height)
+        val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+        panOffset = (center - unscaled) * scale
+    }
+
+    fun centroidOf(points: List<Offset>): Offset =
+        if (points.isEmpty()) Offset(0.5f, 0.5f)
+        else Offset(points.map { it.x }.average().toFloat(), points.map { it.y }.average().toFloat())
+
+    fun centroidOfLatLng(points: List<LatLng>): LatLng =
+        if (points.isEmpty()) LatLng(SunMapCameraState.lat, SunMapCameraState.lng)
+        else LatLng(points.map { it.latitude }.average(), points.map { it.longitude }.average())
 
     val strokeSize = if (showingRealMap) currentStrokeReal.size else currentStroke.size
 
@@ -306,27 +355,49 @@ fun SunMapScreen(onBack: () -> Unit) {
         }
 
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            if (showingRealMap) {
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
+            // Always composed (never behind an `if`) so the native map view — and with it
+            // cameraPositionState's pan/zoom — survives toggling to "My Drawing" and back.
+            // It used to be conditionally composed, which tore the map down (resetting zoom to
+            // the default) every time the user switched away from Real Map and back.
+            GoogleMap(
+                    modifier = Modifier.fillMaxSize().alpha(if (showingRealMap) 1f else 0f),
                     cameraPositionState = cameraPositionState,
                     properties = MapProperties(mapType = MapType.HYBRID),
                     uiSettings = MapUiSettings(
-                        scrollGesturesEnabled = drawMode != "freehand",
-                        zoomGesturesEnabled = drawMode != "freehand",
+                        scrollGesturesEnabled = showingRealMap && drawMode != "freehand",
+                        zoomGesturesEnabled = showingRealMap && drawMode != "freehand",
                         tiltGesturesEnabled = false,
                         rotationGesturesEnabled = false
                     ),
-                    onMapClick = { latLng -> if (drawMode == "tap") currentStrokeReal.add(latLng) }
+                    onMapClick = { latLng ->
+                        if (showingRealMap && drawMode == "tap") {
+                            currentStrokeReal.add(latLng)
+                        } else if (showingRealMap && drawMode == null) {
+                            val hit = zones.filter { it.mapType == "real" }
+                                .firstOrNull { pointInPolygonLatLng(latLng, jsonToLatLngPoints(it.pointsJson)) }
+                            if (hit != null) {
+                                selectedZoneId = hit.id
+                                scope.launch {
+                                    cameraPositionState.animate(CameraUpdateFactory.newLatLng(centroidOfLatLng(jsonToLatLngPoints(hit.pointsJson))))
+                                }
+                            }
+                        }
+                    }
                 ) {
                     zones.filter { it.mapType == "real" }.forEach { zone ->
                         val pts = jsonToLatLngPoints(zone.pointsJson)
                         if (pts.size >= 3) {
+                            val isSelected = zone.id == selectedZoneId
                             Polygon(
                                 points = pts,
-                                fillColor = colorForSunCategory(zone.category).copy(alpha = 0.35f),
-                                strokeColor = colorForSunCategory(zone.category),
-                                strokeWidth = 4f
+                                fillColor = colorForSunCategory(zone.category).copy(alpha = if (isSelected) 0.6f else 0.35f),
+                                strokeColor = if (isSelected) Color.White else colorForSunCategory(zone.category),
+                                strokeWidth = if (isSelected) 7f else 4f,
+                                clickable = true,
+                                onClick = {
+                                    selectedZoneId = zone.id
+                                    scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLng(centroidOfLatLng(pts))) }
+                                }
                             )
                         }
                     }
@@ -351,7 +422,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                     }
                 }
 
-                if (drawMode == "freehand") {
+                if (showingRealMap && drawMode == "freehand") {
                     var lastDragScreenPoint by remember { mutableStateOf<Offset?>(null) }
                     Box(
                         modifier = Modifier.fillMaxSize().pointerInput(Unit) {
@@ -379,7 +450,8 @@ fun SunMapScreen(onBack: () -> Unit) {
                         }
                     )
                 }
-            } else if (mapUri != null) {
+
+            if (!showingRealMap && mapUri != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -412,12 +484,24 @@ fun SunMapScreen(onBack: () -> Unit) {
                                             panOffset += pan
                                         }
                                     }
-                                else -> Modifier.pointerInput(Unit) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        scale = (scale * zoom).coerceIn(0.5f, 6f)
-                                        panOffset += pan
+                                else -> Modifier
+                                    .pointerInput(zones) {
+                                        detectTapGestures(onTap = { offset ->
+                                            val frac = screenPointToFraction(offset)
+                                            val hit = zones.filter { it.mapType == "custom" }
+                                                .firstOrNull { pointInPolygon(frac, sunJsonToPoints(it.pointsJson)) }
+                                            if (hit != null) {
+                                                selectedZoneId = hit.id
+                                                centerOnFraction(centroidOf(sunJsonToPoints(hit.pointsJson)))
+                                            }
+                                        })
                                     }
-                                }
+                                    .pointerInput(Unit) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            scale = (scale * zoom).coerceIn(0.5f, 6f)
+                                            panOffset += pan
+                                        }
+                                    }
                             }
                         )
                 ) {
@@ -446,13 +530,18 @@ fun SunMapScreen(onBack: () -> Unit) {
                             zones.filter { it.mapType == "custom" }.forEach { zone ->
                                 val pts = sunJsonToPoints(zone.pointsJson).map { toPx(it) }
                                 if (pts.size >= 3) {
+                                    val isSelected = zone.id == selectedZoneId
                                     val path = androidx.compose.ui.graphics.Path().apply {
                                         moveTo(pts[0].x, pts[0].y)
                                         for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
                                         close()
                                     }
-                                    drawPath(path, color = colorForSunCategory(zone.category).copy(alpha = 0.35f), style = Fill)
-                                    drawPath(path, color = colorForSunCategory(zone.category), style = Stroke(width = 3f))
+                                    drawPath(path, color = colorForSunCategory(zone.category).copy(alpha = if (isSelected) 0.6f else 0.35f), style = Fill)
+                                    drawPath(
+                                        path,
+                                        color = if (isSelected) Color.White else colorForSunCategory(zone.category),
+                                        style = Stroke(width = if (isSelected) 6f else 3f)
+                                    )
                                 }
                             }
 
@@ -537,6 +626,10 @@ fun SunMapScreen(onBack: () -> Unit) {
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (selected) colorForSunCategory(key) else colorForSunCategory(key).copy(alpha = 0.25f))
+                                .then(
+                                    if (selected) Modifier.border(2.dp, Color(0xFF233821), RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
                                 .clickable { selectedCategory = key }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
@@ -554,12 +647,41 @@ fun SunMapScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(10.dp))
-                    Column(Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState())) {
+                    val zoneListScrollState = rememberScrollState()
+                    val zoneRowPositions = remember { mutableStateMapOf<String, Float>() }
+                    // Jumps the list to whichever zone was just selected — including from a tap on
+                    // the map itself, not just a click within the list — so a long list of
+                    // same-named zones doesn't leave the user hunting for the one that just lit up.
+                    LaunchedEffect(selectedZoneId) {
+                        selectedZoneId?.let { id -> zoneRowPositions[id]?.let { y -> zoneListScrollState.animateScrollTo(y.toInt()) } }
+                    }
+                    Column(Modifier.heightIn(max = 140.dp).verticalScroll(zoneListScrollState)) {
                         visibleZones.forEach { zone ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val isSelected = zone.id == selectedZoneId
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { zoneRowPositions[zone.id] = it.positionInParent().y }
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .then(if (isSelected) Modifier.background(Color(0xFF3A5A40).copy(alpha = 0.15f)) else Modifier)
+                                    .clickable {
+                                        selectedZoneId = zone.id
+                                        if (showingRealMap) {
+                                            val pts = jsonToLatLngPoints(zone.pointsJson)
+                                            scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLng(centroidOfLatLng(pts))) }
+                                        } else {
+                                            centerOnFraction(centroidOf(sunJsonToPoints(zone.pointsJson)))
+                                        }
+                                    }
+                                    .padding(vertical = 4.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(colorForSunCategory(zone.category)))
                                 Spacer(Modifier.width(8.dp))
-                                Text(labelForSunCategory(zone.category), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(
+                                    labelForSunCategory(zone.category), fontSize = 12.sp, modifier = Modifier.weight(1f),
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                )
                                 TextButton(onClick = { pendingDeleteId = zone.id }) { Text("Delete", fontSize = 11.sp) }
                             }
                         }
