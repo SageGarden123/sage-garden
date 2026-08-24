@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.draw.clipToBounds
@@ -58,7 +59,9 @@ import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -1163,6 +1166,7 @@ class MainActivity : ComponentActivity() {
         SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(applicationContext)
         AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(applicationContext)
         HemisphereState.value = getHemisphere(applicationContext)
+        EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
@@ -1331,7 +1335,7 @@ fun GardenMapperApp() {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help")
+    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help", "help_pro_status")
 
     LaunchedEffect(Unit) {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
@@ -1369,19 +1373,21 @@ fun GardenMapperApp() {
             TopAppBar(title = {
                 Column {
                     Text("Sage Garden")
-                    // Read live rather than a remembered snapshot, so this clears immediately after
-                    // a promo code redemption (in Help, a different composable) instead of only on
-                    // the next full app restart.
-                    val topBarEntitlement = EntitlementManager.getCached(context)
-                    if (topBarEntitlement.isPro && topBarEntitlement.source == EntitlementSource.TRIAL) {
-                        val daysLeft = topBarEntitlement.trialExpiresAt?.let {
-                            ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt().coerceAtLeast(0)
-                        } ?: 0
-                        Text(
-                            "Trial: $daysLeft day${if (daysLeft == 1) "" else "s"} left",
-                            fontSize = 11.sp, color = Color(0xFFE3DDCF)
-                        )
+                    // EntitlementLiveState (not EntitlementManager.getCached(context) directly) so
+                    // this updates immediately after a promo-code redemption or a trial lapsing —
+                    // see EntitlementLiveState's doc comment for why a raw prefs read isn't reactive.
+                    val topBarEntitlement = EntitlementLiveState.value
+                    val statusText = when {
+                        topBarEntitlement.isPro && topBarEntitlement.source == EntitlementSource.TRIAL -> {
+                            val daysLeft = topBarEntitlement.trialExpiresAt?.let {
+                                ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt().coerceAtLeast(0)
+                            } ?: 0
+                            "Trial: $daysLeft day${if (daysLeft == 1) "" else "s"} left"
+                        }
+                        topBarEntitlement.isPro -> "Pro"
+                        else -> "Free"
                     }
+                    Text(statusText, fontSize = 11.sp, color = Color(0xFFE3DDCF))
                 }
             })
         },
@@ -1434,7 +1440,7 @@ fun GardenMapperApp() {
                         )
                     }
                     NavigationBarItem(
-                        selected = currentRoute == "help",
+                        selected = currentRoute == "help" || currentRoute == "help_pro_status",
                         onClick = { navController.navigate("help") { popUpTo("map") } },
                         icon = { Text("❓") }, label = { AutoSizeText("Help") }
                     )
@@ -1537,23 +1543,23 @@ fun GardenMapperApp() {
                 HelpScreen(
                     viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
                     snackbarHostState = snackbarHostState, scope = scope,
-                    onOpenFaq = { navController.navigate("faq") },
-                    onOpenWidgetSettings = { widgetId -> navController.navigate("widget_settings/$widgetId") }
+                    onOpenFaq = { navController.navigate("faq") }
                 )
             }
-            composable(
-                "widget_settings/{id}",
-                arguments = listOf(navArgument("id") { type = NavType.IntType })
-            ) { backStackEntry ->
-                val widgetId = backStackEntry.arguments?.getInt("id") ?: return@composable
-                WidgetConfigScreen(
-                    initialConfig = getWidgetConfig(context, widgetId),
-                    onSave = { config ->
-                        setWidgetConfig(context, widgetId, config)
-                        scheduleWidgetRefresh(context, widgetId, config.intervalDays)
-                        scope.launch { refreshWateringWidgets(context) }
-                        navController.popBackStack()
-                    }
+            // Same screen as "help" — separate route so the Pro upsell dialog's "Have a promo code
+            // instead?" button can land with that section already open and scrolled into view,
+            // without disturbing the plain "help" route bottom nav/SageChatSheet already use.
+            composable("help_pro_status") {
+                val pathViewModel: IrrigationPathViewModel = viewModel(
+                    factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
+                        context.applicationContext as Application
+                    )
+                )
+                HelpScreen(
+                    viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
+                    snackbarHostState = snackbarHostState, scope = scope,
+                    onOpenFaq = { navController.navigate("faq") },
+                    initiallyOpenProStatus = true
                 )
             }
             composable("faq") {
@@ -1597,34 +1603,139 @@ fun GardenMapperApp() {
                 val daysLeft = trialExpiresAt?.let {
                     ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt().coerceAtLeast(0)
                 } ?: 0
-                AlertDialog(
-                    onDismissRequest = { trialNudge = null },
-                    title = { Text("Halfway through your trial 🌿") },
-                    text = {
-                        Text(
-                            "You're 7 days into your free Pro trial, with $daysLeft day${if (daysLeft == 1) "" else "s"} left. Pro keeps you covered with unlimited plants, full log history, Tuya integration, the sun map, growth timelines, and the Sage AI assistant. See Help → Sage & Pro status any time to check your status or add a promo code."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { trialNudge = null; navController.navigate("help") }) { Text("Open Help") }
-                    },
-                    dismissButton = { TextButton(onClick = { trialNudge = null }) { Text("Maybe later") } }
+                ProUpsellDialog(
+                    headline = "Halfway through your trial 🌿",
+                    subheadline = "$daysLeft day${if (daysLeft == 1) "" else "s"} left of free Pro access",
+                    onDismiss = { trialNudge = null },
+                    onOpenHelp = { trialNudge = null; navController.navigate("help_pro_status") }
                 )
             }
             TrialNudge.TRIAL_ENDED -> {
-                AlertDialog(
-                    onDismissRequest = { trialNudge = null },
-                    title = { Text("Your free trial has ended") },
-                    text = {
-                        Text(
-                            "Some features are now limited to the free tier: up to ${EntitlementManager.FREE_PLANT_LIMIT} plants, your last ${EntitlementManager.FREE_LOG_HISTORY_LIMIT} log entries, no Tuya integration, and Sage requires Pro. Enter a promo code in Help → Sage & Pro status to unlock full access again."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { trialNudge = null; navController.navigate("help") }) { Text("Open Help") }
-                    },
-                    dismissButton = { TextButton(onClick = { trialNudge = null }) { Text("Got it") } }
+                ProUpsellDialog(
+                    headline = "Your free trial has ended",
+                    subheadline = "You're back on the free tier — upgrade any time to pick up where you left off",
+                    onDismiss = { trialNudge = null },
+                    onOpenHelp = { trialNudge = null; navController.navigate("help_pro_status") }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Full paywall-style dialog for the trial nudges — a plain AlertDialog undersold Pro at exactly the
+ * moment a user is deciding whether to pay. Fetches live pricing itself (rather than requiring a
+ * caller to hoist [ProOffer]s) since it's only ever shown transiently.
+ */
+@Composable
+fun ProUpsellDialog(headline: String, subheadline: String, onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
+    val context = LocalContext.current
+    var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
+    LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
+    var selectedOfferToken by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(proOffers) {
+        if (selectedOfferToken == null) {
+            selectedOfferToken = (proOffers?.firstOrNull { it.billingPeriodIso8601.contains("Y") } ?: proOffers?.firstOrNull())?.offerToken
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color(0xFF3A5A40), Color(0xFF233821))))
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🌿", fontSize = 32.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(headline, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(4.dp))
+                    Text(subheadline, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, textAlign = TextAlign.Center)
+                }
+
+                Column(Modifier.padding(20.dp)) {
+                    listOf(
+                        "Unlimited plants & full log history",
+                        "Tuya/Rachio smart-irrigation integration",
+                        "Sun exposure map",
+                        "Companion planting & spacing audit",
+                        "Cost & water usage tracking",
+                        "Growth photo timelines",
+                        "Unlimited Sage AI assistant"
+                    ).forEach { feature ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text("✓", color = Color(0xFF3A5A40), fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.width(22.dp))
+                            Text(feature, fontSize = 13.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    when {
+                        proOffers == null -> Text("Loading subscription options…", fontSize = 12.sp, color = Color.Gray)
+                        proOffers!!.isEmpty() -> Text("Pro subscriptions aren't available yet — check back soon.", fontSize = 12.sp, color = Color.Gray)
+                        else -> {
+                            proOffers!!.forEach { offer ->
+                                val isYearly = offer.billingPeriodIso8601.contains("Y")
+                                val selected = selectedOfferToken == offer.offerToken
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .border(
+                                            width = if (selected) 2.dp else 1.dp,
+                                            color = if (selected) Color(0xFF3A5A40) else Color(0xFFDDDDDD),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (selected) Color(0xFF3A5A40).copy(alpha = 0.06f) else Color.Transparent)
+                                        .clickable { selectedOfferToken = offer.offerToken }
+                                        .padding(12.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                        Column(Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    readableBillingPeriod(offer.billingPeriodIso8601).replaceFirstChar { it.uppercase() },
+                                                    fontWeight = FontWeight.SemiBold, fontSize = 13.sp
+                                                )
+                                                if (isYearly) {
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Box(
+                                                        Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFFF7A45))
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) { Text("BEST VALUE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
+                                                }
+                                            }
+                                        }
+                                        Text(offer.formattedPrice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    val token = selectedOfferToken ?: return@Button
+                                    (context as? Activity)?.let { activity -> PlayBillingClient.launchPurchase(activity, token) }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233821))
+                            ) { Text("Upgrade Now", fontWeight = FontWeight.Bold) }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Have a promo code instead?", fontSize = 12.sp) }
+                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Maybe later", fontSize = 12.sp, color = Color.Gray) }
+                }
             }
         }
     }
@@ -2749,6 +2860,29 @@ fun CustomMapScreen(
         )
     }
 
+    // Inverse of screenPointToFraction — where a map-fraction point actually renders on screen
+    // right now, given the live pan/zoom/rotation. Used to hit-test existing plant markers against
+    // a fixed on-screen radius (see below) rather than a fraction-space one, so the tap target
+    // doesn't balloon in real screen size as the user zooms in.
+    fun fractionToScreenPoint(frac: Offset): Offset {
+        val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+        val orig = Offset(frac.x * containerSize.width, frac.y * containerSize.height)
+        val unscaled = orig - center
+        val theta = Math.toRadians(rotation.toDouble())
+        val cosT = kotlin.math.cos(theta).toFloat()
+        val sinT = kotlin.math.sin(theta).toFloat()
+        val rotated = Offset(
+            unscaled.x * cosT - unscaled.y * sinT,
+            unscaled.x * sinT + unscaled.y * cosT
+        )
+        return rotated * scale + center + panOffset
+    }
+
+    // Fixed screen-space radius (not fraction-space) for "did the user tap an existing plant
+    // marker" — deliberately small and zoom-independent so that zooming in lets a plant be placed
+    // right next to an existing one instead of the marker's hit target growing along with it.
+    val plantTapRadiusPx = with(density) { 18.dp.toPx() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2806,7 +2940,15 @@ fun CustomMapScreen(
                             // else: browsing the main paths list — taps do nothing here
                         }
                     } else {
-                        pendingFraction = frac
+                        val nearestPlant = plants
+                            .filter { it.mapX != null && it.mapY != null }
+                            .minByOrNull { (fractionToScreenPoint(Offset(it.mapX!!.toFloat(), it.mapY!!.toFloat())) - tap).getDistance() }
+                        val nearestDist = nearestPlant?.let { (fractionToScreenPoint(Offset(it.mapX!!.toFloat(), it.mapY!!.toFloat())) - tap).getDistance() }
+                        if (nearestPlant != null && nearestDist != null && nearestDist <= plantTapRadiusPx) {
+                            tooltipPlant = nearestPlant
+                        } else {
+                            pendingFraction = frac
+                        }
                     }
                 }
             }
@@ -2973,11 +3115,7 @@ fun CustomMapScreen(
                     val xDp = with(density) { (plant.mapX * containerSize.width).toFloat().toDp() }
                     val yDp = with(density) { (plant.mapY * containerSize.height).toFloat().toDp() }
                     val isPendingTarget = attachingDripSegment != null && pendingDripTargets.contains(plant.id)
-                    val markerColor = when {
-                        plant.manualWateringOnly -> Color(0xFFE0A030)
-                        plant.native.startsWith("Native") -> Color(0xFF3A5A40)
-                        else -> Color(0xFFFF7A45)
-                    }
+                    val markerColor = Color(0xFFFF7A45)
                     Box(
                         modifier = Modifier
                             .offset(x = xDp - 2.5.dp, y = yDp - 2.5.dp)
@@ -2985,15 +3123,18 @@ fun CustomMapScreen(
                             .clip(RoundedCornerShape(50))
                             .background(markerColor)
                             .then(if (isPendingTarget) Modifier.border(1.dp, Color.White, RoundedCornerShape(50)) else Modifier)
-                            .clickable {
-                                when {
-                                    attachingDripSegment != null -> {
+                            .then(
+                                // Only intercepts taps while picking drip-segment targets. Plain
+                                // plant lookup/placement taps are handled by the parent's fixed-radius
+                                // hit test instead, so this tiny marker's touch target doesn't grow
+                                // to match it when zoomed in (see fractionToScreenPoint above).
+                                if (attachingDripSegment != null) {
+                                    Modifier.clickable {
                                         if (pendingDripTargets.contains(plant.id)) pendingDripTargets.remove(plant.id)
                                         else pendingDripTargets.add(plant.id)
                                     }
-                                    !editingPaths -> tooltipPlant = plant
-                                }
-                            }
+                                } else Modifier
+                            )
                     )
                 }
             }
@@ -4785,7 +4926,7 @@ val faqItems = listOf(
     ),
     FaqItem(
         "What's included with Pro, and what's free?",
-        "Free gives you up to 25 plants, your last 20 care log entries per plant, watering reminders and the photo log — plus the plant care widget (up to 10 plants) and Dropbox backup, which stay free either way. Pro adds unlimited plants, full log history, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and the Sage AI assistant. Every install starts with a 14-day free Pro trial — after that, enter a promo code in Help → Sage & Pro status to unlock Pro permanently."
+        "Free gives you up to 25 plants, your last 20 care log entries per plant, watering reminders and the photo log — plus the plant care widget (up to 10 plants) and Dropbox backup, which stay free either way. AI plant-photo identification is limited to 5 identifications per day on the free tier. Pro adds unlimited plants, full log history, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, a much higher AI photo-ID daily limit, and the Sage AI assistant. Every install starts with a 14-day free Pro trial — after that, you're moved to the free tier automatically (nothing is lost or locked away) until you subscribe or enter a promo code in Help → Sage & Pro status."
     )
 )
 
@@ -4866,10 +5007,11 @@ fun AutoSizeText(
 fun ExpandableSection(
     title: String,
     initiallyExpanded: Boolean = false,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     var expanded by remember { mutableStateOf(initiallyExpanded) }
-    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+    Card(modifier = modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Column(Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
@@ -4896,7 +5038,7 @@ fun HelpScreen(
     viewModel: PlantViewModel, wateringViewModel: WateringZoneViewModel, pathViewModel: IrrigationPathViewModel,
     snackbarHostState: SnackbarHostState, scope: CoroutineScope,
     onOpenFaq: () -> Unit,
-    onOpenWidgetSettings: (Int) -> Unit = {}
+    initiallyOpenProStatus: Boolean = false
 ) {
     val context = LocalContext.current
     val plants by viewModel.plants.collectAsState()
@@ -5055,7 +5197,13 @@ fun HelpScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    val helpScrollState = rememberScrollState()
+    var proStatusSectionY by remember { mutableStateOf(0f) }
+    LaunchedEffect(initiallyOpenProStatus) {
+        if (initiallyOpenProStatus) helpScrollState.animateScrollTo(proStatusSectionY.toInt())
+    }
+
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).padding(16.dp)) {
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
             Row(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Frequently Asked Questions", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -5089,8 +5237,12 @@ fun HelpScreen(
             var notifOffsets by remember { mutableStateOf(getNotificationOffsets(context)) }
             var notifHour by remember { mutableStateOf(getNotificationHour(context)) }
             var notifMinute by remember { mutableStateOf(getNotificationMinute(context)) }
-            val hasNotifPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-            val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            var hasNotifPermission by remember {
+                mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+            }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                hasNotifPermission = granted
+            }
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
             val hasExactAlarmPermission = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
 
@@ -5245,41 +5397,21 @@ fun HelpScreen(
             }
             }
 
-            ExpandableSection(title = "Plant care widget") {
-            Text("Edit an existing home-screen widget's settings — which plants it shows, how often it refreshes, and which care types (watering, pruning, fertilising, feeding) it includes.", fontSize = 12.sp, color = Color.Gray)
-            Spacer(Modifier.height(10.dp))
-            val placedWidgetIds = remember { getPlacedWidgetIds(context) }
-            if (placedWidgetIds.isEmpty()) {
-                Text("No plant care widgets are on your home screen yet. Add one from your launcher's widget picker.", fontSize = 12.sp, color = Color.Gray)
-            } else {
-                placedWidgetIds.forEachIndexed { index, widgetId ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            if (placedWidgetIds.size > 1) "Widget ${index + 1}" else "Plant care widget",
-                            fontSize = 13.sp, modifier = Modifier.weight(1f)
-                        )
-                        OutlinedButton(onClick = { onOpenWidgetSettings(widgetId) }) { Text("Edit") }
-                    }
-                    if (index < placedWidgetIds.lastIndex) Spacer(Modifier.height(6.dp))
-                }
-            }
-            }
-
             ExpandableSection(title = "Hemisphere") {
             Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
             var hemisphere by remember { mutableStateOf(getHemisphere(context)) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = hemisphere == Hemisphere.SOUTHERN,
-                    onClick = { hemisphere = Hemisphere.SOUTHERN; setHemisphere(context, Hemisphere.SOUTHERN) },
-                    label = { Text("Southern (e.g. Australia)", fontSize = 12.sp) }
-                )
-                FilterChip(
-                    selected = hemisphere == Hemisphere.NORTHERN,
-                    onClick = { hemisphere = Hemisphere.NORTHERN; setHemisphere(context, Hemisphere.NORTHERN) },
-                    label = { Text("Northern", fontSize = 12.sp) }
-                )
+                listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
+                    Button(
+                        onClick = { hemisphere = value; setHemisphere(context, value) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (hemisphere == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
+                            contentColor = if (hemisphere == value) Color.White else Color.Black
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) { Text(label, fontSize = 12.sp) }
+                }
             }
             }
 
@@ -5574,16 +5706,16 @@ fun HelpScreen(
             Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = irrigationSystem == IrrigationSystem.TUYA,
-                    onClick = { irrigationSystem = IrrigationSystem.TUYA; setIrrigationSystem(context, IrrigationSystem.TUYA) },
-                    label = { Text("Tuya", fontSize = 12.sp) }
-                )
-                FilterChip(
-                    selected = irrigationSystem == IrrigationSystem.RACHIO,
-                    onClick = { irrigationSystem = IrrigationSystem.RACHIO; setIrrigationSystem(context, IrrigationSystem.RACHIO) },
-                    label = { Text("Rachio", fontSize = 12.sp) }
-                )
+                listOf(IrrigationSystem.NONE to "None", IrrigationSystem.TUYA to "Tuya", IrrigationSystem.RACHIO to "Rachio").forEach { (value, label) ->
+                    Button(
+                        onClick = { irrigationSystem = value; setIrrigationSystem(context, value) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (irrigationSystem == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
+                            contentColor = if (irrigationSystem == value) Color.White else Color.Black
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) { Text(label, fontSize = 12.sp) }
+                }
             }
             Spacer(Modifier.height(6.dp))
             Text("Switching doesn't delete the other system's saved credentials or zones — it just hides them.", fontSize = 11.sp, color = Color.Gray)
@@ -5808,6 +5940,7 @@ fun HelpScreen(
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
+            if (irrigationSystem != IrrigationSystem.NONE) {
             Text("Sync irrigation history", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text(
@@ -5823,6 +5956,7 @@ fun HelpScreen(
             Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync now") }
             syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
             Spacer(Modifier.height(12.dp))
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { irrigationImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }, modifier = Modifier.weight(1f)) { Text("Import from device") }
                 OutlinedButton(
@@ -5859,11 +5993,12 @@ fun HelpScreen(
         }
 
         // 3a) Sage & Pro status
-        // Hoisted above the ExpandableSection (rather than inside its content lambda) so collapsing
-        // and re-expanding the card doesn't tear down this state and re-fire a live Play network call.
-        var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
-        LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
-        ExpandableSection(title = "Sage & Pro status") {
+        var showProUpsell by remember { mutableStateOf(false) }
+        ExpandableSection(
+            title = "Sage & Pro status",
+            initiallyExpanded = initiallyOpenProStatus,
+            modifier = Modifier.onGloballyPositioned { proStatusSectionY = it.positionInParent().y }
+        ) {
             var entitlementState by remember { mutableStateOf(EntitlementManager.getCached(context)) }
             var refreshing by remember { mutableStateOf(false) }
             val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
@@ -5917,19 +6052,16 @@ fun HelpScreen(
                     fontSize = 12.sp, color = Color.Gray
                 )
                 Spacer(Modifier.height(10.dp))
-                when {
-                    proOffers == null -> Text("Loading subscription options…", fontSize = 12.sp, color = Color.Gray)
-                    proOffers!!.isEmpty() -> Text("Pro subscriptions aren't available yet — check back soon.", fontSize = 12.sp, color = Color.Gray)
-                    else -> proOffers!!.forEach { offer ->
-                        Button(
-                            onClick = {
-                                (context as? Activity)?.let { activity -> PlayBillingClient.launchPurchase(activity, offer.offerToken) }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("${offer.formattedPrice} / ${readableBillingPeriod(offer.billingPeriodIso8601)}") }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
+                Button(onClick = { showProUpsell = true }, modifier = Modifier.fillMaxWidth()) { Text("Upgrade to Pro") }
+            }
+            if (showProUpsell) {
+                ProUpsellDialog(
+                    headline = "Upgrade to Pro",
+                    subheadline = "Unlock every feature, no limits",
+                    onDismiss = { showProUpsell = false },
+                    // Already on this screen with the promo code field further down — just close the dialog.
+                    onOpenHelp = { showProUpsell = false }
+                )
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
@@ -5988,7 +6120,7 @@ fun HelpScreen(
         // 3b) Basic / Advanced mode
         ExpandableSection(title = "Basic / Advanced mode") {
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
-            val isPro = EntitlementManager.getCached(context).isPro
+            val isPro = EntitlementLiveState.value.isPro
 
             Text(
                 "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and weather-aware reminders.",
@@ -6111,6 +6243,7 @@ fun HelpScreen(
             Spacer(Modifier.height(10.dp))
 
             var backupWorking by remember { mutableStateOf(false) }
+            var restoreWorking by remember { mutableStateOf(false) }
             var backupResultText by remember { mutableStateOf<String?>(null) }
             var showRestoreConfirm by remember { mutableStateOf(false) }
             var showBackupFolderPicker by remember { mutableStateOf(false) }
@@ -6118,21 +6251,23 @@ fun HelpScreen(
                 mutableStateOf(getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: "")
             }
 
-            Text("Backup folder", fontSize = 12.sp, color = Color.Gray)
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = backupFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-                label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showBackupFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
-            if (showBackupFolderPicker) {
-                DropboxFolderPickerDialog(
-                    context = context, onDismiss = { showBackupFolderPicker = false },
-                    onFolderSelected = { path -> backupFolderPath = path; setDropboxBackupFolderPath(context, path) }
+            if (DropboxAuthState.token != null) {
+                Text("Backup folder", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = backupFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
+                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { showBackupFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                if (showBackupFolderPicker) {
+                    DropboxFolderPickerDialog(
+                        context = context, onDismiss = { showBackupFolderPicker = false },
+                        onFolderSelected = { path -> backupFolderPath = path; setDropboxBackupFolderPath(context, path) }
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(10.dp))
 
             var checkingExistingBackup by remember { mutableStateOf(false) }
             var existingBackupDate by remember { mutableStateOf<Date?>(null) }
@@ -6160,7 +6295,7 @@ fun HelpScreen(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !checkingExistingBackup && DropboxAuthState.token != null
+                modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !checkingExistingBackup && !restoreWorking && DropboxAuthState.token != null
             ) {
                 Text(
                     when {
@@ -6186,7 +6321,7 @@ fun HelpScreen(
             }
 
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && DropboxAuthState.token != null) { Text("Restore from Dropbox") }
+            OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && DropboxAuthState.token != null) { Text(if (restoreWorking) "Restoring…" else "Restore from Dropbox") }
 
             if (DropboxAuthState.token == null) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray) }
             backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
@@ -6200,9 +6335,9 @@ fun HelpScreen(
                         TextButton(onClick = {
                             showRestoreConfirm = false
                             scope.launch {
-                                backupWorking = true; backupResultText = null
+                                restoreWorking = true; backupResultText = null
                                 val result = BackupHelper.restoreBackup(context, viewModel, pathViewModel, wateringViewModel)
-                                backupWorking = false; backupResultText = result.message
+                                restoreWorking = false; backupResultText = result.message
                             }
                         }) { Text("Restore") }
                     },
