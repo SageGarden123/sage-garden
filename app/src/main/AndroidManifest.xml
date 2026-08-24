@@ -76,6 +76,8 @@
         <activity
             android:name=".WateringWidgetConfigActivity"
             android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
             android:theme="@style/Theme.SageGarden">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
