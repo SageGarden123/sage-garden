@@ -1631,7 +1631,15 @@ fun GardenMapperApp() {
 fun ProUpsellDialog(headline: String, subheadline: String, onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
     val context = LocalContext.current
     var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
-    LaunchedEffect(Unit) { proOffers = PlayBillingClient.queryProOffers() }
+    // Distinct from proOffers == null (which also covers "hasn't loaded yet") so the dialog can
+    // show a retry instead of "Loading…" forever if the billing connection genuinely fails.
+    var loadFailed by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableStateOf(0) }
+    LaunchedEffect(retryTrigger) {
+        loadFailed = false
+        val result = PlayBillingClient.queryProOffers()
+        if (result == null) loadFailed = true else proOffers = result
+    }
     var selectedOfferToken by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(proOffers) {
         if (selectedOfferToken == null) {
@@ -1679,6 +1687,11 @@ fun ProUpsellDialog(headline: String, subheadline: String, onDismiss: () -> Unit
                     Spacer(Modifier.height(16.dp))
 
                     when {
+                        loadFailed -> Column {
+                            Text("Couldn't load subscription options — check your connection.", fontSize = 12.sp, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = { retryTrigger++ }, modifier = Modifier.fillMaxWidth()) { Text("Retry") }
+                        }
                         proOffers == null -> Text("Loading subscription options…", fontSize = 12.sp, color = Color.Gray)
                         proOffers!!.isEmpty() -> Text("Pro subscriptions aren't available yet — check back soon.", fontSize = 12.sp, color = Color.Gray)
                         else -> {

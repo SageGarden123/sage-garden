@@ -92,6 +92,12 @@ object PlayBillingClient {
      * product doesn't exist in Play Console yet (e.g. before the Merchant account is verified).
      */
     suspend fun queryProOffers(): List<ProOffer>? {
+        // Same wait-for-connection as queryExistingPurchases() — without it, opening the upgrade
+        // dialog shortly after app launch (startConnection() is async and can still be in flight)
+        // returned null immediately and got stuck forever, since the caller treats null the same
+        // as "hasn't loaded yet". Confirmed live: tapping Upgrade to Pro showed "Loading
+        // subscription options…" indefinitely.
+        if (billingClient?.isReady != true) withTimeoutOrNull(5000) { connected.await() }
         val client = billingClient?.takeIf { it.isReady } ?: return null
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
