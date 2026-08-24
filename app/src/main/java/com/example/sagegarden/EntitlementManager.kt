@@ -1,6 +1,9 @@
 package com.example.sagegarden
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 private const val ENTITLEMENT_PREFS = "garden_mapper_entitlement_prefs"
 private const val KEY_IS_PRO = "entitlement_is_pro"
@@ -27,6 +30,27 @@ data class EntitlementState(
     val sagePromptsUsed: Int,
     val sagePromptLimit: Int
 )
+
+/**
+ * Live, Compose-observable mirror of [EntitlementState] — same rationale/pattern as SageEnabledState,
+ * AdvancedModeState, HemisphereState (see feedback-compose-reactive-staleness in project memory).
+ * Without this, a promo-code redemption or a trial lapsing only reached FeatureVisibility.shouldShow()
+ * and the top app bar's status text once something else forced recomposition (tab switch, app
+ * restart) — EntitlementManager.getCached(context) reads raw SharedPreferences fresh on every call,
+ * but that alone doesn't make Compose re-run the composables that already read it. Synced at app
+ * startup (MainActivity.onCreate, alongside the other *State singletons) and on every
+ * [EntitlementManager.writeSnapshot] call (i.e. every sync()/redeemPromoCode()/applySnapshot()).
+ */
+object EntitlementLiveState {
+    var value by mutableStateOf(
+        EntitlementState(
+            isPro = false, source = EntitlementSource.NONE, trialExpiresAt = null,
+            plantLimit = EntitlementManager.FREE_PLANT_LIMIT, tuyaEnabled = false,
+            logHistoryLimit = EntitlementManager.FREE_LOG_HISTORY_LIMIT,
+            sagePromptsUsed = 0, sagePromptLimit = EntitlementManager.FREE_SAGE_PROMPT_LIMIT
+        )
+    )
+}
 
 sealed class PromoRedemptionResult {
     data class Success(val state: EntitlementState) : PromoRedemptionResult()
@@ -146,5 +170,6 @@ object EntitlementManager {
             .putInt(KEY_SAGE_PROMPTS_USED, snapshot.sagePromptsUsed)
             .putLong(KEY_LAST_SYNCED_AT, System.currentTimeMillis())
             .apply()
+        EntitlementLiveState.value = getCached(context)
     }
 }

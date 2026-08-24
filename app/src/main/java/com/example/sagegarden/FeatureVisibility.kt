@@ -118,11 +118,15 @@ object FeatureVisibility {
      * non-gating IrrigationSystem choice.
      */
     fun shouldShow(context: Context, feature: Feature): Boolean {
+        // Reads the live singleton (not EntitlementManager.getCached(context) directly) so a promo
+        // code redemption or trial lapse reaches every gated composable immediately — see
+        // EntitlementLiveState's doc comment for why a raw prefs read alone isn't reactive.
+        val isPro = EntitlementLiveState.value.isPro
         if (feature == Feature.SAGE_ASSISTANT) {
-            return SageEnabledState.enabled && EntitlementManager.getCached(context).isPro
+            return SageEnabledState.enabled && isPro
         }
         if (feature == Feature.WEATHER_AWARE_REMINDERS) {
-            return EntitlementManager.getCached(context).isPro
+            return isPro
         }
         if (!AdvancedModeState.enabled) return false
         return when (feature) {
@@ -130,7 +134,7 @@ object FeatureVisibility {
             // is listed alongside the others rather than branching on tuyaEnabled specifically, since
             // there's no case where the two could actually differ.
             Feature.TUYA_INTEGRATION, Feature.SUN_MAP, Feature.AUDIT_SCREEN, Feature.COST_WATER_TRACKING,
-            Feature.GROWTH_TIMELINES, Feature.WATERING_HISTORY -> EntitlementManager.getCached(context).isPro
+            Feature.GROWTH_TIMELINES, Feature.WATERING_HISTORY -> isPro
             else -> true
         }
     }
