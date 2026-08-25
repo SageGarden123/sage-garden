@@ -164,7 +164,10 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         refreshWateringWidgets(getApplication())
     }
     fun save(plant: PlantEntity) = viewModelScope.launch { saveSync(plant) }
-    fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
+    fun delete(id: String) = viewModelScope.launch {
+        GardenSyncStore.recordPlantDeleted(getApplication(), id)
+        dao.deleteById(id)
+    }
     fun resetAll() = viewModelScope.launch { dao.deleteAll() }
 
     fun runDropboxAutoLink(context: Context, folderPath: String) {
@@ -1316,6 +1319,7 @@ fun GardenMapperApp() {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
         // MainActivity.onCreate(), before this composable's first composition — see the comment there.
         EntitlementManager.sync(context)
+        GardenSyncClient.sync(context, getOrCreateInstallId(context))
     }
 
     LaunchedEffect(SageFabResetState.requested) {
@@ -6115,6 +6119,52 @@ fun HelpScreen(
                 onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
             ) { Text("Reset garden") }
+        }
+
+        ExpandableSection(title = "Sync with other devices") {
+            Text(
+                "Keep this garden's plants and care history in sync between this phone and the desktop app. Enter this device's Install ID (below) into the desktop app once to link them, then use \"Sync now\" on either device whenever you want to pull in the other's changes.",
+                fontSize = 12.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            val syncInstallId = remember { getOrCreateInstallId(context) }
+            Text(
+                "Install ID: $syncInstallId (tap to copy)",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", syncInstallId))
+                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+            var syncing by remember { mutableStateOf(false) }
+            var lastSyncedAt by remember { mutableStateOf(GardenSyncStore.getLastSyncedAt(context)) }
+            if (lastSyncedAt > 0) {
+                Text(
+                    "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
+                    fontSize = 11.sp, color = Color.Gray
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            Button(
+                onClick = {
+                    syncing = true
+                    scope.launch {
+                        when (val result = GardenSyncClient.sync(context, syncInstallId)) {
+                            is GardenSyncResult.Success -> {
+                                lastSyncedAt = GardenSyncStore.getLastSyncedAt(context)
+                                snackbarHostState.showSnackbar("Synced — ${result.plantCount} plant(s) up to date")
+                            }
+                            GardenSyncResult.NetworkError -> snackbarHostState.showSnackbar("Couldn't reach the sync server — check your connection.")
+                            GardenSyncResult.ServerError -> snackbarHostState.showSnackbar("Sync failed — try again shortly.")
+                        }
+                        syncing = false
+                    }
+                },
+                enabled = !syncing,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (syncing) "Syncing…" else "Sync now") }
         }
 
         ExpandableSection(title = "Support Sage Garden") {

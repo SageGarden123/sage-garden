@@ -6,3 +6,4 @@ export { sageChat } from "./handlers/sageChat";
 export { sageAutoFill } from "./handlers/sageAutoFill";
 export { redeemPromoCode } from "./handlers/redeemPromoCode";
 export { syncEntitlement } from "./handlers/syncEntitlement";
+export { syncGarden } from "./handlers/syncGarden";

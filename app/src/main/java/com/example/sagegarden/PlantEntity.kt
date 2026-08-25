@@ -37,5 +37,6 @@ data class PlantEntity(
     val lastPrunedDate: Long? = null,
     val pruneFrequencyDays: Int? = null,
     val lastFedDate: Long? = null,
-    val feedFrequencyDays: Int? = null
+    val feedFrequencyDays: Int? = null,
+    val updatedAt: Long = 0L // last local write time — used only by GardenSyncClient's last-write-wins merge
 )

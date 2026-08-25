@@ -15,6 +15,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation("org.json:json:20240303")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
 }
 
 kotlin {
@@ -28,6 +29,16 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Dmg)
             packageName = "SageGardenDesktop"
             packageVersion = "1.0.0"
+
+            windows {
+                // Adds an install-location page to the MSI wizard instead of silently installing
+                // to a fixed path — without this, jpackage defaults to Program Files with no way
+                // for the person running the installer to see or change it.
+                dirChooser = true
+                perUserInstall = true
+                menuGroup = "Sage Garden"
+                shortcut = true
+            }
         }
     }
 }

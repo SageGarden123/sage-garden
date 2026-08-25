@@ -14,18 +14,26 @@ class GardenStore(private val file: File) {
         private set
     var careLog: MutableList<CareLogEntry> = mutableListOf()
         private set
+    var plantTombstones: MutableList<SyncTombstone> = mutableListOf()
+        private set
+    var careLogTombstones: MutableList<SyncTombstone> = mutableListOf()
+        private set
     private var passthrough: JSONObject = JSONObject()
 
     fun load() {
         if (!file.exists()) {
             plants = mutableListOf()
             careLog = mutableListOf()
+            plantTombstones = mutableListOf()
+            careLogTombstones = mutableListOf()
             passthrough = JSONObject()
             return
         }
         val root = JSONObject(file.readText())
         plants = parsePlants(root.optJSONArray("plants") ?: JSONArray())
         careLog = parseCareLog(root.optJSONArray("careLog") ?: JSONArray())
+        plantTombstones = parseTombstones(root.optJSONArray("plantTombstones") ?: JSONArray())
+        careLogTombstones = parseTombstones(root.optJSONArray("careLogTombstones") ?: JSONArray())
         passthrough = root
     }
 
@@ -35,8 +43,28 @@ class GardenStore(private val file: File) {
         root.put("createdAt", System.currentTimeMillis())
         root.put("plants", plantsToJson(plants))
         root.put("careLog", careLogToJson(careLog))
+        root.put("plantTombstones", tombstonesToJson(plantTombstones))
+        root.put("careLogTombstones", tombstonesToJson(careLogTombstones))
         file.parentFile?.mkdirs()
         file.writeText(root.toString(2))
+    }
+
+    fun setPlantTombstones(tombstones: List<SyncTombstone>) { plantTombstones = tombstones.toMutableList() }
+    fun setCareLogTombstones(tombstones: List<SyncTombstone>) { careLogTombstones = tombstones.toMutableList() }
+
+    private fun parseTombstones(arr: JSONArray): MutableList<SyncTombstone> {
+        val result = mutableListOf<SyncTombstone>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            result += SyncTombstone(o.getString("id"), o.getLong("deletedAt"))
+        }
+        return result
+    }
+
+    private fun tombstonesToJson(list: List<SyncTombstone>): JSONArray {
+        val arr = JSONArray()
+        list.forEach { arr.put(JSONObject().put("id", it.id).put("deletedAt", it.deletedAt)) }
+        return arr
     }
 
     private fun parsePlants(arr: JSONArray): MutableList<Plant> {
@@ -76,7 +104,8 @@ class GardenStore(private val file: File) {
                 mapX = o.optDoubleOrNull("mapX"),
                 mapY = o.optDoubleOrNull("mapY"),
                 summerWateringFrequencyDays = o.optIntOrNull("summerWateringFrequencyDays"),
-                winterWateringFrequencyDays = o.optIntOrNull("winterWateringFrequencyDays")
+                winterWateringFrequencyDays = o.optIntOrNull("winterWateringFrequencyDays"),
+                updatedAt = o.optLong("updatedAt", 0L)
             )
         }
         return result
@@ -107,6 +136,7 @@ class GardenStore(private val file: File) {
             o.put("pruneFrequencyDays", p.pruneFrequencyDays ?: JSONObject.NULL)
             o.put("lastFedDate", p.lastFedDate ?: JSONObject.NULL)
             o.put("feedFrequencyDays", p.feedFrequencyDays ?: JSONObject.NULL)
+            o.put("updatedAt", p.updatedAt)
             arr.put(o)
         }
         return arr
@@ -121,7 +151,8 @@ class GardenStore(private val file: File) {
                 plantId = o.optString("plantId", ""),
                 type = o.optString("type", "watering"),
                 date = o.optLong("date", System.currentTimeMillis()),
-                notes = o.optString("notes", "")
+                notes = o.optString("notes", ""),
+                updatedAt = o.optLong("updatedAt", 0L)
             )
         }
         return result
@@ -132,7 +163,7 @@ class GardenStore(private val file: File) {
         list.forEach { c ->
             val o = JSONObject()
             o.put("id", c.id); o.put("plantId", c.plantId); o.put("type", c.type)
-            o.put("date", c.date); o.put("notes", c.notes)
+            o.put("date", c.date); o.put("notes", c.notes); o.put("updatedAt", c.updatedAt)
             arr.put(o)
         }
         return arr

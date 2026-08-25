@@ -41,7 +41,8 @@ data class Plant(
     var mapX: Double? = null,
     var mapY: Double? = null,
     var summerWateringFrequencyDays: Int? = null,
-    var winterWateringFrequencyDays: Int? = null
+    var winterWateringFrequencyDays: Int? = null,
+    var updatedAt: Long = 0L // last local write time — used by GardenSyncClient's last-write-wins merge
 )
 
 data class CareLogEntry(
@@ -49,8 +50,11 @@ data class CareLogEntry(
     val plantId: String,
     val type: String, // "watering", "fertilise", "feed", "prune" — matches the Android app's careLog schema
     val date: Long,
-    val notes: String = ""
+    val notes: String = "",
+    val updatedAt: Long = 0L
 )
+
+data class SyncTombstone(val id: String, val deletedAt: Long)
 
 data class WateringStatus(val nextDueMillis: Long?, val label: String)
 

@@ -10,5 +10,6 @@ data class CareLogEntity(
     val plantId: String,
     val type: String, // "fertilise" or "prune"
     val date: Long,
-    val notes: String = ""
+    val notes: String = "",
+    val updatedAt: Long = 0L // last local write time — used only by GardenSyncClient's last-write-wins merge
 )

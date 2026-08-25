@@ -23,7 +23,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
      * call re-reads the plant to apply its single-field change and a stale read would silently drop an earlier change.
      */
     suspend fun logCareSync(plantId: String, type: String, date: Long, notes: String = "") {
-        dao.upsert(CareLogEntity(id = UUID.randomUUID().toString(), plantId = plantId, type = type, date = date, notes = notes))
+        val now = System.currentTimeMillis()
+        dao.upsert(CareLogEntity(id = UUID.randomUUID().toString(), plantId = plantId, type = type, date = date, notes = notes, updatedAt = now))
         val plant = plantDao.getById(plantId) ?: return
         val updated = when (type) {
             "watering" -> plant.copy(lastWateredDate = date)
@@ -32,7 +33,7 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
             "feed" -> plant.copy(lastFedDate = date)
             else -> plant
         }
-        plantDao.upsert(updated)
+        plantDao.upsert(updated.copy(updatedAt = now))
         if (type == "watering") refreshWateringWidgets(getApplication())
     }
 
@@ -41,5 +42,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { logCareSync(plantId, type, date, notes) }
     }
 
-    fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
+    fun delete(id: String) = viewModelScope.launch {
+        GardenSyncStore.recordCareLogDeleted(getApplication(), id)
+        dao.deleteById(id)
+    }
 }

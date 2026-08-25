@@ -60,6 +60,7 @@ object BackupHelper {
             o.put("pruneFrequencyDays", p.pruneFrequencyDays ?: JSONObject.NULL)
             o.put("lastFedDate", p.lastFedDate ?: JSONObject.NULL)
             o.put("feedFrequencyDays", p.feedFrequencyDays ?: JSONObject.NULL)
+            o.put("updatedAt", p.updatedAt)
             plantsArr.put(o)
         }
         root.put("plants", plantsArr)
@@ -107,7 +108,7 @@ object BackupHelper {
         db.careLogDao().getAllOnce().forEach { c ->
             val o = JSONObject()
             o.put("id", c.id); o.put("plantId", c.plantId); o.put("type", c.type)
-            o.put("date", c.date); o.put("notes", c.notes)
+            o.put("date", c.date); o.put("notes", c.notes); o.put("updatedAt", c.updatedAt)
             careLogArr.put(o)
         }
         root.put("careLog", careLogArr)
@@ -192,7 +193,11 @@ object BackupHelper {
             val o = plantsArr.getJSONObject(i)
             val photoUrisArr = o.optJSONArray("photoUris") ?: JSONArray()
             val photoUris = (0 until photoUrisArr.length()).map { photoUrisArr.getString(it) }
-            viewModel.save(
+            // Writes directly via the DAO (not viewModel.save()) so the backup's own updatedAt
+            // survives the restore — PlantViewModel.saveSync always stamps "now", which is right
+            // for a genuine edit but wrong here: it would make a restored-from-old-backup device
+            // look like it has the freshest data and incorrectly win the next multi-device sync.
+            AppDatabase.getInstance(context).plantDao().upsert(
                 PlantEntity(
                     id = o.getString("id"), name = o.getString("name"), sci = o.optString("sci", ""),
                     location = o.optString("location", ""), sun = o.optString("sun", ""),
@@ -217,10 +222,12 @@ object BackupHelper {
                     lastPrunedDate = if (o.isNull("lastPrunedDate")) null else o.optLong("lastPrunedDate"),
                     pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays"),
                     lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
-                    feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays")
+                    feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays"),
+                    updatedAt = o.optLong("updatedAt", 0L)
                 )
             )
         }
+        refreshWateringWidgets(context)
 
         val pathsArr = root.optJSONArray("irrigationPaths") ?: JSONArray()
         for (i in 0 until pathsArr.length()) {
@@ -275,7 +282,8 @@ object BackupHelper {
             db.careLogDao().upsert(
                 CareLogEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), type = o.getString("type"),
-                    date = o.getLong("date"), notes = o.optString("notes", "")
+                    date = o.getLong("date"), notes = o.optString("notes", ""),
+                    updatedAt = o.optLong("updatedAt", 0L)
                 )
             )
         }
