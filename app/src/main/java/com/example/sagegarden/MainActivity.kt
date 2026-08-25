@@ -1779,7 +1779,8 @@ val dashboardStatCatalog = listOf(
     DashboardStatOption("no_photo", "Plants without Photos"),
     DashboardStatOption("needs_water", "Needs Watering Now"),
     DashboardStatOption("manual_water", "Manual Watering Only"),
-    DashboardStatOption("frost_hardy", "Frost Hardy")
+    DashboardStatOption("frost_hardy", "Frost Hardy"),
+    DashboardStatOption("indoor", "Indoor Plants")
 )
 
 val defaultDashboardStatKeys = listOf("total", "native", "exotic", "pollinator")
@@ -1811,6 +1812,7 @@ fun computeDashboardStatValue(key: String, plants: List<PlantEntity>): String {
         }.toString()
         "manual_water" -> plants.count { it.manualWateringOnly }.toString()
         "frost_hardy" -> plants.count { it.frost == "Hardy" }.toString()
+        "indoor" -> plants.count { it.isIndoor }.toString()
         else -> "0"
     }
 }
@@ -1826,6 +1828,7 @@ fun plantMatchesStatKey(key: String, plant: PlantEntity, now: Long): Boolean = w
     "needs_water" -> computeWateringStatus(plant, now)?.let { it.nextDueMillis != null && it.nextDueMillis <= now } == true
     "manual_water" -> plant.manualWateringOnly
     "frost_hardy" -> plant.frost == "Hardy"
+    "indoor" -> plant.isIndoor
     else -> true
 }
 
