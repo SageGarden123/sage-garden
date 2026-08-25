@@ -28,7 +28,12 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Dmg)
             packageName = "SageGardenDesktop"
-            packageVersion = "1.0.0"
+            // Bump this with every meaningful update — jpackage's WiX-based MSI uses it to decide
+            // whether a new install is a "major upgrade" (auto-removes the old version's files
+            // first) or looks like the same version again (in which case Windows Installer may
+            // just no-op instead of actually updating anything). Keeping it at a fixed value across
+            // builds is what forced manual uninstall/reinstall for every test build so far.
+            packageVersion = "1.2.0"
 
             // jlink's automatic module detection scans compiled bytecode for module dependencies,
             // but java.net.http.HttpClient's actual implementation lives behind an internal SPI

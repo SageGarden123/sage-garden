@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
@@ -20,6 +22,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -30,23 +33,43 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.awt.Desktop
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
+/** Same page as the Android app's Help → Support Sage Garden link — keep these in sync if it ever changes. */
+const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/sagegarden"
+
+/** Runs [action] via java.awt.Desktop (mail client / default browser) if the current platform supports it. Returns false on any failure so the caller can show a fallback message, matching the Android app's pattern for the same links. */
+private fun openInDesktop(action: (Desktop) -> Unit): Boolean {
+    return try {
+        if (!Desktop.isDesktopSupported()) return false
+        action(Desktop.getDesktop())
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
 sealed class Screen {
     data object Dashboard : Screen()
     data object PlantList : Screen()
     data class PlantEdit(val plantId: String?) : Screen()
     data class CareHistory(val plantId: String) : Screen()
+    data object Audit : Screen()
 }
 
 /** Holds the loaded garden data as Compose state and persists every mutation immediately — a
@@ -167,6 +190,7 @@ fun App() {
     var screen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var showContactDialog by remember { mutableStateOf(false) }
 
     SageGardenTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -217,11 +241,20 @@ fun App() {
                                 snackbarHostState.showSnackbar(message)
                             }
                         }
+                    },
+                    onContact = { showContactDialog = true },
+                    onSupport = {
+                        val opened = openInDesktop { desktop -> desktop.browse(URI(SUPPORT_LINK_URL)) }
+                        if (!opened) scope.launch { snackbarHostState.showSnackbar("Couldn't open the link — visit $SUPPORT_LINK_URL") }
                     }
                 )
                 Column(Modifier.fillMaxSize().padding(24.dp)) {
                     when (val s = screen) {
-                        is Screen.Dashboard -> DashboardScreen(appState.plants, onGoToPlants = { screen = Screen.PlantList })
+                        is Screen.Dashboard -> DashboardScreen(
+                            appState.plants,
+                            onGoToPlants = { screen = Screen.PlantList },
+                            onEditPlant = { screen = Screen.PlantEdit(it.id) }
+                        )
                         is Screen.PlantList -> PlantListScreen(
                             plants = appState.plants,
                             onAdd = { screen = Screen.PlantEdit(null) },
@@ -252,10 +285,36 @@ fun App() {
                                 screen = Screen.PlantList
                             }
                         }
+                        is Screen.Audit -> AuditScreen(appState.plants)
                     }
                 }
             }
             SnackbarHost(snackbarHostState, modifier = Modifier.padding(16.dp)) { Snackbar(it) }
+
+            if (showContactDialog) {
+                AlertDialog(
+                    onDismissRequest = { showContactDialog = false },
+                    title = { Text("Contact & feedback") },
+                    text = {
+                        Column {
+                            Text("Found a bug, or have an idea for the app? We'd love to hear from you.", fontSize = 13.sp)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "gardenwizardry685@gmail.com",
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                                    clipboard.setContents(StringSelection("gardenwizardry685@gmail.com"), null)
+                                    scope.launch { snackbarHostState.showSnackbar("Email address copied") }
+                                }
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text("(click to copy)", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showContactDialog = false }) { Text("Close") } }
+                )
+            }
         }
     }
 }
@@ -271,46 +330,55 @@ private fun Sidebar(
     onLinkedDeviceIdChange: (String) -> Unit,
     lastSyncedAt: Long,
     syncing: Boolean,
-    onSyncNow: () -> Unit
+    onSyncNow: () -> Unit,
+    onContact: () -> Unit,
+    onSupport: () -> Unit
 ) {
     Column(
-        Modifier.width(240.dp).fillMaxHeight().background(SageGreenDark).padding(16.dp).verticalScroll(rememberScrollState())
+        Modifier.width(240.dp).fillMaxHeight().background(SageGreenDark).padding(16.dp)
     ) {
-        Text("🌿 Sage Garden", color = Color.White, fontSize = 18.sp)
-        Spacer(Modifier.height(24.dp))
-        SidebarItem("📊 Dashboard", screen is Screen.Dashboard) { onSelect(Screen.Dashboard) }
-        SidebarItem("🌱 Plants", screen is Screen.PlantList || screen is Screen.PlantEdit || screen is Screen.CareHistory) { onSelect(Screen.PlantList) }
-        Spacer(Modifier.height(24.dp))
-        SidebarItem("📂 Open backup file…", false, onOpenFile)
-        SidebarItem("💾 Save as…", false, onSaveAs)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Text("🌿 Sage Garden", color = Color.White, fontSize = 18.sp)
+            Spacer(Modifier.height(24.dp))
+            SidebarItem("📊 Dashboard", screen is Screen.Dashboard) { onSelect(Screen.Dashboard) }
+            SidebarItem("🌱 Plants", screen is Screen.PlantList || screen is Screen.PlantEdit || screen is Screen.CareHistory) { onSelect(Screen.PlantList) }
+            SidebarItem("🔍 Audit", screen is Screen.Audit) { onSelect(Screen.Audit) }
+            Spacer(Modifier.height(24.dp))
+            SidebarItem("📂 Open backup file…", false, onOpenFile)
+            SidebarItem("💾 Save as…", false, onSaveAs)
 
-        Spacer(Modifier.height(24.dp))
-        Text("Sync with phone", color = Color.White, fontSize = 13.sp)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Enter the phone's Install ID (Help → Sync with other devices, on the phone).",
-            color = SageCream, fontSize = 10.sp
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = linkedDeviceId,
-            onValueChange = onLinkedDeviceIdChange,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = onSyncNow, enabled = !syncing, modifier = Modifier.fillMaxWidth()) {
-            Text(if (syncing) "Syncing…" else "Sync now")
-        }
-        if (lastSyncedAt > 0) {
+            Spacer(Modifier.height(36.dp))
+            Text("Sync with phone", color = Color.White, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Last synced: ${SimpleDateFormat("dd MMM, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
+                "Enter the phone's Install ID (Help → Sync with other devices, on the phone).",
                 color = SageCream, fontSize = 10.sp
             )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = linkedDeviceId,
+                onValueChange = onLinkedDeviceIdChange,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onSyncNow, enabled = !syncing, modifier = Modifier.fillMaxWidth()) {
+                Text(if (syncing) "Syncing…" else "Sync now")
+            }
+            if (lastSyncedAt > 0) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Last synced: ${SimpleDateFormat("dd MMM, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
+                    color = SageCream, fontSize = 10.sp
+                )
+            }
         }
 
-        Spacer(Modifier.height(24.dp))
+        HorizontalDivider(color = SageCream.copy(alpha = 0.3f))
+        Spacer(Modifier.height(12.dp))
+        SidebarItem("✉️ Contact & feedback", false, onContact)
+        SidebarItem("☕ Buy me a coffee", false, onSupport)
+        Spacer(Modifier.height(16.dp))
         Text(
             "Data file:\n$filePath",
             color = SageCream, fontSize = 10.sp

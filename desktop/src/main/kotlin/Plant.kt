@@ -71,6 +71,31 @@ fun computeWateringStatus(plant: Plant, nowMillis: Long = System.currentTimeMill
     return WateringStatus(nextDue, label)
 }
 
+private fun computeCareStatus(lastDate: Long?, frequencyDays: Int?, nowMillis: Long): WateringStatus? {
+    val freq = frequencyDays ?: return null
+    val last = lastDate ?: return WateringStatus(nextDueMillis = null, label = "Never — do now")
+    val nextDue = last + freq * 86_400_000L
+    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
+    val label = when {
+        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
+        diffDays == 0 -> "Due today"
+        else -> "Due in $diffDays day(s)"
+    }
+    return WateringStatus(nextDueMillis = nextDue, label = label)
+}
+
+fun computeFertiliseStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
+    computeCareStatus(plant.lastFertilisedDate, plant.fertiliseFrequencyDays, nowMillis)
+
+fun computePruneStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
+    computeCareStatus(plant.lastPrunedDate, plant.pruneFrequencyDays, nowMillis)
+
+fun computeFeedStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
+    computeCareStatus(plant.lastFedDate, plant.feedFrequencyDays, nowMillis)
+
+fun frostTenderOutdoorPlants(plants: List<Plant>): List<Plant> =
+    plants.filter { (it.frost == "Tender" || it.frost == "Half-hardy") && !it.isIndoor }
+
 fun careTypeLabel(type: String) = when (type) {
     "watering" -> "Watered"
     "fertilise" -> "Fertilised"

@@ -60,10 +60,16 @@ fun PlantEditScreen(
     var lastFed by remember { mutableStateOf(millisToDateString(existing?.lastFedDate)) }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showPhotoPreview by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Text(if (existing == null) "Add plant" else "Edit plant", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
+
+        if (existing?.photoUri != null) {
+            PlantThumbnail(existing.photoUri, size = 96.dp, onClick = { showPhotoPreview = true })
+            Spacer(Modifier.height(16.dp))
+        }
 
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
@@ -158,6 +164,11 @@ fun PlantEditScreen(
             }
         }
         Spacer(Modifier.height(30.dp))
+    }
+
+    val existingPhotoUri = existing?.photoUri
+    if (showPhotoPreview && existingPhotoUri != null) {
+        PhotoPreviewDialog(existingPhotoUri, onDismiss = { showPhotoPreview = false })
     }
 }
 
