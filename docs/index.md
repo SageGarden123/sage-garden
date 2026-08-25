@@ -16,7 +16,7 @@ Sage Garden ("the app") is a personal garden-tracking app developed by Sage Gard
 
 **Location.** If you grant location permission, it's used to help place plants on the real-world map and to determine your garden's coordinates for weather-aware watering reminders and frost warnings. If you enter a garden address instead, that address is sent to Google's Places/Geocoding APIs to convert it into coordinates.
 
-**A random device identifier.** The app generates a random ID (not tied to your name, email, or Google account) to track your free trial and Pro entitlement status. This ID, and nothing else personally identifying, is sent to the app's backend (hosted on Google Firebase) each time entitlement status is checked.
+**A random device identifier.** The app generates a random ID (not tied to your name, email, or Google account) to track Sage assistant usage and any redeemed promo code. This ID, and nothing else personally identifying, is sent to the app's backend (hosted on Google Firebase) each time this status is checked.
 
 **AI assistant conversations and photos.** If you use "Sage" (the in-app AI assistant) or the AI auto-fill/photo-identification features, your typed questions and/or plant photos are sent to third-party AI providers to generate a response (see below).
 

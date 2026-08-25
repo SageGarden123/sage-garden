@@ -53,8 +53,7 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
             Spacer(Modifier.height(2.dp))
             Text(
                 when {
-                    entitlement.isPro && entitlement.source == EntitlementSource.TRIAL -> "Unlimited (Pro) – trial"
-                    entitlement.isPro -> "Unlimited (Pro)"
+                    entitlement.isPro -> "Unlimited"
                     else -> "${(entitlement.sagePromptLimit - entitlement.sagePromptsUsed).coerceAtLeast(0)} of ${entitlement.sagePromptLimit} free questions left"
                 },
                 fontSize = 11.sp, color = Color.Gray
@@ -85,7 +84,7 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                     Column(Modifier.padding(12.dp)) {
                         Text("You've used all your free Sage questions.", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
-                        Text("Start your free trial or enter a promo code in Help → Sage & Pro status.", fontSize = 12.sp, color = Color.Gray)
+                        Text("Enter a promo code in Help → Basic/Advanced mode for unlimited access.", fontSize = 12.sp, color = Color.Gray)
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Open Help") }
                     }

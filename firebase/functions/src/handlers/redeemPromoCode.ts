@@ -29,7 +29,7 @@ export const redeemPromoCode = onRequest({ cors: false }, async (req, res) => {
     return;
   }
 
-  // Ensures the device doc exists (with trial fields set) before the transaction touches it.
+  // Ensures the device doc exists before the transaction touches it.
   await resolveEntitlement(deviceId, false);
 
   const db = getFirestore();

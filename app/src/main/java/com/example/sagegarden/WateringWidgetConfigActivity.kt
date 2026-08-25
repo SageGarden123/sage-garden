@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,13 +68,10 @@ class WateringWidgetConfigActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Unit) {
-    val context = LocalContext.current
-    // The widget itself stays free for everyone — only how many plants it can show is capped.
-    val maxPlantsCap = if (EntitlementManager.getCached(context).isPro) 20 else EntitlementManager.FREE_WIDGET_PLANT_LIMIT
-    val maxPlantsOptions = remember(maxPlantsCap) { listOf(4, 8, 12, 20).filter { it <= maxPlantsCap } }
+    val maxPlantsOptions = remember { listOf(4, 8, 12, 20) }
 
     var intervalDays by remember { mutableStateOf(initialConfig.intervalDays) }
-    var maxPlants by remember { mutableStateOf(minOf(initialConfig.maxPlants, maxPlantsCap)) }
+    var maxPlants by remember { mutableStateOf(initialConfig.maxPlants) }
     var lookaheadDays by remember { mutableStateOf(initialConfig.lookaheadDays) }
     var includeWatering by remember { mutableStateOf(initialConfig.includeWatering) }
     var includePruning by remember { mutableStateOf(initialConfig.includePruning) }
@@ -102,10 +98,6 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
             maxPlantsOptions.forEach { n ->
                 FilterChip(selected = maxPlants == n, onClick = { maxPlants = n }, label = { Text("$n", fontSize = 12.sp) })
             }
-        }
-        if (maxPlantsCap < 20) {
-            Spacer(Modifier.height(4.dp))
-            Text("Free plan widgets show up to $maxPlantsCap plants.", fontSize = 11.sp, color = Color.Gray)
         }
         Spacer(Modifier.height(20.dp))
 

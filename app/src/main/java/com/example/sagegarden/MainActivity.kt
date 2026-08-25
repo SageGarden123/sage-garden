@@ -5,7 +5,6 @@
 package com.example.sagegarden
 
 import android.Manifest
-import android.app.Activity
 import android.app.Application
 import android.content.ContentValues
 import android.content.Context
@@ -81,7 +80,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android.billingclient.api.Purchase
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -162,7 +160,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Suspends until the write (and widget refresh) complete — for callers that need to sequence further work after the save actually lands. */
     suspend fun saveSync(plant: PlantEntity) {
-        dao.upsert(plant)
+        dao.upsert(plant.copy(updatedAt = System.currentTimeMillis()))
         refreshWateringWidgets(getApplication())
     }
     fun save(plant: PlantEntity) = viewModelScope.launch { saveSync(plant) }
@@ -382,7 +380,7 @@ private fun todayKey(): String {
 
 fun plantIdDailyLimit(context: Context): Int =
     when (EntitlementManager.getCached(context).source) {
-        EntitlementSource.PROMO_CODE, EntitlementSource.PURCHASE, EntitlementSource.OVERRIDE -> PLANTNET_PRO_DAILY_LIMIT
+        EntitlementSource.PROMO_CODE, EntitlementSource.OVERRIDE -> PLANTNET_PRO_DAILY_LIMIT
         else -> PLANTNET_TRIAL_DAILY_LIMIT
     }
 
@@ -693,6 +691,8 @@ fun clearDropboxTokens(context: Context) {
 
 /** Dropbox short-lived tokens last ~4 hours; refresh proactively a bit before that. */
 private const val DROPBOX_TOKEN_REFRESH_AFTER_MS = 3L * 60 * 60 * 1000
+
+const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/sagegarden"
 
 suspend fun ensureDropboxTokenFresh(context: Context) = withContext(Dispatchers.IO) {
     val refreshToken = getDropboxRefreshToken(context) ?: return@withContext
@@ -1129,24 +1129,6 @@ suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withConte
 // MAIN ACTIVITY
 // ============================================================================
 
-/**
- * Verifies a Play purchase server-side before touching entitlement — a client-reported PURCHASED
- * state is never trusted on its own, since both the app and BillingClient run on a device an
- * attacker could control. Only acknowledges (required within 3 days or Play auto-refunds it) once
- * the server confirms the subscription is genuinely active.
- */
-suspend fun handlePlayPurchase(context: Context, purchase: Purchase) {
-    if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
-    val productId = purchase.products.firstOrNull() ?: return
-    when (val result = SageClient.verifyPurchase(context, productId, purchase.purchaseToken)) {
-        is VerifyPurchaseResult.Success -> {
-            EntitlementManager.applySnapshot(context, result.snapshot)
-            PlayBillingClient.acknowledge(purchase)
-        }
-        else -> {} // leave unacknowledged — re-verified on next app launch via queryExistingPurchases, or the user can retry
-    }
-}
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1155,9 +1137,6 @@ class MainActivity : ComponentActivity() {
             DropboxAuthState.checkAndRefresh(applicationContext)
         }
         AppCheckClient.init(applicationContext)
-        PlayBillingClient.init(applicationContext) { purchase ->
-            lifecycleScope.launch { handlePlayPurchase(applicationContext, purchase) }
-        }
         // Synced here (synchronously, before the first composition) rather than in a LaunchedEffect
         // inside GardenMapperApp — these are plain SharedPreferences reads, and doing them before
         // setContent avoids a startup window where a deep-linked route (e.g. a notification opening
@@ -1186,9 +1165,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DropboxAuthState.checkAndRefresh(applicationContext)
-        lifecycleScope.launch {
-            PlayBillingClient.queryExistingPurchases().forEach { handlePlayPurchase(applicationContext, it) }
-        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -1328,20 +1304,18 @@ fun GardenMapperApp() {
     val sageFabOffsetMinDp = -(screenHeightDp - 160f)
     val sageFabOffsetMaxDp = 60f
     var showSageSheet by remember { mutableStateOf(false) }
-    var trialNudge by remember { mutableStateOf<TrialNudge?>(null) }
     var sageFabOffsetY by remember {
         mutableStateOf(FeatureVisibility.getSageFabOffsetDp(context).coerceIn(sageFabOffsetMinDp, sageFabOffsetMaxDp))
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help", "help_pro_status")
+    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help")
 
     LaunchedEffect(Unit) {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
         // MainActivity.onCreate(), before this composable's first composition — see the comment there.
-        val state = EntitlementManager.sync(context)
-        trialNudge = EntitlementManager.checkTrialNudge(context, state)
+        EntitlementManager.sync(context)
     }
 
     LaunchedEffect(SageFabResetState.requested) {
@@ -1370,26 +1344,7 @@ fun GardenMapperApp() {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(title = {
-                Column {
-                    Text("Sage Garden")
-                    // EntitlementLiveState (not EntitlementManager.getCached(context) directly) so
-                    // this updates immediately after a promo-code redemption or a trial lapsing —
-                    // see EntitlementLiveState's doc comment for why a raw prefs read isn't reactive.
-                    val topBarEntitlement = EntitlementLiveState.value
-                    val statusText = when {
-                        topBarEntitlement.isPro && topBarEntitlement.source == EntitlementSource.TRIAL -> {
-                            val daysLeft = topBarEntitlement.trialExpiresAt?.let {
-                                ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt().coerceAtLeast(0)
-                            } ?: 0
-                            "Trial: $daysLeft day${if (daysLeft == 1) "" else "s"} left"
-                        }
-                        topBarEntitlement.isPro -> "Pro"
-                        else -> "Free"
-                    }
-                    Text(statusText, fontSize = 11.sp, color = Color(0xFFE3DDCF))
-                }
-            })
+            TopAppBar(title = { Text("Sage Garden") })
         },
         floatingActionButton = {
             if (FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT)) {
@@ -1440,7 +1395,7 @@ fun GardenMapperApp() {
                         )
                     }
                     NavigationBarItem(
-                        selected = currentRoute == "help" || currentRoute == "help_pro_status",
+                        selected = currentRoute == "help",
                         onClick = { navController.navigate("help") { popUpTo("map") } },
                         icon = { Text("❓") }, label = { AutoSizeText("Help") }
                     )
@@ -1546,22 +1501,6 @@ fun GardenMapperApp() {
                     onOpenFaq = { navController.navigate("faq") }
                 )
             }
-            // Same screen as "help" — separate route so the Pro upsell dialog's "Have a promo code
-            // instead?" button can land with that section already open and scrolled into view,
-            // without disturbing the plain "help" route bottom nav/SageChatSheet already use.
-            composable("help_pro_status") {
-                val pathViewModel: IrrigationPathViewModel = viewModel(
-                    factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
-                        context.applicationContext as Application
-                    )
-                )
-                HelpScreen(
-                    viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
-                    snackbarHostState = snackbarHostState, scope = scope,
-                    onOpenFaq = { navController.navigate("faq") },
-                    initiallyOpenProStatus = true
-                )
-            }
             composable("faq") {
                 FaqScreen(onBack = { navController.popBackStack() })
             }
@@ -1596,162 +1535,6 @@ fun GardenMapperApp() {
         )
     }
 
-    trialNudge?.let { nudge ->
-        when (nudge) {
-            TrialNudge.DAY_SEVEN -> {
-                val trialExpiresAt = EntitlementManager.getCached(context).trialExpiresAt
-                val daysLeft = trialExpiresAt?.let {
-                    ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)).toInt().coerceAtLeast(0)
-                } ?: 0
-                ProUpsellDialog(
-                    headline = "Halfway through your trial 🌿",
-                    subheadline = "$daysLeft day${if (daysLeft == 1) "" else "s"} left of free Pro access",
-                    onDismiss = { trialNudge = null },
-                    onOpenHelp = { trialNudge = null; navController.navigate("help_pro_status") }
-                )
-            }
-            TrialNudge.TRIAL_ENDED -> {
-                ProUpsellDialog(
-                    headline = "Your free trial has ended",
-                    subheadline = "You're back on the free tier — upgrade any time to pick up where you left off",
-                    onDismiss = { trialNudge = null },
-                    onOpenHelp = { trialNudge = null; navController.navigate("help_pro_status") }
-                )
-            }
-        }
-    }
-}
-
-/**
- * Full paywall-style dialog for the trial nudges — a plain AlertDialog undersold Pro at exactly the
- * moment a user is deciding whether to pay. Fetches live pricing itself (rather than requiring a
- * caller to hoist [ProOffer]s) since it's only ever shown transiently.
- */
-@Composable
-fun ProUpsellDialog(headline: String, subheadline: String, onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
-    val context = LocalContext.current
-    var proOffers by remember { mutableStateOf<List<ProOffer>?>(null) }
-    // Distinct from proOffers == null (which also covers "hasn't loaded yet") so the dialog can
-    // show a retry instead of "Loading…" forever if the billing connection genuinely fails.
-    var loadFailed by remember { mutableStateOf(false) }
-    var retryTrigger by remember { mutableStateOf(0) }
-    LaunchedEffect(retryTrigger) {
-        loadFailed = false
-        val result = PlayBillingClient.queryProOffers()
-        if (result == null) loadFailed = true else proOffers = result
-    }
-    var selectedOfferToken by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(proOffers) {
-        if (selectedOfferToken == null) {
-            selectedOfferToken = (proOffers?.firstOrNull { it.billingPeriodIso8601.contains("Y") } ?: proOffers?.firstOrNull())?.offerToken
-        }
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color(0xFF3A5A40), Color(0xFF233821))))
-                        .padding(horizontal = 20.dp, vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("🌿", fontSize = 32.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(headline, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(4.dp))
-                    Text(subheadline, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, textAlign = TextAlign.Center)
-                }
-
-                Column(Modifier.padding(20.dp)) {
-                    listOf(
-                        "Unlimited plants & full log history",
-                        "Tuya/Rachio smart-irrigation integration",
-                        "Sun exposure map",
-                        "Companion planting & spacing audit",
-                        "Cost & water usage tracking",
-                        "Growth photo timelines",
-                        "Unlimited Sage AI assistant"
-                    ).forEach { feature ->
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text("✓", color = Color(0xFF3A5A40), fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.width(22.dp))
-                            Text(feature, fontSize = 13.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    when {
-                        loadFailed -> Column {
-                            Text("Couldn't load subscription options — check your connection.", fontSize = 12.sp, color = Color.Gray)
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(onClick = { retryTrigger++ }, modifier = Modifier.fillMaxWidth()) { Text("Retry") }
-                        }
-                        proOffers == null -> Text("Loading subscription options…", fontSize = 12.sp, color = Color.Gray)
-                        proOffers!!.isEmpty() -> Text("Pro subscriptions aren't available yet — check back soon.", fontSize = 12.sp, color = Color.Gray)
-                        else -> {
-                            proOffers!!.forEach { offer ->
-                                val isYearly = offer.billingPeriodIso8601.contains("Y")
-                                val selected = selectedOfferToken == offer.offerToken
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .border(
-                                            width = if (selected) 2.dp else 1.dp,
-                                            color = if (selected) Color(0xFF3A5A40) else Color(0xFFDDDDDD),
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (selected) Color(0xFF3A5A40).copy(alpha = 0.06f) else Color.Transparent)
-                                        .clickable { selectedOfferToken = offer.offerToken }
-                                        .padding(12.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                        Column(Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    readableBillingPeriod(offer.billingPeriodIso8601).replaceFirstChar { it.uppercase() },
-                                                    fontWeight = FontWeight.SemiBold, fontSize = 13.sp
-                                                )
-                                                if (isYearly) {
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Box(
-                                                        Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFFF7A45))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) { Text("BEST VALUE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
-                                                }
-                                            }
-                                        }
-                                        Text(offer.formattedPrice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    }
-                                }
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    val token = selectedOfferToken ?: return@Button
-                                    (context as? Activity)?.let { activity -> PlayBillingClient.launchPurchase(activity, token) }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF233821))
-                            ) { Text("Upgrade Now", fontWeight = FontWeight.Bold) }
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Have a promo code instead?", fontSize = 12.sp) }
-                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Maybe later", fontSize = 12.sp, color = Color.Gray) }
-                }
-            }
-        }
-    }
 }
 
 // ============================================================================
@@ -4207,7 +3990,6 @@ fun FormScreen(
     var wateringSystem by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showUpgradePrompt by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(plantId == null) }
     var aiLoading by remember { mutableStateOf(false) }
     var autoFillLoading by remember { mutableStateOf(false) }
@@ -4641,7 +4423,7 @@ fun FormScreen(
                             }
                             is SageAutoFillResult.FreeLimitReached -> {
                                 EntitlementManager.updateSagePromptsRemaining(context, 0)
-                                snackbarHostState.showSnackbar("You've used all your free Sage questions — see Help → Sage & Pro status.")
+                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code under Help → Basic/Advanced mode for unlimited access.")
                             }
                             is SageAutoFillResult.DailyLimitReached ->
                                 snackbarHostState.showSnackbar("Sage is busy right now — try again later.")
@@ -4721,13 +4503,6 @@ fun FormScreen(
         Button(
             onClick = {
                 if (name.isBlank()) { scope.launch { snackbarHostState.showSnackbar("Please give the plant a name.") }; return@Button }
-                if (plantId == null &&
-                    !EntitlementManager.getCached(context).isPro &&
-                    allPlants.size >= EntitlementManager.getCached(context).plantLimit
-                ) {
-                    showUpgradePrompt = true
-                    return@Button
-                }
 
                 val plant = buildPlant()
                 pendingSavedPlant = plant
@@ -4825,15 +4600,6 @@ fun FormScreen(
         )
     }
 
-    if (showUpgradePrompt) {
-        val limit = EntitlementManager.getCached(context).plantLimit
-        AlertDialog(
-            onDismissRequest = { showUpgradePrompt = false },
-            title = { Text("Free plant limit reached") },
-            text = { Text("The free version of Sage Garden is limited to $limit plants. Start your free trial or enter a promo code in Help → Sage & Pro status to add more.") },
-            confirmButton = { TextButton(onClick = { showUpgradePrompt = false }) { Text("Got it") } }
-        )
-    }
     if (showPlacementPrompt) {
         AlertDialog(
             onDismissRequest = { showPlacementPrompt = false; onDone() },
@@ -4915,7 +4681,7 @@ data class FaqItem(val question: String, val answer: String)
 val faqItems = listOf(
     FaqItem(
         "What does this app do?",
-        "Sage Garden helps you track every plant in your garden — photos, care history, and location on a real-world or hand-drawn map — with smart reminders for watering, feeding, fertilising and pruning, weather-aware skipping, a sun exposure map, companion planting/spacing checks, watering cost & usage tracking, and Sage, a built-in AI assistant for gardening questions. Some of these are part of the free trial or require Pro — see \"What's included with Pro, and what's free?\" below."
+        "Sage Garden helps you track every plant in your garden — photos, care history, and location on a real-world or hand-drawn map — with smart reminders for watering, feeding, fertilising and pruning, weather-aware skipping, a sun exposure map, companion planting/spacing checks, watering cost & usage tracking, and Sage, a built-in AI assistant for gardening questions. It's entirely free — see \"Are there any limits?\" below for the two small exceptions."
     ),
     FaqItem(
         "Where is my plant data stored?",
@@ -4941,8 +4707,8 @@ val faqItems = listOf(
         "For plant imports, the file needs a header row with at least a \"Plant\" column (name); optional columns are Plant ID, Scientific name, Location, Date planted, Source, Sun, Soil, Water, Frost, Native/Exotic, Pollinator-Friendly, Notes, Latitude, Longitude, and Watering System — export a CSV first to see the exact layout. \" For irrigation log imports, the header row needs Zone, StartTime, and DurationMinutes; Outlet and Source are optional. StartTime accepts either epoch milliseconds or a DateTime like \\\"2024-01-31 06:30:00\\\".\" Column order and capitalisation don't matter, but names need to match — if something's missing or the file is empty, you'll get a pop-up explaining exactly what's wrong."
     ),
     FaqItem(
-        "What's included with Pro, and what's free?",
-        "Free gives you up to 25 plants, your last 20 care log entries per plant, watering reminders and the photo log — plus the plant care widget (up to 10 plants) and Dropbox backup, which stay free either way. AI plant-photo identification is limited to 5 identifications per day on the free tier. Pro adds unlimited plants, full log history, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, a much higher AI photo-ID daily limit, and the Sage AI assistant. Every install starts with a 14-day free Pro trial — after that, you're moved to the free tier automatically (nothing is lost or locked away) until you subscribe or enter a promo code in Help → Sage & Pro status."
+        "Are there any limits?",
+        "Sage Garden is free — every feature is unlocked for everyone: unlimited plants and log history, watering reminders, the photo log, plant care widget, Dropbox backup, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, and growth photo timelines. The only limits are on the Sage AI assistant (${EntitlementManager.FREE_SAGE_PROMPT_LIMIT} free questions total) and AI plant-photo identification ($PLANTNET_TRIAL_DAILY_LIMIT identifications a day) — both of which call paid AI services behind the scenes. A promo code (Help → Basic/Advanced mode) removes both limits."
     )
 )
 
@@ -5053,8 +4819,7 @@ fun ExpandableSection(
 fun HelpScreen(
     viewModel: PlantViewModel, wateringViewModel: WateringZoneViewModel, pathViewModel: IrrigationPathViewModel,
     snackbarHostState: SnackbarHostState, scope: CoroutineScope,
-    onOpenFaq: () -> Unit,
-    initiallyOpenProStatus: Boolean = false
+    onOpenFaq: () -> Unit
 ) {
     val context = LocalContext.current
     val plants by viewModel.plants.collectAsState()
@@ -5214,10 +4979,6 @@ fun HelpScreen(
     }
 
     val helpScrollState = rememberScrollState()
-    var proStatusSectionY by remember { mutableStateOf(0f) }
-    LaunchedEffect(initiallyOpenProStatus) {
-        if (initiallyOpenProStatus) helpScrollState.animateScrollTo(proStatusSectionY.toInt())
-    }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).padding(16.dp)) {
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
@@ -6008,116 +5769,8 @@ fun HelpScreen(
         }
         }
 
-        // 3a) Sage & Pro status
-        var showProUpsell by remember { mutableStateOf(false) }
-        ExpandableSection(
-            title = "Sage & Pro status",
-            initiallyExpanded = initiallyOpenProStatus,
-            modifier = Modifier.onGloballyPositioned { proStatusSectionY = it.positionInParent().y }
-        ) {
-            var entitlementState by remember { mutableStateOf(EntitlementManager.getCached(context)) }
-            var refreshing by remember { mutableStateOf(false) }
-            val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
-
-            val statusText = when {
-                entitlementState.isPro && entitlementState.source == EntitlementSource.TRIAL ->
-                    "Free trial active" + (entitlementState.trialExpiresAt?.let { " — ends ${sdf.format(Date(it))}" } ?: "")
-                entitlementState.isPro && entitlementState.source == EntitlementSource.PROMO_CODE -> "Pro — unlocked with a promo code"
-                entitlementState.isPro -> "Pro"
-                else -> "Free"
-            }
-            Text(statusText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Spacer(Modifier.height(6.dp))
-            if (!entitlementState.isPro) {
-                Text(
-                    "${entitlementState.sagePromptsUsed} of ${entitlementState.sagePromptLimit} free Sage questions used. Free tier: up to ${entitlementState.plantLimit} plants, no Tuya integration, last ${entitlementState.logHistoryLimit} care log entries.",
-                    fontSize = 12.sp, color = Color.Gray
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-            val installId = remember { getOrCreateInstallId(context) }
-            Text(
-                "Install ID: $installId (tap to copy — quote this if you contact support)",
-                fontSize = 10.sp, color = Color.Gray,
-                modifier = Modifier.clickable {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", installId))
-                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
-                }
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedButton(
-                onClick = {
-                    refreshing = true
-                    scope.launch {
-                        entitlementState = EntitlementManager.sync(context)
-                        refreshing = false
-                    }
-                },
-                enabled = !refreshing,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (refreshing) "Refreshing…" else "Refresh status") }
-
-            if (entitlementState.source == EntitlementSource.TRIAL || entitlementState.source == EntitlementSource.NONE) {
-                Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
-                Text("Upgrade to Pro", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Keeps the sun map, smart-irrigation integration, companion planting/spacing audit, cost & water tracking, growth timelines, watering history and weather-aware reminders — plus unlimited Sage.",
-                    fontSize = 12.sp, color = Color.Gray
-                )
-                Spacer(Modifier.height(10.dp))
-                Button(onClick = { showProUpsell = true }, modifier = Modifier.fillMaxWidth()) { Text("Upgrade to Pro") }
-            }
-            if (showProUpsell) {
-                ProUpsellDialog(
-                    headline = "Upgrade to Pro",
-                    subheadline = "Unlock every feature, no limits",
-                    onDismiss = { showProUpsell = false },
-                    // Already on this screen with the promo code field further down — just close the dialog.
-                    onOpenHelp = { showProUpsell = false }
-                )
-            }
-
-            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
-            var code by remember { mutableStateOf("") }
-            var redeeming by remember { mutableStateOf(false) }
-            Text("Have a promo code? Enter it below for permanent Pro access.", fontSize = 12.sp, color = Color.Gray)
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = code, onValueChange = { code = it.uppercase() },
-                label = { Text("Promo code") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = {
-                    redeeming = true
-                    scope.launch {
-                        val message = when (val result = EntitlementManager.redeemPromoCode(context, code)) {
-                            is PromoRedemptionResult.Success -> {
-                                entitlementState = result.state
-                                code = ""
-                                "Promo code redeemed — Pro unlocked!"
-                            }
-                            PromoRedemptionResult.InvalidCode -> "That code isn't valid."
-                            PromoRedemptionResult.Expired -> "That code has expired."
-                            PromoRedemptionResult.RedemptionCapReached -> "That code has already been fully redeemed."
-                            PromoRedemptionResult.NetworkError -> "Couldn't reach Sage — check your connection and try again."
-                        }
-                        redeeming = false
-                        snackbarHostState.showSnackbar(message)
-                    }
-                },
-                enabled = code.isNotBlank() && !redeeming,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (redeeming) "Redeeming…" else "Redeem") }
-
-            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
+        // 3a) Sage assistant on/off
+        ExpandableSection(title = "Sage assistant") {
             var sageChatEnabled by remember { mutableStateOf(FeatureVisibility.isSageChatEnabled(context)) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Sage assistant", fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -6128,7 +5781,7 @@ fun HelpScreen(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Turn off the floating 🌿 button and plant-form suggestions if you'd rather not see Sage. This doesn't affect your Pro status or trial.",
+                "Turn off the floating 🌿 button and plant-form suggestions if you'd rather not see Sage.",
                 fontSize = 11.sp, color = Color.Gray
             )
         }
@@ -6136,30 +5789,21 @@ fun HelpScreen(
         // 3b) Basic / Advanced mode
         ExpandableSection(title = "Basic / Advanced mode") {
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
-            val isPro = EntitlementLiveState.value.isPro
 
             Text(
-                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget (up to 10 plants), and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, watering history, and weather-aware reminders.",
+                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget, and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, and watering history.",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Sage (the AI assistant) isn't affected by this toggle — it's available in both modes once you're on the free trial or Pro.",
+                "Sage and weather-aware reminders aren't affected by this toggle — they're available in both modes.",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(10.dp))
-            if (!isPro) {
-                Text(
-                    "Your trial has ended, so Advanced mode is paused until you upgrade to Pro. Nothing you've entered is lost — your sun map, audit results, cost tracking, growth photos and watering history are all still saved, and will be right there the moment you upgrade.",
-                    fontSize = 12.sp, color = Color(0xFFB23B3B)
-                )
-                Spacer(Modifier.height(10.dp))
-            }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(if (advancedMode) "Advanced mode" else "Basic mode", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(
                     checked = advancedMode,
-                    enabled = isPro,
                     onCheckedChange = {
                         advancedMode = it
                         FeatureVisibility.setAdvancedModeEnabled(context, it)
@@ -6171,6 +5815,36 @@ fun HelpScreen(
                 "Nothing is deleted when you switch — your Tuya/Rachio setup, sun map, and history stay saved.",
                 fontSize = 11.sp, color = Color.Gray
             )
+
+            Spacer(Modifier.height(20.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            var promoCode by remember { mutableStateOf("") }
+            var redeemingPromo by remember { mutableStateOf(false) }
+            OutlinedTextField(
+                value = promoCode, onValueChange = { promoCode = it.uppercase() },
+                label = { Text("Promo code") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    redeemingPromo = true
+                    scope.launch {
+                        val message = when (val result = EntitlementManager.redeemPromoCode(context, promoCode)) {
+                            is PromoRedemptionResult.Success -> { promoCode = ""; "Promo code redeemed!" }
+                            PromoRedemptionResult.InvalidCode -> "That code isn't valid."
+                            PromoRedemptionResult.Expired -> "That code has expired."
+                            PromoRedemptionResult.RedemptionCapReached -> "That code has already been fully redeemed."
+                            PromoRedemptionResult.NetworkError -> "Couldn't reach Sage — check your connection and try again."
+                        }
+                        redeemingPromo = false
+                        snackbarHostState.showSnackbar(message)
+                    }
+                },
+                enabled = promoCode.isNotBlank() && !redeemingPromo,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (redeemingPromo) "Redeeming…" else "Redeem promo code") }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
@@ -6443,6 +6117,25 @@ fun HelpScreen(
             ) { Text("Reset garden") }
         }
 
+        ExpandableSection(title = "Support Sage Garden") {
+            Text(
+                "Sage Garden is free, with no ads. If it's useful to you, a small tip helps cover running costs (Sage AI, hosting).",
+                fontSize = 12.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(SUPPORT_LINK_URL))
+                    try {
+                        context.startActivity(intent)
+                    } catch (_: Exception) {
+                        scope.launch { snackbarHostState.showSnackbar("Couldn't open the link.") }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("☕ Buy me a coffee") }
+        }
+
         ExpandableSection(title = "Contact & feedback") {
             Text("Found a bug, or have an idea for the app? We'd love to hear from you.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
@@ -6460,6 +6153,17 @@ fun HelpScreen(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Email gardenwizardry685@gmail.com") }
+            Spacer(Modifier.height(10.dp))
+            val installId = remember { getOrCreateInstallId(context) }
+            Text(
+                "Install ID: $installId (tap to copy — quote this if you contact support)",
+                fontSize = 10.sp, color = Color.Gray,
+                modifier = Modifier.clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", installId))
+                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
+                }
+            )
         }
 
         Spacer(Modifier.height(20.dp))

@@ -105,37 +105,25 @@ object FeatureVisibility {
     }
 
     /**
-     * True when the feature should render. Sage is intentionally independent of the Basic/Advanced
-     * toggle — it's gated on Pro status (trial or promo code) AND the user's own "Sage enabled"
-     * preference, so it stays available in Basic mode as soon as a device is entitled, but can be
-     * turned off entirely from Help regardless of mode. Weather-aware reminders is similarly
-     * independent of the toggle — it's a Pro perk available in Basic mode too, not something Advanced
-     * mode unlocks. Every other feature requires Advanced mode AND Pro: once a trial lapses, these
-     * features (and the toggle itself) become unavailable — see [setAdvancedModeEnabled]'s doc comment
-     * for why nothing entered while they were visible gets lost. TUYA_INTEGRATION also gates the whole
-     * Irrigation section (Rachio included) — it's really "irrigation integration enabled", not
-     * Tuya-specific; which vendor's controls show within that section is a separate,
-     * non-gating IrrigationSystem choice.
+     * True when the feature should render. As of the move away from Play Billing monetization
+     * (subscription deactivated, no legitimate way left for a user to become Pro), every feature
+     * with no real backend cost is unconditionally available — gated only by Advanced/Basic mode
+     * where relevant, never by entitlement. SAGE_ASSISTANT is the one exception still worth keeping
+     * an eye on: it hits a billed Anthropic API call, so it stays gated on the user's own "Sage
+     * enabled" preference only (unlimited for everyone client-side), with the actual cost ceiling
+     * enforced server-side — see sagePromptLimit/DAILY_REQUEST_CEILING in the Sage Cloud Functions.
+     * TUYA_INTEGRATION also gates the whole Irrigation section (Rachio included) — it's really
+     * "irrigation integration enabled", not Tuya-specific; which vendor's controls show within that
+     * section is a separate, non-gating IrrigationSystem choice.
      */
     fun shouldShow(context: Context, feature: Feature): Boolean {
-        // Reads the live singleton (not EntitlementManager.getCached(context) directly) so a promo
-        // code redemption or trial lapse reaches every gated composable immediately — see
-        // EntitlementLiveState's doc comment for why a raw prefs read alone isn't reactive.
-        val isPro = EntitlementLiveState.value.isPro
         if (feature == Feature.SAGE_ASSISTANT) {
-            return SageEnabledState.enabled && isPro
+            return SageEnabledState.enabled
         }
         if (feature == Feature.WEATHER_AWARE_REMINDERS) {
-            return isPro
+            return true
         }
         if (!AdvancedModeState.enabled) return false
-        return when (feature) {
-            // tuyaEnabled is always exactly isPro (see EntitlementManager.getCached) — TUYA_INTEGRATION
-            // is listed alongside the others rather than branching on tuyaEnabled specifically, since
-            // there's no case where the two could actually differ.
-            Feature.TUYA_INTEGRATION, Feature.SUN_MAP, Feature.AUDIT_SCREEN, Feature.COST_WATER_TRACKING,
-            Feature.GROWTH_TIMELINES, Feature.WATERING_HISTORY -> isPro
-            else -> true
-        }
+        return true
     }
 }

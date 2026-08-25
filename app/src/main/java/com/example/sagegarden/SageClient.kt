@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit
 data class EntitlementSnapshot(
     val isPro: Boolean,
     val source: EntitlementSource,
-    val trialExpiresAt: Long?,
     val promoCode: String?,
     val sagePromptsUsed: Int,
     val sagePromptLimit: Int
@@ -38,13 +37,6 @@ sealed class PromoRedeemResult {
     data object Expired : PromoRedeemResult()
     data object RedemptionCapReached : PromoRedeemResult()
     data object NetworkError : PromoRedeemResult()
-}
-
-sealed class VerifyPurchaseResult {
-    data class Success(val snapshot: EntitlementSnapshot) : VerifyPurchaseResult()
-    data object NotActive : VerifyPurchaseResult()
-    data object NetworkError : VerifyPurchaseResult()
-    data object ServerError : VerifyPurchaseResult()
 }
 
 sealed class SageChatResult {
@@ -87,16 +79,13 @@ object SageClient {
 
     private fun parseSnapshot(json: JSONObject): EntitlementSnapshot {
         val source = when (json.optString("source", "none")) {
-            "trial" -> EntitlementSource.TRIAL
             "promo" -> EntitlementSource.PROMO_CODE
-            "purchase" -> EntitlementSource.PURCHASE
             "override" -> EntitlementSource.OVERRIDE
             else -> EntitlementSource.NONE
         }
         return EntitlementSnapshot(
             isPro = json.optBoolean("isPro", false),
             source = source,
-            trialExpiresAt = if (json.isNull("trialExpiresAt")) null else json.optLong("trialExpiresAt"),
             promoCode = if (json.isNull("promoCode")) null else json.optString("promoCode"),
             sagePromptsUsed = json.optInt("sagePromptCount", 0),
             sagePromptLimit = json.optInt("sagePromptLimit", EntitlementManager.FREE_SAGE_PROMPT_LIMIT)
@@ -135,30 +124,6 @@ object SageClient {
             }
         } catch (_: Exception) {
             PromoRedeemResult.NetworkError
-        }
-    }
-
-    /** Server-side verifies [purchaseToken] against the Google Play Developer API before granting entitlement — never trust a client-reported purchase state alone. Call after every purchase, and once at app startup to catch cancellations/renewals since the last verify. */
-    suspend fun verifyPurchase(context: Context, productId: String, purchaseToken: String): VerifyPurchaseResult = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject()
-                .put("deviceId", getOrCreateInstallId(context))
-                .put("productId", productId)
-                .put("purchaseToken", purchaseToken)
-            val request = requestBuilder("/verifyPurchase", body).build()
-            httpClient.newCall(request).execute().use { response ->
-                val text = response.body?.string() ?: return@withContext VerifyPurchaseResult.NetworkError
-                val json = JSONObject(text)
-                if (response.isSuccessful) {
-                    return@withContext VerifyPurchaseResult.Success(parseSnapshot(json))
-                }
-                return@withContext when (json.optString("error", "")) {
-                    "not_active" -> VerifyPurchaseResult.NotActive
-                    else -> VerifyPurchaseResult.ServerError
-                }
-            }
-        } catch (_: Exception) {
-            VerifyPurchaseResult.NetworkError
         }
     }
 

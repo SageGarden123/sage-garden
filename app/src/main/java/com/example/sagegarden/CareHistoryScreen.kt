@@ -26,10 +26,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     val careViewModel: CareLogViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val allEntries by remember(plantId) { careViewModel.getForPlant(plantId) }.collectAsState()
-    val entitlement = EntitlementManager.getCached(context)
-    val entries = if (entitlement.isPro) allEntries else allEntries.take(entitlement.logHistoryLimit)
-    val truncated = !entitlement.isPro && allEntries.size > entries.size
+    val entries by remember(plantId) { careViewModel.getForPlant(plantId) }.collectAsState()
     var pendingLogType by remember { mutableStateOf<String?>(null) }
     var logDate by remember { mutableStateOf("") }
     val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
@@ -66,13 +63,6 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
                         TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
                     }
                 }
-            }
-            if (truncated) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Showing the most recent ${entitlement.logHistoryLimit} entries — upgrade for full history.",
-                    fontSize = 11.sp, color = Color.Gray
-                )
             }
         }
         Spacer(Modifier.height(30.dp))
