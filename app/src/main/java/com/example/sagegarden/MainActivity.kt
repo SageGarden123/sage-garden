@@ -151,6 +151,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                     (f.plant == "All" || p.name == f.plant) &&
                     (f.sun == "All" || p.sun == f.sun) &&
                     (f.soil == "All" || p.soil == f.soil) &&
+                    (f.soilPh == "All" || p.soilPh == f.soilPh) &&
                     (f.water == "All" || p.water == f.water) &&
                     (f.frost == "All" || p.frost == f.frost)
         }
@@ -199,9 +200,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 val sunOptions = listOf("Full", "Full-Partial", "Partial", "Partial-Shade", "Shade")
 val waterOptions = listOf("Low", "Moderate", "High")
 val soilOptions = listOf(
-    "Well-drained", "Well-drained (sandy)", "Well-drained (rich)",
-    "Well-drained (acidic)", "Moist (rich)"
+    "Sandy", "Loamy", "Clay", "Silty", "Peaty", "Chalky", "Rocky/Stony", "Potting Mix", "Other", "Unknown"
 )
+val soilPhOptions = listOf("Acidic", "Neutral", "Alkaline", "Unknown")
 val frostOptions = listOf("Hardy", "Half-hardy", "Tender", "Tender (indoor only)")
 val nativeOptions = listOf("Native (Aus)", "Exotic")
 val pollinatorOptions = listOf(
@@ -1551,6 +1552,7 @@ data class DashboardFilters(
     val plant: String = "All",
     val sun: String = "All",
     val soil: String = "All",
+    val soilPh: String = "All",
     val water: String = "All",
     val frost: String = "All"
 )
@@ -1778,7 +1780,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
         0.0
     }
     val activeFilterCount = listOf(
-        filters.location, filters.source, filters.plant, filters.sun, filters.soil, filters.water, filters.frost
+        filters.location, filters.source, filters.plant, filters.sun, filters.soil, filters.soilPh, filters.water, filters.frost
     ).count { it != "All" }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1912,6 +1914,8 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                     Spacer(Modifier.height(10.dp))
                     SimpleFilterDropdown("Soil", listOf("All") + soilOptions, draft.soil) { draft = draft.copy(soil = it) }
                     Spacer(Modifier.height(10.dp))
+                    SimpleFilterDropdown("Soil pH", listOf("All") + soilPhOptions, draft.soilPh) { draft = draft.copy(soilPh = it) }
+                    Spacer(Modifier.height(10.dp))
                     SimpleFilterDropdown("Water", listOf("All") + waterOptions, draft.water) { draft = draft.copy(water = it) }
                     Spacer(Modifier.height(10.dp))
                     SimpleFilterDropdown("Frost", listOf("All") + frostOptions, draft.frost) { draft = draft.copy(frost = it) }
@@ -2033,6 +2037,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                     DetailRow("Sun", plantToShow.sun)
                     DetailRow("Water", plantToShow.water)
                     DetailRow("Soil", plantToShow.soil)
+                    DetailRow("Soil pH", plantToShow.soilPh)
                     DetailRow("Frost", plantToShow.frost)
                     DetailRow("Native/Exotic", plantToShow.native)
                     DetailRow("Pollinator-friendly", plantToShow.pollinator)
@@ -3994,6 +3999,7 @@ fun FormScreen(
     var sun by remember { mutableStateOf("") }
     var water by remember { mutableStateOf("") }
     var soil by remember { mutableStateOf("") }
+    var soilPh by remember { mutableStateOf("") }
     var frost by remember { mutableStateOf("") }
     var native by remember { mutableStateOf("Native (Aus)") }
     var pollinatorChoice by remember { mutableStateOf("") }
@@ -4044,7 +4050,7 @@ fun FormScreen(
         return PlantEntity(
             id = plantId ?: generatedId.ifBlank { generateNextPlantId(allPlants) },
             name = name, sci = sci, location = location,
-            sun = sun, water = water, soil = soil, frost = frost,
+            sun = sun, water = water, soil = soil, soilPh = soilPh, frost = frost,
             native = native, pollinator = finalPollinator, source = source, date = date,
             qty = qty.toIntOrNull() ?: 1,
             notes = notes,
@@ -4125,6 +4131,7 @@ fun FormScreen(
                 sun = existing.sun
                 water = existing.water
                 soil = existing.soil
+                soilPh = existing.soilPh
                 frost = existing.frost
                 native = existing.native
                 if (pollinatorOptions.contains(existing.pollinator)) {
@@ -4323,6 +4330,8 @@ fun FormScreen(
         DropdownField("Water", waterOptions, water, { water = it }, "How much water this plant needs to thrive")
         Spacer(Modifier.height(14.dp))
         DropdownField("Soil", soilOptions, soil, { soil = it }, "What type of soil this plant needs to thrive")
+        Spacer(Modifier.height(14.dp))
+        DropdownField("Soil pH", soilPhOptions, soilPh, { soilPh = it }, "How acidic or alkaline this plant's soil should be")
         Spacer(Modifier.height(14.dp))
         DropdownField("Frost", frostOptions, frost, { frost = it }, "The frost tolerance of this plant")
         Spacer(Modifier.height(14.dp))
@@ -4898,7 +4907,7 @@ fun HelpScreen(
                     plants.forEach { p ->
                         val row = listOf(
                             p.id, p.name, p.qty.toString(), p.sci, p.location, p.date, p.source,
-                            p.sun, p.soil, p.water, p.frost, p.native, p.pollinator, p.notes,
+                            p.sun, p.soil, p.soilPh, p.water, p.frost, p.native, p.pollinator, p.notes,
                             p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem
                         ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
                         sb.append(row).append("\n")
@@ -4953,6 +4962,7 @@ fun HelpScreen(
                             sun = csvFindValue(headers, cells, "Sun") ?: "",
                             water = csvFindValue(headers, cells, "Water") ?: "",
                             soil = csvFindValue(headers, cells, "Soil") ?: "",
+                            soilPh = csvFindValue(headers, cells, "Soil pH") ?: "",
                             frost = csvFindValue(headers, cells, "Frost") ?: "",
                             native = csvFindValue(headers, cells, "Native/Exotic") ?: "Native (Aus)",
                             pollinator = csvFindValue(headers, cells, "Pollinator-Friendly") ?: "",
@@ -6489,7 +6499,7 @@ fun DropboxFolderPickerDialog(
 
 val CSV_HEADERS = listOf(
     "Plant ID", "Plant", "Amount", "Scientific name", "Location", "Date planted", "Source",
-    "Sun", "Soil", "Water", "Frost", "Native/Exotic", "Pollinator-Friendly", "Notes",
+    "Sun", "Soil", "Soil pH", "Water", "Frost", "Native/Exotic", "Pollinator-Friendly", "Notes",
     "Latitude", "Longitude", "Watering System"
 )
 

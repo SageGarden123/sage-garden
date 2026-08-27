@@ -40,7 +40,7 @@ object BackupHelper {
         plants.forEach { p ->
             val o = JSONObject()
             o.put("id", p.id); o.put("name", p.name); o.put("sci", p.sci); o.put("location", p.location)
-            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("frost", p.frost)
+            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("soilPh", p.soilPh); o.put("frost", p.frost)
             o.put("native", p.native); o.put("pollinator", p.pollinator); o.put("source", p.source)
             o.put("date", p.date); o.put("qty", p.qty); o.put("notes", p.notes)
             o.put("wateringSystem", p.wateringSystem)
@@ -201,7 +201,7 @@ object BackupHelper {
                 PlantEntity(
                     id = o.getString("id"), name = o.getString("name"), sci = o.optString("sci", ""),
                     location = o.optString("location", ""), sun = o.optString("sun", ""),
-                    water = o.optString("water", ""), soil = o.optString("soil", ""), frost = o.optString("frost", ""),
+                    water = o.optString("water", ""), soil = o.optString("soil", ""), soilPh = o.optString("soilPh", ""), frost = o.optString("frost", ""),
                     native = o.optString("native", "Native (Aus)"), pollinator = o.optString("pollinator", ""),
                     source = o.optString("source", ""), date = o.optString("date", ""), qty = o.optInt("qty", 1),
                     notes = o.optString("notes", ""), wateringSystem = o.optString("wateringSystem", ""),

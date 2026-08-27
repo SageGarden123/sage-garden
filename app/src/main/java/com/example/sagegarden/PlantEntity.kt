@@ -12,6 +12,7 @@ data class PlantEntity(
     val sun: String,
     val water: String,
     val soil: String,
+    val soilPh: String = "",
     val frost: String,
     val native: String,
     val pollinator: String,
