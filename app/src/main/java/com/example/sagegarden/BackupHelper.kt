@@ -18,8 +18,11 @@ private const val BACKUP_MAP_FILENAME_PREFIX = "garden_mapper_backup_map"
 data class BackupResult(val success: Boolean, val message: String)
 data class RestoreResult(val success: Boolean, val message: String)
 
-private data class BackupCounts(val plants: Int, val paths: Int, val events: Int, val sunZones: Int, val growthPhotos: Int) {
-    fun summary() = "$plants plant(s), $paths irrigation path(s), $events watering event(s), $sunZones sun zone(s), $growthPhotos growth photo(s)"
+private data class BackupCounts(
+    val plants: Int, val paths: Int, val events: Int, val sunZones: Int, val growthPhotos: Int,
+    val extraPhotos: Int = 0, val locationPhotos: Int = 0
+) {
+    fun summary() = "$plants plant(s), $paths irrigation path(s), $events watering event(s), $sunZones sun zone(s), $growthPhotos growth photo(s), $extraPhotos extra photo(s), $locationPhotos progress photo(s)"
 }
 
 private data class BackupPayload(val root: JSONObject, val mapBytes: ByteArray?, val mapFileName: String?, val counts: BackupCounts)
@@ -104,6 +107,24 @@ object BackupHelper {
         }
         root.put("growthPhotos", growthPhotosArr)
 
+        val extraPhotosArr = JSONArray()
+        db.extraPhotoDao().getAllOnce().forEach { e ->
+            val o = JSONObject()
+            o.put("id", e.id); o.put("plantId", e.plantId); o.put("uri", e.uri)
+            o.put("label", e.label); o.put("addedAt", e.addedAt)
+            extraPhotosArr.put(o)
+        }
+        root.put("extraPhotos", extraPhotosArr)
+
+        val locationPhotosArr = JSONArray()
+        db.locationPhotoDao().getAllOnce().forEach { l ->
+            val o = JSONObject()
+            o.put("id", l.id); o.put("location", l.location); o.put("uri", l.uri)
+            o.put("label", l.label); o.put("takenAt", l.takenAt)
+            locationPhotosArr.put(o)
+        }
+        root.put("locationPhotos", locationPhotosArr)
+
         val careLogArr = JSONArray()
         db.careLogDao().getAllOnce().forEach { c ->
             val o = JSONObject()
@@ -177,7 +198,10 @@ object BackupHelper {
         }
         root.put("customMapFileName", mapFileName ?: JSONObject.NULL)
 
-        val counts = BackupCounts(plantsArr.length(), pathsArr.length(), eventsArr.length(), sunZonesArr.length(), growthPhotosArr.length())
+        val counts = BackupCounts(
+            plantsArr.length(), pathsArr.length(), eventsArr.length(), sunZonesArr.length(), growthPhotosArr.length(),
+            extraPhotosArr.length(), locationPhotosArr.length()
+        )
         return BackupPayload(root, mapBytes, mapFileName, counts)
     }
 
@@ -276,6 +300,28 @@ object BackupHelper {
             )
         }
 
+        val extraPhotosArr = root.optJSONArray("extraPhotos") ?: JSONArray()
+        for (i in 0 until extraPhotosArr.length()) {
+            val o = extraPhotosArr.getJSONObject(i)
+            db.extraPhotoDao().upsert(
+                ExtraPhotoEntity(
+                    id = o.getString("id"), plantId = o.getString("plantId"), uri = o.getString("uri"),
+                    label = o.optString("label", ""), addedAt = o.optLong("addedAt", System.currentTimeMillis())
+                )
+            )
+        }
+
+        val locationPhotosArr = root.optJSONArray("locationPhotos") ?: JSONArray()
+        for (i in 0 until locationPhotosArr.length()) {
+            val o = locationPhotosArr.getJSONObject(i)
+            db.locationPhotoDao().upsert(
+                LocationPhotoEntity(
+                    id = o.getString("id"), location = o.getString("location"), uri = o.getString("uri"),
+                    label = o.optString("label", ""), takenAt = o.optLong("takenAt", System.currentTimeMillis())
+                )
+            )
+        }
+
         val careLogArr = root.optJSONArray("careLog") ?: JSONArray()
         for (i in 0 until careLogArr.length()) {
             val o = careLogArr.getJSONObject(i)
@@ -347,7 +393,10 @@ object BackupHelper {
             setGardenAddress(context, s.optString("gardenAddress", ""))
         }
 
-        return BackupCounts(plantsArr.length(), pathsArr.length(), eventsArr.length(), sunZonesArr.length(), growthPhotosArr.length())
+        return BackupCounts(
+            plantsArr.length(), pathsArr.length(), eventsArr.length(), sunZonesArr.length(), growthPhotosArr.length(),
+            extraPhotosArr.length(), locationPhotosArr.length()
+        )
     }
 
     /** Null if no backup exists yet at the configured Dropbox path — otherwise when the existing one was last modified, for a "replace existing backup?" confirmation prompt before overwriting it. */

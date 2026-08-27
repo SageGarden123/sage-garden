@@ -1431,7 +1431,8 @@ fun GardenMapperApp() {
                     onAddPlant = { navController.navigate("form_new") },
                     onChangeLocation = { id, useCustom ->
                         navController.navigate(if (useCustom) "place_custom/$id" else "place_real/$id")
-                    }
+                    },
+                    onOpenLocationPhotos = { location -> navController.navigate("location_photos/${Uri.encode(location)}") }
                 )
             }
             composable("irrigation") {
@@ -1526,6 +1527,10 @@ fun GardenMapperApp() {
             composable("care/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 CareHistoryScreen(plantId = id, onBack = { navController.popBackStack() })
+            }
+            composable("location_photos/{location}", arguments = listOf(navArgument("location") { type = NavType.StringType })) { backStackEntry ->
+                val location = backStackEntry.arguments?.getString("location") ?: return@composable
+                LocationTimelineScreen(location = Uri.decode(location), onBack = { navController.popBackStack() })
             }
         }
     }
@@ -3236,7 +3241,7 @@ object ListScreenState {
 @Composable
 fun ListScreen(
     viewModel: PlantViewModel, onPlantClick: (String) -> Unit, onAddPlant: () -> Unit,
-    onChangeLocation: (String, Boolean) -> Unit
+    onChangeLocation: (String, Boolean) -> Unit, onOpenLocationPhotos: (String) -> Unit
 ) {
     val context = LocalContext.current
     val growthViewModel: GrowthPhotoViewModel = viewModel(
@@ -3247,6 +3252,7 @@ fun ListScreen(
     var search by ListScreenState.searchState
     var locationChangePlantId by remember { mutableStateOf<String?>(null) }
     var showListFieldsDialog by remember { mutableStateOf(false) }
+    var showProgressPhotosPicker by remember { mutableStateOf(false) }
     var groupBy by remember { mutableStateOf(getListGroupBy(context)) }
     var sortBy by remember { mutableStateOf(getListSortBy(context)) }
     var fieldKeys by remember { mutableStateOf(getListFieldKeys(context)) }
@@ -3317,7 +3323,10 @@ fun ListScreen(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            TextButton(onClick = { showListFieldsDialog = true }) { Text("Customise fields shown", fontSize = 12.sp) }
+            Row {
+                TextButton(onClick = { showListFieldsDialog = true }) { Text("Customise fields shown", fontSize = 12.sp) }
+                TextButton(onClick = { showProgressPhotosPicker = true }) { Text("📷 Progress photos", fontSize = 12.sp) }
+            }
             Spacer(modifier = Modifier.height(4.dp))
 
             if (filtered.isEmpty()) {
@@ -3474,6 +3483,41 @@ fun ListScreen(
                     }) { Text("Save") }
                 },
                 dismissButton = { TextButton(onClick = { showListFieldsDialog = false }) { Text("Cancel") } }
+            )
+        }
+
+        if (showProgressPhotosPicker) {
+            val locationPhotoViewModel: LocationPhotoViewModel = viewModel(
+                factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+            )
+            val photoCounts by locationPhotoViewModel.locationsWithPhotoCounts.collectAsState()
+            val allLocations = remember(plants) { plants.map { it.location }.filter { it.isNotBlank() }.distinct().sorted() }
+            AlertDialog(
+                onDismissRequest = { showProgressPhotosPicker = false },
+                title = { Text("Progress photos") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        if (allLocations.isEmpty()) {
+                            Text("Add a location to a plant first to track progress photos for it.", fontSize = 12.sp, color = Color.Gray)
+                        } else {
+                            Text("See how each area of your garden has changed over time.", fontSize = 12.sp, color = Color.Gray)
+                            Spacer(Modifier.height(10.dp))
+                            allLocations.forEach { location ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable { showProgressPhotosPicker = false; onOpenLocationPhotos(location) }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                    val count = photoCounts[location] ?: 0
+                                    Text(if (count == 1) "1 photo" else "$count photos", fontSize = 11.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showProgressPhotosPicker = false }) { Text("Close") } }
             )
         }
     }
@@ -4568,6 +4612,8 @@ fun FormScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            ExtraPhotosSection(plantId = plantId)
+            Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
@@ -4687,6 +4733,83 @@ fun FormScreen(
     }
     if (showDropboxPicker) {
         DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false }, onImageSelected = { link, _ -> photoUri = Uri.parse(link) })
+    }
+}
+
+// ============================================================================
+// EXTRA PHOTOS (per plant — watering system, care leaflets, etc.)
+// ============================================================================
+
+@Composable
+fun ExtraPhotosSection(plantId: String) {
+    val context = LocalContext.current
+    val extraPhotoViewModel: ExtraPhotoViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+    )
+    val photos by remember(plantId) { extraPhotoViewModel.getForPlant(plantId) }.collectAsState()
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showDropboxPicker by remember { mutableStateOf(false) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success && pendingCameraUri != null) extraPhotoViewModel.addPhoto(plantId, pendingCameraUri.toString())
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            extraPhotoViewModel.addPhoto(plantId, uri.toString())
+        }
+    }
+
+    ExpandableSection(title = "Extra photos (${photos.size})") {
+        Text(
+            "Anything else worth keeping a photo of for this plant — its watering system, a care-instruction leaflet, etc.",
+            fontSize = 12.sp, color = Color.Gray
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                    if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
+                    else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                },
+                modifier = Modifier.weight(1f)
+            ) { Text("📷 Camera", fontSize = 12.sp) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+        }
+
+        if (photos.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            photos.forEach { photo ->
+                var label by remember(photo.id) { mutableStateOf(photo.label) }
+                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(
+                            model = Uri.parse(photo.uri), contentDescription = null,
+                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        OutlinedTextField(
+                            value = label,
+                            onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
+                            label = { Text("Label", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDropboxPicker) {
+        DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
+            onImageSelected = { link, _ -> extraPhotoViewModel.addPhoto(plantId, link) })
     }
 }
 
