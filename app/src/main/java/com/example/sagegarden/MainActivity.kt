@@ -3515,7 +3515,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 (dateFilter.isBlank() || sdfDate.format(Date(e.startTime)) == dateFilter)
     }.sortedByDescending { it.startTime }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()).imePadding()) {
         Text("Irrigation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(12.dp))
 
@@ -4217,7 +4217,7 @@ fun FormScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp)
     ) {
         if (photoMode == "cloud" && !dropboxConnected) {
             Text("Connect your cloud storage in the Help tab first.", color = Color.Gray, fontSize = 13.sp)
@@ -5007,7 +5007,7 @@ fun HelpScreen(
 
     val helpScrollState = rememberScrollState()
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).imePadding().padding(16.dp)) {
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
             Row(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Frequently Asked Questions", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
