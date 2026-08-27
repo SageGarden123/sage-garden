@@ -108,19 +108,19 @@ object RachioClient {
             } else {
                 val startTs = pendingStart
                 if (startTs != null) {
-                    val durationMinutes = ((ev.ts - startTs) / 60_000L).toInt()
-                    if (durationMinutes > 0) {
-                        events.add(
-                            WateringEvent(
-                                id = "$deviceId-$zoneId-$startTs",
-                                zone = zoneName,
-                                outlet = zoneId,
-                                startTime = startTs,
-                                durationMinutes = durationMinutes,
-                                source = "Rachio"
-                            )
+                    // Floor to 1 rather than dropping — a quick manual test run otherwise
+                    // rounds to 0 minutes and silently vanishes from watering history.
+                    val durationMinutes = maxOf(1, ((ev.ts - startTs) / 60_000L).toInt())
+                    events.add(
+                        WateringEvent(
+                            id = "$deviceId-$zoneId-$startTs",
+                            zone = zoneName,
+                            outlet = zoneId,
+                            startTime = startTs,
+                            durationMinutes = durationMinutes,
+                            source = "Rachio"
                         )
-                    }
+                    )
                     pendingStart = null
                 }
             }

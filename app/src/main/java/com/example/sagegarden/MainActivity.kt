@@ -3815,9 +3815,22 @@ fun DatePickerField(
     if (showDialog) {
         val datePickerState = rememberDatePickerState(
             selectableDates = if (restrictToPastOrToday) {
+                // The picker reports each candidate day as UTC midnight of that calendar date, so
+                // comparing it against a raw System.currentTimeMillis() instant breaks in any
+                // timezone ahead of UTC: today's UTC-midnight representation is later than the
+                // actual current UTC instant until local time catches up to the UTC offset (e.g.
+                // until 10am in AEST/UTC+10), making "today" look like a future date and get
+                // excluded — this is exactly why only yesterday and earlier were selectable.
+                // Fix: compare against UTC midnight of *today's local date* instead, using the
+                // same yyyy-MM-dd/UTC convention dateStringToMillis uses everywhere else.
+                val todayUtcMidnight = run {
+                    val localSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val utcSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+                    utcSdf.parse(localSdf.format(Date()))!!.time
+                }
                 object : SelectableDates {
                     override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                        utcTimeMillis <= System.currentTimeMillis()
+                        utcTimeMillis <= todayUtcMidnight
                 }
             } else DatePickerDefaults.AllDates
         )

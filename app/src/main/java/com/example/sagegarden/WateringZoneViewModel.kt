@@ -90,8 +90,8 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
 
             _lastSyncResult.value = buildString {
                 append(
-                    if (errorZones.isEmpty()) "Synced $successCount zone(s) successfully"
-                    else "Synced $successCount zone(s), failed: ${errorZones.joinToString(", ")}"
+                    if (errorZones.isEmpty()) "Synced $successCount zone(s) — ${allNewEvents.size} new event(s) found"
+                    else "Synced $successCount zone(s) (${allNewEvents.size} new event(s)), failed: ${errorZones.joinToString(", ")}"
                 )
                 if (!csvSaved) append(" (CSV backup not saved — check your photo storage folder/Dropbox connection)")
             }

@@ -182,14 +182,19 @@ object TuyaClient {
      * nearest matching ON event, rather than trusting raw switch toggles alone —
      * those include frequent background/heartbeat pings that look identical to
      * real OFF events by timestamp.
+     *
+     * Some devices/firmware only report use_time_X for scheduler-triggered runs and never emit
+     * it for a manual on/off toggle — anchoring exclusively on use_time_X then silently returns
+     * zero events for those devices, with no error (sync still reports "success"). If this fetch
+     * window has no use_time_X readings at all, fall back to pairing raw switch_X toggles
+     * directly (see buildEventsFromSwitchPairs) — this reintroduces the heartbeat-noise risk the
+     * use_time anchor exists to avoid, but for a device that never reports use_time there's no
+     * better signal available, and showing a plausibly-noisy event beats showing nothing.
      */
     suspend fun fetchWateringEvents(
         context: Context, deviceId: String, zone: String, outlet: String, startMs: Long, endMs: Long
     ): List<WateringEvent> {
         val logs = getDpLogs(context, deviceId, ALL_CODES, startMs, endMs).sortedBy { it.eventTimeMs }
-
-        data class OnOff(val ts: Long)
-        data class Dur(val ts: Long, val seconds: Double?)
 
         val ons = mutableListOf<OnOff>()
         val offs = mutableListOf<OnOff>()
@@ -208,6 +213,19 @@ object TuyaClient {
             }
         }
 
+        return if (durations.isNotEmpty()) {
+            buildEventsFromDurations(durations, ons, offs, deviceId, zone, outlet)
+        } else {
+            buildEventsFromSwitchPairs(ons, offs, deviceId, zone, outlet)
+        }
+    }
+
+    private data class OnOff(val ts: Long)
+    private data class Dur(val ts: Long, val seconds: Double?)
+
+    private fun buildEventsFromDurations(
+        durations: List<Dur>, ons: List<OnOff>, offs: List<OnOff>, deviceId: String, zone: String, outlet: String
+    ): List<WateringEvent> {
         val usedOnIndices = mutableSetOf<Int>()
         val events = mutableListOf<WateringEvent>()
 
@@ -229,18 +247,48 @@ object TuyaClient {
             var endTs = dur.ts
             offs.firstOrNull { kotlin.math.abs(it.ts - dur.ts) <= OFF_MATCH_WINDOW_MS }?.let { endTs = it.ts }
 
-            val durationMinutes = seconds?.let { Math.round(it / 60.0).toInt() } ?: ((endTs - startTs) / 60_000L).toInt()
-            if (durationMinutes > 0) {
+            // A real use_time_X reading is genuine signal even when it rounds under a minute
+            // (e.g. a quick manual test) — floor to 1 rather than dropping it, so a real
+            // watering session is never silently invisible in the history.
+            val durationMinutes = maxOf(1, seconds?.let { Math.round(it / 60.0).toInt() } ?: ((endTs - startTs) / 60_000L).toInt())
+            events.add(
+                WateringEvent(
+                    id = "$deviceId-$outlet-$startTs",
+                    zone = zone,
+                    outlet = outlet,
+                    startTime = startTs,
+                    durationMinutes = durationMinutes,
+                    source = "Tuya"
+                )
+            )
+        }
+        return events
+    }
+
+    /** Pairs each ON with the next OFF after it — used only when a device never reports use_time_X at all (see fetchWateringEvents doc). */
+    private fun buildEventsFromSwitchPairs(
+        ons: List<OnOff>, offs: List<OnOff>, deviceId: String, zone: String, outlet: String
+    ): List<WateringEvent> {
+        val sortedOns = ons.sortedBy { it.ts }
+        val sortedOffs = offs.sortedBy { it.ts }
+        val events = mutableListOf<WateringEvent>()
+        var offIdx = 0
+        sortedOns.forEach { on ->
+            while (offIdx < sortedOffs.size && sortedOffs[offIdx].ts <= on.ts) offIdx++
+            if (offIdx < sortedOffs.size) {
+                val off = sortedOffs[offIdx]
+                val durationMinutes = maxOf(1, ((off.ts - on.ts) / 60_000L).toInt())
                 events.add(
                     WateringEvent(
-                        id = "$deviceId-$outlet-$startTs",
+                        id = "$deviceId-$outlet-${on.ts}",
                         zone = zone,
                         outlet = outlet,
-                        startTime = startTs,
+                        startTime = on.ts,
                         durationMinutes = durationMinutes,
                         source = "Tuya"
                     )
                 )
+                offIdx++
             }
         }
         return events

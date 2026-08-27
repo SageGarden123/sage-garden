@@ -33,8 +33,7 @@ object NotificationHelper {
     fun showWateringReminder(context: Context, duePlants: List<PlantEntity>, rainWarningMm: Double? = null) {
         if (duePlants.isEmpty()) return
         val title = if (duePlants.size == 1) "${duePlants[0].name} needs watering" else "${duePlants.size} plants need watering"
-        val body = duePlants.take(5).joinToString(", ") { it.name } +
-                (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "") +
+        val body = groupedDueBody(duePlants) +
                 (if (rainWarningMm != null) "\n🌧 ~${"%.1f".format(rainWarningMm)}mm rain expected — consider skipping" else "")
         postCareNotification(context, notificationId = 1001, title = title, body = body, type = "watering")
     }
@@ -42,29 +41,46 @@ object NotificationHelper {
     fun showFertiliseReminder(context: Context, duePlants: List<PlantEntity>) {
         if (duePlants.isEmpty()) return
         val title = if (duePlants.size == 1) "${duePlants[0].name} needs fertilising" else "${duePlants.size} plants need fertilising"
-        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
-        postCareNotification(context, notificationId = 1002, title = title, body = body, type = "fertilise")
+        postCareNotification(context, notificationId = 1002, title = title, body = groupedDueBody(duePlants), type = "fertilise")
     }
 
     fun showPruneReminder(context: Context, duePlants: List<PlantEntity>) {
         if (duePlants.isEmpty()) return
         val title = if (duePlants.size == 1) "${duePlants[0].name} needs pruning" else "${duePlants.size} plants need pruning"
-        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
-        postCareNotification(context, notificationId = 1003, title = title, body = body, type = "prune")
+        postCareNotification(context, notificationId = 1003, title = title, body = groupedDueBody(duePlants), type = "prune")
     }
 
     fun showFeedReminder(context: Context, duePlants: List<PlantEntity>) {
         if (duePlants.isEmpty()) return
         val title = if (duePlants.size == 1) "${duePlants[0].name} needs feeding" else "${duePlants.size} plants need feeding"
-        val body = duePlants.take(5).joinToString(", ") { it.name } + (if (duePlants.size > 5) " and ${duePlants.size - 5} more" else "")
-        postCareNotification(context, notificationId = 1005, title = title, body = body, type = "feed")
+        postCareNotification(context, notificationId = 1005, title = title, body = groupedDueBody(duePlants), type = "feed")
     }
 
     fun showFrostWarning(context: Context, atRiskPlants: List<PlantEntity>) {
         if (atRiskPlants.isEmpty()) return
         val title = "❄️ Frost expected — protect ${atRiskPlants.size} plant(s)"
-        val body = atRiskPlants.take(5).joinToString(", ") { it.name } + (if (atRiskPlants.size > 5) " and ${atRiskPlants.size - 5} more" else "")
-        postCareNotification(context, notificationId = 1004, title = title, body = body, type = "frost")
+        postCareNotification(context, notificationId = 1004, title = title, body = groupedDueBody(atRiskPlants), type = "frost")
+    }
+
+    /** Once a single location has more than this many plants due at once (a whole irrigation zone coming due together, most commonly), name the location instead of every plant in it. */
+    private const val LOCATION_GROUP_THRESHOLD = 10
+
+    /**
+     * Builds a notification body that names individual plants when there are only a few, but
+     * collapses a location with many plants due at once into one line ("All 14 plants in Front
+     * Garden") instead of spelling out every name — the common case for a whole irrigation zone
+     * (or a whole garden bed) coming due together, where a flat plant list becomes unreadable.
+     */
+    private fun groupedDueBody(duePlants: List<PlantEntity>): String {
+        val parts = mutableListOf<String>()
+        duePlants.groupBy { it.location }.forEach { (location, plantsHere) ->
+            if (plantsHere.size > LOCATION_GROUP_THRESHOLD && location.isNotBlank()) {
+                parts.add("All ${plantsHere.size} plants in $location")
+            } else {
+                parts.addAll(plantsHere.map { it.name })
+            }
+        }
+        return parts.take(5).joinToString(", ") + (if (parts.size > 5) " and ${parts.size - 5} more" else "")
     }
 
     private fun postCareNotification(context: Context, notificationId: Int, title: String, body: String, type: String) {
