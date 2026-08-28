@@ -71,7 +71,11 @@ data class WidgetConfig(
     val includeWatering: Boolean = true,
     val includePruning: Boolean = false,
     val includeFertilising: Boolean = false,
-    val includeFeeding: Boolean = false
+    val includeFeeding: Boolean = false,
+    // Empty means "every garden this device has access to" — matches every widget placed before
+    // multi-garden sharing existed (there was only ever one garden to show) and is also the natural
+    // "no explicit choice made yet" default for a brand-new widget.
+    val selectedGardenIds: Set<String> = emptySet()
 )
 
 private fun widgetPrefs(context: Context) = context.getSharedPreferences("garden_mapper_widget_prefs", Context.MODE_PRIVATE)
@@ -85,7 +89,9 @@ fun getWidgetConfig(context: Context, appWidgetId: Int): WidgetConfig {
         includeWatering = prefs.getBoolean("widget_${appWidgetId}_include_watering", true),
         includePruning = prefs.getBoolean("widget_${appWidgetId}_include_pruning", false),
         includeFertilising = prefs.getBoolean("widget_${appWidgetId}_include_fertilising", false),
-        includeFeeding = prefs.getBoolean("widget_${appWidgetId}_include_feeding", false)
+        includeFeeding = prefs.getBoolean("widget_${appWidgetId}_include_feeding", false),
+        selectedGardenIds = (prefs.getString("widget_${appWidgetId}_garden_ids", "") ?: "")
+            .split(",").filter { it.isNotBlank() }.toSet()
     )
 }
 
@@ -98,6 +104,7 @@ fun setWidgetConfig(context: Context, appWidgetId: Int, config: WidgetConfig) {
         .putBoolean("widget_${appWidgetId}_include_pruning", config.includePruning)
         .putBoolean("widget_${appWidgetId}_include_fertilising", config.includeFertilising)
         .putBoolean("widget_${appWidgetId}_include_feeding", config.includeFeeding)
+        .putString("widget_${appWidgetId}_garden_ids", config.selectedGardenIds.joinToString(","))
         .apply()
 }
 
@@ -110,6 +117,7 @@ fun clearWidgetConfig(context: Context, appWidgetId: Int) {
         .remove("widget_${appWidgetId}_include_pruning")
         .remove("widget_${appWidgetId}_include_fertilising")
         .remove("widget_${appWidgetId}_include_feeding")
+        .remove("widget_${appWidgetId}_garden_ids")
         .remove("widget_${appWidgetId}_last_refreshed")
         .apply()
 }
@@ -228,12 +236,18 @@ private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLo
     val now = System.currentTimeMillis()
     val cutoff = now + config.lookaheadDays * 86_400_000L
 
-    val allPlants = AppDatabase.getInstance(context).plantDao().getAllOnce()
-    // Fresh prefs read, not HemisphereState — this can run in a cold-started process with no synced singleton.
-    val hemisphere = getHemisphere(context)
+    // Empty selection means "every garden" (see WidgetConfig.selectedGardenIds) — this is also what
+    // makes a widget placed before multi-garden sharing existed keep showing everything unchanged.
+    // Each garden's own plants are checked against that garden's own hemisphere (not just whichever
+    // garden happens to be active in the UI), same fix as WateringReminderWorker — a friend's garden
+    // in the opposite hemisphere would otherwise get its watering due-dates computed backwards.
+    val gardenIds = config.selectedGardenIds.ifEmpty { allKnownGardenIds(context).toSet() }
+    val plantDao = AppDatabase.getInstance(context).plantDao()
+    val allPlants = gardenIds.flatMap { plantDao.getAllOnceForGarden(it) }
+    val hemisphereByGarden = gardenIds.associateWith { getHemisphereFor(context, it) }
 
     val careTypes = buildList {
-        if (config.includeWatering) add(Triple("💧", "Water", { p: PlantEntity, t: Long -> computeWateringStatus(p, t, hemisphere) }))
+        if (config.includeWatering) add(Triple("💧", "Water", { p: PlantEntity, t: Long -> computeWateringStatus(p, t, hemisphereByGarden[p.gardenId] ?: Hemisphere.SOUTHERN) }))
         if (config.includePruning) add(Triple("✂️", "Prune", ::computePruneStatus))
         if (config.includeFertilising) add(Triple("🌱", "Fertilise", ::computeFertiliseStatus))
         if (config.includeFeeding) add(Triple("🍽️", "Feed", ::computeFeedStatus))
