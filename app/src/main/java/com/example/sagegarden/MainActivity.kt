@@ -96,9 +96,11 @@ import com.dropbox.core.android.Auth
 import com.dropbox.core.v2.DbxClientV2
 import com.dropbox.core.v2.files.WriteMode
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompletePrediction
 import com.google.android.libraries.places.api.model.AutocompleteSessionToken
@@ -905,6 +907,11 @@ object PendingPlantEditState {
     var plantId by mutableStateOf<String?>(null)
 }
 
+/** Set before navigating to Help from the Map tab's "no garden address set" guidance, so the Weather-aware reminders section (where the address field lives) opens already expanded. Reset once HelpScreen consumes it. */
+object PendingHelpFocusState {
+    var focusWeatherSection by mutableStateOf(false)
+}
+
 object SageFabResetState {
     var requested by mutableStateOf(false)
 }
@@ -1581,7 +1588,8 @@ fun GardenMapperApp() {
                     onAddPlantAtLatLng = { lat, lng -> navController.navigate("form_new?lat=$lat&lng=$lng") },
                     onAddPlantAtFraction = { x, y -> navController.navigate("form_new?mapX=$x&mapY=$y") },
                     startOnCustom = isUsingCustomMap(context),
-                    onOpenSunMap = { navController.navigate("sunmap") }
+                    onOpenSunMap = { navController.navigate("sunmap") },
+                    onNavigateToHelp = { navController.navigate("help") }
                 )
             }
             composable("list") {
@@ -2336,15 +2344,62 @@ fun MapScreen(
     onMapTap: (Double, Double) -> Unit,
     onMarkerClick: (String) -> Unit,
     placementModeForPlantId: String? = null,
-    onPlacementSaved: (() -> Unit)? = null
+    onPlacementSaved: (() -> Unit)? = null,
+    onNavigateToHelp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val plants by viewModel.filteredPlants.collectAsState()
-    val defaultLocation = LatLng(40.785091, -73.968285) // Central Park, NYC
+    val gardenLatLng = remember { getGardenLatLng(context) }
+    val savedCamera = remember { getMapCameraPosition(context) }
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLocation, 18f)
+        position = when {
+            savedCamera != null -> CameraPosition.fromLatLngZoom(LatLng(savedCamera.first, savedCamera.second), savedCamera.third)
+            gardenLatLng != null -> CameraPosition.fromLatLngZoom(LatLng(gardenLatLng.first, gardenLatLng.second), 18f)
+            else -> CameraPosition.fromLatLngZoom(LatLng(MAP_FALLBACK_LAT, MAP_FALLBACK_LNG), 18f)
+        }
     }
     val scope = rememberCoroutineScope()
+    // Persists the camera's resting position whenever the user finishes panning/zooming, so the
+    // map opens back to where they left it instead of resetting to the garden address every time.
+    // isMoving starts false at composition, so this LaunchedEffect's very first firing is an
+    // artifact of initial setup, not a real user pan/zoom — persisting it would lock in whatever
+    // fallback position (garden address, or the hardcoded default) the camera happened to start at,
+    // permanently shadowing the real garden address once it becomes known and blocking the
+    // auto-fit-to-markers effect below (which only runs when no camera has been saved yet) from ever
+    // running again. Skipping exactly this first firing lets a real garden address or the auto-fit's
+    // own camera move persist normally afterward, while still remembering genuine user pans.
+    var hasSettledOnce by remember(ActiveGardenState.activeGardenId) { mutableStateOf(false) }
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (!cameraPositionState.isMoving) {
+            if (hasSettledOnce) {
+                val pos = cameraPositionState.position
+                setMapCameraPosition(context, pos.target.latitude, pos.target.longitude, pos.zoom)
+            } else {
+                hasSettledOnce = true
+            }
+        }
+    }
+    // A garden viewed for the first time on this device (freshly created, or just joined) has no
+    // saved camera position or garden address of its own yet — without this, the map fell back to
+    // a hardcoded NYC default, making a shared garden's plants look like they "didn't come across"
+    // when they were actually just off-screen on the other side of the world. Once this garden's
+    // actual plants load, fit the camera to them instead, but only once and only when there was
+    // nothing more specific to go on.
+    var hasAutoFitted by remember(ActiveGardenState.activeGardenId) { mutableStateOf(false) }
+    LaunchedEffect(plants, hasAutoFitted) {
+        if (!hasAutoFitted && savedCamera == null && gardenLatLng == null && plants.isNotEmpty()) {
+            val coords = plants.mapNotNull { p -> if (p.lat != null && p.lng != null) LatLng(p.lat, p.lng) else null }
+            if (coords.isNotEmpty()) {
+                hasAutoFitted = true
+                if (coords.size == 1) {
+                    cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(coords.first(), 18f))
+                } else {
+                    val bounds = LatLngBounds.Builder().apply { coords.forEach { include(it) } }.build()
+                    cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 100))
+                }
+            }
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
 
     val placesClient = remember { Places.createClient(context) }
@@ -2416,34 +2471,6 @@ fun MapScreen(
         sessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
     }
 
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                    PackageManager.PERMISSION_GRANTED
-        )
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> hasLocationPermission = granted }
-
-    LaunchedEffect(Unit) {
-        if (!hasLocationPermission) permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-    }
-    LaunchedEffect(hasLocationPermission) {
-        if (hasLocationPermission) {
-            try {
-                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
-                fusedClient.lastLocation.addOnSuccessListener { location ->
-                    if (location != null) {
-                        cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                            LatLng(location.latitude, location.longitude), 19f
-                        )
-                    }
-                }
-            } catch (_: SecurityException) { /* permission revoked mid-flight, ignore */ }
-        }
-    }
-
     fun runAddressSearch() {
         if (searchQuery.isBlank()) return
         scope.launch {
@@ -2462,40 +2489,87 @@ fun MapScreen(
         }
     }
 
+    if (gardenLatLng == null && placementModeForPlantId == null) {
+        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("🗺️", fontSize = 40.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Set your garden's address to see it here",
+                    fontWeight = FontWeight.SemiBold, fontSize = 16.sp, textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Once set, the map centres on your garden instead of a generic location.",
+                    fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = { PendingHelpFocusState.focusWeatherSection = true; onNavigateToHelp() }) {
+                    Text("Set garden address in Help")
+                }
+            }
+        }
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
             properties = MapProperties(mapType = MapType.HYBRID),
             onMapClick = { latLng ->
-                if (placementModeForPlantId != null) {
-                    scope.launch {
-                        val plant = viewModel.getById(placementModeForPlantId)
-                        if (plant != null) {
-                            viewModel.save(plant.copy(lat = latLng.latitude, lng = latLng.longitude))
+                // A view-only member can still pan/zoom freely (that's just camera state, not a
+                // GoogleMap click callback) — only tapping to add/move a plant is blocked here.
+                // Placement mode itself is already unreachable without edit access (its only entry
+                // point, FormScreen's "Place on real-world map" button, is hidden for read-only), so
+                // this check mainly guards the plain "tap empty space to add a new plant" path.
+                if (hasWriteAccessToActiveGarden(context)) {
+                    if (placementModeForPlantId != null) {
+                        scope.launch {
+                            val plant = viewModel.getById(placementModeForPlantId)
+                            if (plant != null) {
+                                viewModel.save(plant.copy(lat = latLng.latitude, lng = latLng.longitude))
+                            }
+                            onPlacementSaved?.invoke()
                         }
-                        onPlacementSaved?.invoke()
+                    } else {
+                        onMapTap(latLng.latitude, latLng.longitude)
                     }
-                } else {
-                    onMapTap(latLng.latitude, latLng.longitude)
                 }
             }
         ) {
             plants.forEach { plant ->
                 if (plant.lat != null && plant.lng != null) {
-                    Marker(
-                        state = MarkerState(position = LatLng(plant.lat, plant.lng)),
-                        title = plant.name,
-                        snippet = plant.sci,
-                        icon = BitmapDescriptorFactory.defaultMarker(
-                            if (plant.native.startsWith("Native")) BitmapDescriptorFactory.HUE_GREEN
-                            else BitmapDescriptorFactory.HUE_ORANGE
-                        ),
-                        onClick = {
-                            tooltipPlant = plant
-                            true
+                    if (plant.category.isNotBlank() && plant.category != "Other") {
+                        MarkerComposable(
+                            state = MarkerState(position = LatLng(plant.lat, plant.lng)),
+                            title = plant.name,
+                            snippet = plant.sci,
+                            onClick = { tooltipPlant = plant; true }
+                        ) {
+                            Box(
+                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(50))
+                                    .background(Color.White).border(1.5.dp, Color(0xFF3A5A40), RoundedCornerShape(50)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(categoryMarkerEmoji(plant.category), fontSize = 15.sp)
+                            }
                         }
-                    )
+                    } else {
+                        Marker(
+                            state = MarkerState(position = LatLng(plant.lat, plant.lng)),
+                            title = plant.name,
+                            snippet = plant.sci,
+                            icon = BitmapDescriptorFactory.defaultMarker(
+                                if (plant.native.startsWith("Native")) BitmapDescriptorFactory.HUE_GREEN
+                                else BitmapDescriptorFactory.HUE_ORANGE
+                            ),
+                            onClick = {
+                                tooltipPlant = plant
+                                true
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -2609,7 +2683,8 @@ fun MapTabScreen(
     placementModeForPlantId: String? = null,
     onPlacementSaved: (() -> Unit)? = null,
     startOnCustom: Boolean = false,
-    onOpenSunMap: () -> Unit = {}
+    onOpenSunMap: () -> Unit = {},
+    onNavigateToHelp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val pathViewModel: IrrigationPathViewModel = viewModel(
@@ -2678,7 +2753,8 @@ fun MapTabScreen(
             } else {
                 MapScreen(
                     viewModel = viewModel, onMapTap = onAddPlantAtLatLng, onMarkerClick = onMarkerClick,
-                    placementModeForPlantId = placementModeForPlantId, onPlacementSaved = onPlacementSaved
+                    placementModeForPlantId = placementModeForPlantId, onPlacementSaved = onPlacementSaved,
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         }
@@ -2874,10 +2950,17 @@ fun CustomMapScreen(
         return rotated * scale + center + panOffset
     }
 
-    // Fixed screen-space radius (not fraction-space) for "did the user tap an existing plant
-    // marker" — deliberately small and zoom-independent so that zooming in lets a plant be placed
-    // right next to an existing one instead of the marker's hit target growing along with it.
-    val plantTapRadiusPx = with(density) { 18.dp.toPx() }
+    // Screen-space (not fraction-space) hit radius for "did the user tap an existing plant
+    // marker" — matches each marker's own rendered radius exactly rather than padding out to a
+    // comfortable touch target, and is zoom-independent (in dp, not fraction-space) so that
+    // zooming in lets a plant be placed right next to an existing one instead of the marker's hit
+    // target growing along with it. Deliberately precise rather than forgiving: a near-miss tap is
+    // treated as "place a new plant here", which is what makes dense plantings placeable at all.
+    fun plantMarkerRadiusPx(plant: PlantEntity): Float {
+        val hasCategoryIcon = plant.category.isNotBlank() && plant.category != "Other"
+        val diameterDp = if (hasCategoryIcon) 14.dp else 5.dp
+        return with(density) { (diameterDp / 2).toPx() }
+    }
 
     Box(
         modifier = Modifier
@@ -2940,7 +3023,7 @@ fun CustomMapScreen(
                             .filter { it.mapX != null && it.mapY != null }
                             .minByOrNull { (fractionToScreenPoint(Offset(it.mapX!!.toFloat(), it.mapY!!.toFloat())) - tap).getDistance() }
                         val nearestDist = nearestPlant?.let { (fractionToScreenPoint(Offset(it.mapX!!.toFloat(), it.mapY!!.toFloat())) - tap).getDistance() }
-                        if (nearestPlant != null && nearestDist != null && nearestDist <= plantTapRadiusPx) {
+                        if (nearestPlant != null && nearestDist != null && nearestDist <= plantMarkerRadiusPx(nearestPlant)) {
                             tooltipPlant = nearestPlant
                         } else {
                             pendingFraction = frac
