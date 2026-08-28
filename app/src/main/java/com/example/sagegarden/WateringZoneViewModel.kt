@@ -2,12 +2,15 @@ package com.example.sagegarden
 
 import android.app.Application
 import android.content.Context
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -20,10 +23,12 @@ private data class VendorSyncConfig(
     val fetchEvents: suspend (mapping: VendorZoneMapping, startMs: Long, endMs: Long) -> List<WateringEvent>
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class WateringZoneViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).wateringEventDao()
 
-    val events: StateFlow<List<WateringEvent>> = dao.getAll()
+    val events: StateFlow<List<WateringEvent>> = snapshotFlow { effectiveGardenId(application) }
+        .flatMapLatest { gardenId -> dao.getAll(gardenId) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _syncing = MutableStateFlow(false)
@@ -73,9 +78,10 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
             val errorZones = mutableListOf<String>()
             val allNewEvents = mutableListOf<WateringEvent>()
 
+            val gardenId = effectiveGardenId(context)
             config.mappings.forEach { mapping ->
                 try {
-                    val zoneEvents = config.fetchEvents(mapping, start, end)
+                    val zoneEvents = config.fetchEvents(mapping, start, end).map { it.copy(gardenId = gardenId) }
                     dao.insertAll(zoneEvents)
                     allNewEvents.addAll(zoneEvents)
                     successCount++
@@ -84,8 +90,14 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
                 }
             }
 
+            val usingCloud = getPhotoStorageMode(context) == "cloud"
+            // saveIrrigationCsvLocal/Dropbox both fail silently (return false, write nothing) when
+            // there's no folder to write to — a device that's never picked a local folder or connected
+            // Dropbox would otherwise report a successful sync while the CSV quietly never gets
+            // created, with only a vague "backup not saved" afterthought explaining why.
+            val storageConfigured = if (usingCloud) DropboxAuthState.token != null else getIrrigationLogFolderUri(context) != null
             val csvSaved = if (allNewEvents.isEmpty()) true
-            else if (getPhotoStorageMode(context) == "cloud") saveIrrigationCsvDropbox(context, allNewEvents)
+            else if (usingCloud) saveIrrigationCsvDropbox(context, allNewEvents)
             else saveIrrigationCsvLocal(context, allNewEvents)
 
             _lastSyncResult.value = buildString {
@@ -93,12 +105,21 @@ class WateringZoneViewModel(application: Application) : AndroidViewModel(applica
                     if (errorZones.isEmpty()) "Synced $successCount zone(s) — ${allNewEvents.size} new event(s) found"
                     else "Synced $successCount zone(s) (${allNewEvents.size} new event(s)), failed: ${errorZones.joinToString(", ")}"
                 )
-                if (!csvSaved) append(" (CSV backup not saved — check your photo storage folder/Dropbox connection)")
+                if (allNewEvents.isNotEmpty()) {
+                    when {
+                        csvSaved -> append(if (usingCloud) " — appended to irrigation_log.csv in Dropbox" else " — appended to irrigation_log.csv on device")
+                        !storageConfigured -> append(" — choose an irrigation log location (Help → Irrigation) to save irrigation_log.csv")
+                        else -> append(" (couldn't save irrigation_log.csv — check your irrigation log folder/Dropbox connection)")
+                    }
+                }
             }
             _syncing.value = false
         }
     }
     fun importEvents(events: List<WateringEvent>) {
-        viewModelScope.launch { dao.insertAll(events) }
+        viewModelScope.launch {
+            val stamped = events.map { if (it.gardenId.isBlank()) it.copy(gardenId = effectiveGardenId(getApplication())) else it }
+            dao.insertAll(stamped)
+        }
     }
 }

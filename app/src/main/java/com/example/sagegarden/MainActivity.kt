@@ -1016,6 +1016,32 @@ suspend fun autoLinkLocalPhotos(
     linkedCount
 }
 
+/**
+ * Where irrigation_log.csv is read/written — deliberately separate from the photo storage folder
+ * above. Both used to silently default to the photo folder/path, which meant a user who'd never
+ * explicitly thought about it would find their watering history mixed in with (or invisibly
+ * shadowed by) wherever their photos happened to be configured to go, with no way to tell where it
+ * actually ended up short of hunting through their photo folder. Null falls back to "(root)" for
+ * Dropbox and blocks the local save with a clear "choose a folder first" message rather than a
+ * silent no-op — see saveIrrigationCsvLocal/Dropbox.
+ */
+fun getIrrigationLogFolderUri(context: Context): Uri? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("irrigation_log_folder_uri", null)?.let { Uri.parse(it) }
+}
+fun setIrrigationLogFolderUri(context: Context, uri: Uri?) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("irrigation_log_folder_uri", uri?.toString()).apply()
+}
+fun getIrrigationLogDropboxFolderPath(context: Context): String? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("irrigation_log_dropbox_folder_path", null)
+}
+fun setIrrigationLogDropboxFolderPath(context: Context, path: String?) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("irrigation_log_dropbox_folder_path", path).apply()
+}
+
 fun getDropboxPhotoFolderPath(context: Context): String? {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getString("dropbox_photo_folder_path", null)
@@ -1217,7 +1243,7 @@ fun csvImportResultToOutcome(result: CsvImportResult<WateringEvent>): CsvImportO
 
 suspend fun saveIrrigationCsvLocal(context: Context, newEvents: List<WateringEvent>): Boolean = withContext(Dispatchers.IO) {
     try {
-        val folder = getLocalPhotoFolderUri(context)?.let { DocumentFile.fromTreeUri(context, it) } ?: return@withContext false
+        val folder = getIrrigationLogFolderUri(context)?.let { DocumentFile.fromTreeUri(context, it) } ?: return@withContext false
         val existingFile = folder.findFile("irrigation_log.csv")
         val existingText = existingFile?.let { f ->
             context.contentResolver.openInputStream(f.uri)?.use { it.bufferedReader().readText() }
@@ -1237,7 +1263,7 @@ suspend fun saveIrrigationCsvLocal(context: Context, newEvents: List<WateringEve
 suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringEvent>): Boolean = withContext(Dispatchers.IO) {
     try {
         val client = getDropboxClient(context) ?: return@withContext false
-        val filePath = "${getDropboxPhotoFolderPath(context) ?: ""}/irrigation_log.csv".replace("//", "/")
+        val filePath = "${getIrrigationLogDropboxFolderPath(context) ?: ""}/irrigation_log.csv".replace("//", "/")
         val existingText = try {
             val out = java.io.ByteArrayOutputStream()
             client.files().download(filePath).download(out)
@@ -1259,7 +1285,7 @@ suspend fun saveIrrigationCsvDropbox(context: Context, newEvents: List<WateringE
 suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withContext(Dispatchers.IO) {
     try {
         val client = getDropboxClient(context) ?: return@withContext null
-        val filePath = "${getDropboxPhotoFolderPath(context) ?: ""}/irrigation_log.csv".replace("//", "/")
+        val filePath = "${getIrrigationLogDropboxFolderPath(context) ?: ""}/irrigation_log.csv".replace("//", "/")
         val out = java.io.ByteArrayOutputStream()
         client.files().download(filePath).download(out)
         out.toString("UTF-8")
@@ -6323,6 +6349,23 @@ fun HelpScreen(
         }
     }
 
+    // Deliberately separate from folderPickerLauncher above — irrigation_log.csv used to silently
+    // default to wherever photos were configured to go, with no way for the user to choose a
+    // different location for it specifically.
+    var irrigationLogFolder by remember { mutableStateOf(getIrrigationLogFolderUri(context)) }
+    val irrigationLogFolderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            setIrrigationLogFolderUri(context, uri)
+            irrigationLogFolder = uri
+        }
+    }
+
     val helpScrollState = rememberScrollState()
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).imePadding().padding(16.dp)) {
@@ -6974,6 +7017,35 @@ fun HelpScreen(
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
+            Text("Irrigation log location", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Where irrigation_log.csv is read from and appended to — separate from wherever your photos are stored.",
+                fontSize = 12.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            if (getPhotoStorageMode(context) == "cloud") {
+                var irrigationDropboxPath by remember { mutableStateOf(getIrrigationLogDropboxFolderPath(context) ?: "") }
+                var showIrrigationFolderPicker by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = irrigationDropboxPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
+                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { showIrrigationFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                if (showIrrigationFolderPicker) {
+                    DropboxFolderPickerDialog(
+                        context = context, onDismiss = { showIrrigationFolderPicker = false },
+                        onFolderSelected = { path -> irrigationDropboxPath = path; setIrrigationLogDropboxFolderPath(context, path) }
+                    )
+                }
+            } else {
+                OutlinedButton(onClick = { irrigationLogFolderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (irrigationLogFolder != null) "Change irrigation log folder" else "Choose irrigation log folder")
+                }
+            }
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
             if (irrigationSystem != IrrigationSystem.NONE) {
             Text("Sync irrigation history", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
@@ -6987,7 +7059,7 @@ fun HelpScreen(
             Spacer(Modifier.height(10.dp))
             val syncing by wateringViewModel.syncing.collectAsState()
             val syncResult by wateringViewModel.lastSyncResult.collectAsState()
-            Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync now") }
+            Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync watering history") }
             syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
             Spacer(Modifier.height(12.dp))
             }
