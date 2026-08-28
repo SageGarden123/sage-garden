@@ -1,6 +1,6 @@
 import * as crypto from "crypto";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import type { FrequencySuggestion } from "./anthropic";
+import type { FrequencySuggestion, ConditionsSuggestion } from "./anthropic";
 
 function normalize(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
@@ -49,6 +49,34 @@ export async function getCachedFrequencies(sciName: string): Promise<FrequencySu
 export async function setCachedFrequencies(sciName: string, suggestion: FrequencySuggestion): Promise<void> {
   const db = getFirestore();
   await db.collection("speciesFrequencyCache").doc(hashKey(sciName)).set({
+    sciName: normalize(sciName),
+    ...suggestion,
+    hitCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/** Keyed purely on species name (not device-specific) — cache hits are shared globally across every install. */
+export async function getCachedConditions(sciName: string): Promise<ConditionsSuggestion | null> {
+  const db = getFirestore();
+  const ref = db.collection("speciesConditionsCache").doc(hashKey(sciName));
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  await ref.update({ hitCount: FieldValue.increment(1) });
+  const data = snap.data()!;
+  return {
+    sun: data.sun ?? null,
+    water: data.water ?? null,
+    soil: data.soil ?? null,
+    frost: data.frost ?? null,
+    native: data.native ?? null,
+    pollinator: data.pollinator ?? null,
+  };
+}
+
+export async function setCachedConditions(sciName: string, suggestion: ConditionsSuggestion): Promise<void> {
+  const db = getFirestore();
+  await db.collection("speciesConditionsCache").doc(hashKey(sciName)).set({
     sciName: normalize(sciName),
     ...suggestion,
     hitCount: 0,

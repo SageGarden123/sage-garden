@@ -25,6 +25,15 @@ data class FrequencySuggestion(
     val feedFrequencyDays: Int?
 )
 
+data class ConditionsSuggestion(
+    val sun: String?,
+    val water: String?,
+    val soil: String?,
+    val frost: String?,
+    val native: String?,
+    val pollinator: String?
+)
+
 sealed class EntitlementSyncResult {
     data class Success(val snapshot: EntitlementSnapshot) : EntitlementSyncResult()
     data object NetworkError : EntitlementSyncResult()
@@ -53,6 +62,14 @@ sealed class SageAutoFillResult {
     data object DailyLimitReached : SageAutoFillResult()
     data object NetworkError : SageAutoFillResult()
     data object ServerError : SageAutoFillResult()
+}
+
+sealed class SageAutoFillConditionsResult {
+    data class Success(val suggestion: ConditionsSuggestion, val promptsRemaining: Int?) : SageAutoFillConditionsResult()
+    data object FreeLimitReached : SageAutoFillConditionsResult()
+    data object DailyLimitReached : SageAutoFillConditionsResult()
+    data object NetworkError : SageAutoFillConditionsResult()
+    data object ServerError : SageAutoFillConditionsResult()
 }
 
 /** Thin proxy to the Sage Cloud Functions backend — same OkHttp + org.json shape as WeatherHelper/TuyaClient. The Anthropic key never appears here; it lives only server-side. */
@@ -175,6 +192,37 @@ object SageClient {
             }
         } catch (_: Exception) {
             SageAutoFillResult.NetworkError
+        }
+    }
+
+    suspend fun autoFillConditions(context: Context, sciName: String): SageAutoFillConditionsResult = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().put("deviceId", getOrCreateInstallId(context)).put("sciName", sciName)
+            val request = requestBuilder("/sageAutoFillConditions", body).build()
+            httpClient.newCall(request).execute().use { response ->
+                val text = response.body?.string() ?: return@withContext SageAutoFillConditionsResult.NetworkError
+                val json = JSONObject(text)
+                if (response.isSuccessful) {
+                    val s = json.optJSONObject("suggestion") ?: return@withContext SageAutoFillConditionsResult.ServerError
+                    val suggestion = ConditionsSuggestion(
+                        sun = if (s.isNull("sun")) null else s.optString("sun"),
+                        water = if (s.isNull("water")) null else s.optString("water"),
+                        soil = if (s.isNull("soil")) null else s.optString("soil"),
+                        frost = if (s.isNull("frost")) null else s.optString("frost"),
+                        native = if (s.isNull("native")) null else s.optString("native"),
+                        pollinator = if (s.isNull("pollinator")) null else s.optString("pollinator")
+                    )
+                    val remaining = if (json.isNull("promptsRemaining")) null else json.optInt("promptsRemaining")
+                    return@withContext SageAutoFillConditionsResult.Success(suggestion, remaining)
+                }
+                return@withContext when (json.optString("error", "")) {
+                    "free_limit_reached" -> SageAutoFillConditionsResult.FreeLimitReached
+                    "daily_limit_reached" -> SageAutoFillConditionsResult.DailyLimitReached
+                    else -> SageAutoFillConditionsResult.ServerError
+                }
+            }
+        } catch (_: Exception) {
+            SageAutoFillConditionsResult.NetworkError
         }
     }
 }

@@ -4236,11 +4236,14 @@ fun FormScreen(
     var notes by remember { mutableStateOf("") }
     var wateringSystem by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var uploadingPhotoToDropbox by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(plantId == null) }
     var aiLoading by remember { mutableStateOf(false) }
     var autoFillLoading by remember { mutableStateOf(false) }
     var showAutoFillConfirm by remember { mutableStateOf<FrequencySuggestion?>(null) }
+    var conditionsAutoFillLoading by remember { mutableStateOf(false) }
+    var showConditionsAutoFillConfirm by remember { mutableStateOf<ConditionsSuggestion?>(null) }
     val allPlants by viewModel.plants.collectAsState()
     var generatedId by remember { mutableStateOf("") }
     var showPhotoViewer by remember { mutableStateOf(false) }
@@ -4855,6 +4858,58 @@ fun FormScreen(
         )
     }
 
+    showConditionsAutoFillConfirm?.let { suggestion ->
+        val overwritten = buildList {
+            if (sun.isNotBlank() && suggestion.sun != null) add("Sun")
+            if (water.isNotBlank() && suggestion.water != null) add("Water")
+            if (soil.isNotBlank() && suggestion.soil != null) add("Soil")
+            if (frost.isNotBlank() && suggestion.frost != null) add("Frost")
+            if (native.isNotBlank() && suggestion.native != null) add("Native/Exotic")
+            if (pollinatorChoice.isNotBlank() && suggestion.pollinator != null) add("Pollinator-friendly")
+        }
+        AlertDialog(
+            onDismissRequest = { showConditionsAutoFillConfirm = null },
+            title = { Text("Overwrite existing values?") },
+            text = {
+                Column {
+                    Text("Sage's suggestions will replace the values you've already entered for:")
+                    Spacer(Modifier.height(6.dp))
+                    overwritten.forEach { Text("• $it", fontSize = 13.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    suggestion.sun?.let { sun = it }
+                    suggestion.water?.let { water = it }
+                    suggestion.soil?.let { soil = it }
+                    suggestion.frost?.let { frost = it }
+                    suggestion.native?.let { native = it }
+                    suggestion.pollinator?.let { pollinatorChoice = it }
+                    showConditionsAutoFillConfirm = null
+                }) { Text("Apply") }
+            },
+            dismissButton = { TextButton(onClick = { showConditionsAutoFillConfirm = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (showNotificationHint) {
+        AlertDialog(
+            onDismissRequest = {
+                showNotificationHint = false
+                pendingHintPlant?.let { checkPlacementPrompts(it) }
+                pendingHintPlant = null
+            },
+            title = { Text("Set up care reminders?") },
+            text = { Text("Sage Garden can remind you when your plants need watering, fertilising, feeding, or pruning. You can turn reminders on any time from Help → Plant notifications.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNotificationHint = false
+                    pendingHintPlant?.let { checkPlacementPrompts(it) }
+                    pendingHintPlant = null
+                }) { Text("Got it") }
+            }
+        )
+    }
     if (showPlacementPrompt) {
         AlertDialog(
             onDismissRequest = { showPlacementPrompt = false; onDone() },

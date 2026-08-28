@@ -73,3 +73,65 @@ export async function suggestFrequencies(sciName: string): Promise<FrequencySugg
   const result = FrequencySuggestionSchema.safeParse(parsedJson);
   return result.success ? result.data : null;
 }
+
+// These enums must stay in sync with the option lists in the Android app (MainActivity.kt:
+// sunOptions, waterOptions, soilOptions, frostOptions, nativeOptions, pollinatorOptions) — a
+// suggestion outside these exact strings can't be selected in the app's closed dropdowns.
+const SUN_OPTIONS = ["Full", "Full-Partial", "Partial", "Partial-Shade", "Shade", "Unknown"] as const;
+const WATER_OPTIONS = ["Low", "Moderate", "High", "Unknown"] as const;
+const SOIL_OPTIONS = ["Sandy", "Loamy", "Clay", "Silty", "Peaty", "Chalky", "Rocky/Stony", "Potting Mix", "Other", "Unknown"] as const;
+const FROST_OPTIONS = ["Hardy", "Half-hardy", "Tender", "Tender (indoor only)", "Unknown"] as const;
+const NATIVE_OPTIONS = ["Native (Aus)", "Exotic"] as const;
+const POLLINATOR_OPTIONS = ["Yes - bees", "Yes - butterflies", "Yes - bees & butterflies", "Yes - birds", "No"] as const;
+
+const ConditionsSuggestionSchema = z.object({
+  sun: z.enum(SUN_OPTIONS).nullable(),
+  water: z.enum(WATER_OPTIONS).nullable(),
+  soil: z.enum(SOIL_OPTIONS).nullable(),
+  frost: z.enum(FROST_OPTIONS).nullable(),
+  native: z.enum(NATIVE_OPTIONS).nullable(),
+  pollinator: z.enum(POLLINATOR_OPTIONS).nullable(),
+});
+
+export type ConditionsSuggestion = z.infer<typeof ConditionsSuggestionSchema>;
+
+const CONDITIONS_SYSTEM_PROMPT =
+  "You suggest typical home-garden growing conditions for a given plant species, for an Australian gardener. " +
+  "Use null for any value you are not reasonably confident about rather than guessing wildly. " +
+  "'native' means native to Australia; use \"Exotic\" for anything not native to Australia, including plants native elsewhere. " +
+  "These are general starting-point defaults a home gardener can adjust, not scientific claims. " +
+  "Respond with ONLY a single JSON object, no markdown code fences, no extra text, matching exactly this shape: " +
+  `{"sun": ${JSON.stringify(SUN_OPTIONS)}[number]|null, "water": ${JSON.stringify(WATER_OPTIONS)}[number]|null, ` +
+  `"soil": ${JSON.stringify(SOIL_OPTIONS)}[number]|null, "frost": ${JSON.stringify(FROST_OPTIONS)}[number]|null, ` +
+  `"native": ${JSON.stringify(NATIVE_OPTIONS)}[number]|null, "pollinator": ${JSON.stringify(POLLINATOR_OPTIONS)}[number]|null}`;
+
+export async function suggestConditions(sciName: string): Promise<ConditionsSuggestion | null> {
+  const response = await getClient().messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 512,
+    system: CONDITIONS_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `Scientific name: "${sciName}". Suggest the optimal sun, water, soil, and frost conditions, whether it's native to Australia or exotic, and whether it's pollinator-friendly, for this plant in a home garden setting.`,
+      },
+    ],
+  });
+
+  const textBlock = response.content.find(
+    (block): block is Anthropic.TextBlock => block.type === "text"
+  );
+  if (!textBlock) return null;
+
+  const raw = textBlock.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const result = ConditionsSuggestionSchema.safeParse(parsedJson);
+  return result.success ? result.data : null;
+}
