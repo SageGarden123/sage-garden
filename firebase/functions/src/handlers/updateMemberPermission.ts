@@ -33,21 +33,21 @@ export const updateMemberPermission = onRequest({ cors: false }, async (req, res
   const memberRef = db.collection("gardens").doc(gardenId).collection("members").doc(targetDeviceId);
 
   try {
+    const deviceGardensRef = db.collection("deviceGardens").doc(targetDeviceId);
     await db.runTransaction(async (tx) => {
-      const memberSnap = await tx.get(memberRef);
+      // Firestore transactions require every read before any write — see the identical fix in
+      // requestJoinGarden.ts/createGarden.ts for why this ordering matters.
+      const [memberSnap, deviceSnap] = await Promise.all([tx.get(memberRef), tx.get(deviceGardensRef)]);
       if (!memberSnap.exists) throw new Error("member_not_found");
-      const member = memberSnap.data() as MemberDoc;
+
       tx.update(memberRef, { permission });
 
-      const deviceGardensRef = db.collection("deviceGardens").doc(targetDeviceId);
-      const deviceSnap = await tx.get(deviceGardensRef);
       if (deviceSnap.exists) {
         const deviceDoc = deviceSnap.data() as DeviceGardensDoc;
         if (deviceDoc.gardens[gardenId]) {
           tx.update(deviceGardensRef, { [`gardens.${gardenId}.permission`]: permission });
         }
       }
-      void member;
     });
 
     res.status(200).json({ success: true });

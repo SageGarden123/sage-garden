@@ -29,8 +29,11 @@ export const createGarden = onRequest({ cors: false }, async (req, res) => {
 
   try {
     let inviteCode = "";
+    const deviceGardensRef = db.collection("deviceGardens").doc(deviceId);
     await db.runTransaction(async (tx) => {
-      // Regenerate on the rare collision rather than failing the whole create.
+      // Firestore transactions require every read before any write — all reads (candidate invite
+      // codes, deviceGardens) must finish before any tx.set() below, or the whole transaction
+      // throws (previously silent, surfaced to the user as a generic failure).
       for (let attempt = 0; attempt < 5; attempt++) {
         const candidate = generateInviteCode();
         const codeSnap = await tx.get(db.collection("inviteCodes").doc(candidate));
@@ -40,6 +43,7 @@ export const createGarden = onRequest({ cors: false }, async (req, res) => {
         }
       }
       if (!inviteCode) throw new Error("could_not_allocate_invite_code");
+      const deviceSnap = await tx.get(deviceGardensRef);
 
       const gardenRef = db.collection("gardens").doc(gardenId);
       tx.set(gardenRef, {
@@ -58,8 +62,6 @@ export const createGarden = onRequest({ cors: false }, async (req, res) => {
       });
       tx.set(db.collection("inviteCodes").doc(inviteCode), { gardenId });
 
-      const deviceGardensRef = db.collection("deviceGardens").doc(deviceId);
-      const deviceSnap = await tx.get(deviceGardensRef);
       const deviceDoc: DeviceGardensDoc = deviceSnap.exists ? (deviceSnap.data() as DeviceGardensDoc) : emptyDeviceGardensDoc();
       deviceDoc.gardens[gardenId] = { gardenId, name, role: "owner", permission: "write", memberToken };
       tx.set(deviceGardensRef, deviceDoc);

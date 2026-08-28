@@ -75,7 +75,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
@@ -1253,6 +1256,7 @@ class MainActivity : ComponentActivity() {
         SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(applicationContext)
         AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(applicationContext)
         HemisphereState.value = getHemisphere(applicationContext)
+        ActiveGardenState.activeGardenId = GardenMembershipStore.getActiveGardenId(applicationContext)
         EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
@@ -1424,7 +1428,36 @@ fun GardenMapperApp() {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
         // MainActivity.onCreate(), before this composable's first composition — see the comment there.
         EntitlementManager.sync(context)
-        GardenSyncClient.sync(context, getOrCreateInstallId(context))
+    }
+
+    // Auto-syncs plant/care-log data so neither side of a shared garden needs to remember to tap
+    // "Sync plants & care history" manually. Keyed on the active garden id: switching gardens (or
+    // joining/creating one) cancels the previous loop and starts a fresh one that syncs immediately,
+    // then keeps syncing periodically for as long as that garden stays active and the app is open.
+    LaunchedEffect(ActiveGardenState.activeGardenId) {
+        while (true) {
+            GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
+            // Keeps the local known-gardens cache (GardenMembershipStore) fresh continuously, not just
+            // when the user happens to open Help's "Sync with other devices" section — allKnownGardenIds
+            // (used by the watering-reminder worker and the home-screen widget's garden filter) reads
+            // straight from that cache, so letting it go stale silently under-covers gardens whose
+            // membership changed elsewhere (approved on another device, left, etc.) until someone
+            // manually reopens the sharing UI.
+            GardenMembershipClient.refreshKnownGardens(context)
+            delay(60_000L)
+        }
+    }
+    // Also syncs right away whenever the app returns to the foreground, so bringing the app back
+    // after the other party has made changes doesn't mean waiting out the rest of the periodic delay.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch { GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context)) }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(SageFabResetState.requested) {
@@ -2555,11 +2588,26 @@ fun MapTabScreen(
             context.applicationContext as Application
         )
     )
-    val hasCustomMap = remember { getCustomMapUri(context) != null }
+    // The custom map drawing and sun map are per-device local data that never syncs to a shared
+    // garden — showing them while viewing a garden you don't own would just surface YOUR OWN
+    // unrelated drawing/zones, not the owner's, so they're hidden entirely for a non-owner.
+    val canManageMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) } && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)
+    val hasCustomMap = canManageMap && remember(ActiveGardenState.activeGardenId) { getCustomMapUri(context) != null }
     var showingCustom by remember { mutableStateOf(startOnCustom && hasCustomMap) }
 
     Column(Modifier.fillMaxSize()) {
-        if (hasCustomMap) {
+        // Placement mode has no other way out — tapping the map either places the plant (which
+        // itself navigates away via onPlacementSaved) or, for a view-only viewer, does nothing at
+        // all (see MapScreen's onMapClick gate), leaving them stuck on this screen with no escape.
+        if (placementModeForPlantId != null) {
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).zIndex(2f).padding(10.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                TextButton(onClick = { onPlacementSaved?.invoke() }) { Text("‹ Cancel") }
+            }
+        }
+        if (hasCustomMap || (canManageMap && FeatureVisibility.shouldShow(context, Feature.SUN_MAP))) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -2568,23 +2616,25 @@ fun MapTabScreen(
                     .padding(10.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
-                Button(
-                    onClick = { showingCustom = false },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (!showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (!showingCustom) Color.White else Color.Black
-                    )
-                ) { Text("Real Map", fontSize = 12.sp) }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { showingCustom = true },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (showingCustom) Color.White else Color.Black
-                    )
-                ) { Text("My Drawing", fontSize = 12.sp) }
-                Spacer(Modifier.width(8.dp))
-                if (FeatureVisibility.shouldShow(context, Feature.SUN_MAP)) {
+                if (hasCustomMap) {
+                    Button(
+                        onClick = { showingCustom = false },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
+                            contentColor = if (!showingCustom) Color.White else Color.Black
+                        )
+                    ) { Text("Real Map", fontSize = 12.sp) }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { showingCustom = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
+                            contentColor = if (showingCustom) Color.White else Color.Black
+                        )
+                    ) { Text("My Drawing", fontSize = 12.sp) }
+                    Spacer(Modifier.width(8.dp))
+                }
+                if (canManageMap && FeatureVisibility.shouldShow(context, Feature.SUN_MAP)) {
                     OutlinedButton(onClick = onOpenSunMap) { Text("☀️ Sun map", fontSize = 12.sp) }
                 }
             }
@@ -5059,6 +5109,706 @@ fun ExpandableSection(
 // HELP SCREEN (photo storage setting + export/import/reset + FAQ link)
 // ============================================================================
 
+@Composable
+fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostState: SnackbarHostState, initiallyExpanded: Boolean = false) {
+    // Owner-only, not merely write-access — the server only ever accepts an address/coordinate
+    // update from the garden's owner (see syncGarden.ts), since this describes the physical garden
+    // itself, unlike plants/care-log which any write-permission member may edit. A non-owner editor
+    // seeing this as editable would have their change silently dropped on the next sync.
+    val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+    ExpandableSection(title = "Garden address", initiallyExpanded = initiallyExpanded) {
+        Text(
+            "Centres the Map tab on your garden and enables weather-aware watering reminders below.",
+            fontSize = 12.sp, color = Color.Gray
+        )
+        Spacer(Modifier.height(10.dp))
+        if (!canEdit) {
+            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = Color.Gray)
+            Spacer(Modifier.height(6.dp))
+        }
+
+        var gardenAddressQuery by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getGardenAddress(context)) }
+        var gardenAddressEditedByUser by remember { mutableStateOf(false) }
+        var gardenCoords by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getGardenLatLng(context)) }
+        var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
+        var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
+        val gardenPlacesClient = remember { Places.createClient(context) }
+        var gardenSessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
+
+        if (gardenCoords != null) {
+            Text("Garden location set ✅", fontSize = 12.sp, color = Color(0xFF3A5A40))
+            Spacer(Modifier.height(6.dp))
+        }
+
+        LaunchedEffect(gardenAddressQuery) {
+            if (gardenAddressEditedByUser && gardenAddressQuery.length > 2) {
+                delay(300)
+                // The Places Task callbacks below aren't tied to this coroutine's cancellation, so if the
+                // user selects a suggestion (or types something else) before this in-flight request
+                // resolves, a late callback must not resurrect the dropdown — guard on both flags below.
+                val queryAtRequestTime = gardenAddressQuery
+                fun stillRelevant() = gardenAddressEditedByUser && gardenAddressQuery == queryAtRequestTime
+                val request = FindAutocompletePredictionsRequest.builder().setQuery(gardenAddressQuery).setSessionToken(gardenSessionToken).build()
+                gardenPlacesClient.findAutocompletePredictions(request)
+                    .addOnSuccessListener { response: FindAutocompletePredictionsResponse ->
+                        if (stillRelevant()) {
+                            gardenPredictions = response.autocompletePredictions
+                            gardenGeocoderPredictions = emptyList()
+                        }
+                    }
+                    .addOnFailureListener {
+                        if (stillRelevant()) {
+                            gardenPredictions = emptyList()
+                            scope.launch {
+                                val results = withContext(Dispatchers.IO) {
+                                    try {
+                                        @Suppress("DEPRECATION")
+                                        Geocoder(context, Locale.getDefault()).getFromLocationName(gardenAddressQuery, 5)
+                                    } catch (_: Exception) { null }
+                                }
+                                if (stillRelevant()) {
+                                    gardenGeocoderPredictions = results ?: emptyList()
+                                }
+                            }
+                        }
+                    }
+            } else {
+                gardenPredictions = emptyList()
+                gardenGeocoderPredictions = emptyList()
+            }
+        }
+
+        OutlinedTextField(
+            value = gardenAddressQuery,
+            onValueChange = { gardenAddressQuery = it; gardenAddressEditedByUser = true },
+            label = { Text("Garden address") }, placeholder = { Text("Start typing to search…") },
+            modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
+        )
+
+        if (gardenPredictions.isNotEmpty() || gardenGeocoderPredictions.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), shape = RoundedCornerShape(10.dp), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    gardenPredictions.forEach { prediction ->
+                        Text(
+                            text = prediction.getFullText(null).toString(),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                val request = FetchPlaceRequest.builder(prediction.placeId, listOf(Place.Field.LOCATION)).setSessionToken(gardenSessionToken).build()
+                                gardenPlacesClient.fetchPlace(request).addOnSuccessListener { response: FetchPlaceResponse ->
+                                    val latLng = response.place.location
+                                    if (latLng != null) {
+                                        gardenCoords = latLng.latitude to latLng.longitude
+                                        setGardenLatLng(context, latLng.latitude, latLng.longitude)
+                                        scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
+                                    }
+                                }
+                                gardenSessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
+                                gardenAddressQuery = prediction.getFullText(null).toString()
+                                setGardenAddress(context, gardenAddressQuery)
+                                gardenAddressEditedByUser = false
+                                gardenPredictions = emptyList()
+                            }.padding(12.dp),
+                            fontSize = 13.sp
+                        )
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    }
+                    gardenGeocoderPredictions.forEach { address ->
+                        Text(
+                            text = address.getAddressLine(0) ?: "Unknown address",
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                gardenCoords = address.latitude to address.longitude
+                                setGardenLatLng(context, address.latitude, address.longitude)
+                                gardenAddressQuery = address.getAddressLine(0) ?: ""
+                                setGardenAddress(context, gardenAddressQuery)
+                                gardenAddressEditedByUser = false
+                                gardenGeocoderPredictions = emptyList()
+                                scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
+                            }.padding(12.dp),
+                            fontSize = 13.sp
+                        )
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
+    // Owner-only — see GardenAddressSection's comment; the server only accepts a zones update from
+    // the garden's owner (syncGarden.ts), so a non-owner editor must see this read-only too.
+    val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+    ExpandableSection(title = "Garden zones") {
+        Text(
+            "Manage the named areas of your garden (e.g. \"Front garden\", \"Back garden\") — these appear as a dropdown when adding or editing a plant, instead of typing the same names over and over.",
+            fontSize = 12.sp, color = Color.Gray
+        )
+        Spacer(Modifier.height(10.dp))
+        if (!canEdit) {
+            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = Color.Gray)
+            Spacer(Modifier.height(6.dp))
+        }
+        var gardenLocations by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getOrSeedGardenLocations(context, plants)) }
+        var newLocationText by remember { mutableStateOf("") }
+        var renamingIndex by remember { mutableStateOf(-1) }
+        var renameText by remember { mutableStateOf("") }
+
+        gardenLocations.forEachIndexed { index, loc ->
+            if (renamingIndex == index) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    OutlinedTextField(value = renameText, onValueChange = { renameText = it }, modifier = Modifier.weight(1f), singleLine = true)
+                    TextButton(onClick = {
+                        if (renameText.isNotBlank()) {
+                            gardenLocations = gardenLocations.toMutableList().also { it[index] = renameText.trim() }
+                            setGardenLocations(context, gardenLocations)
+                        }
+                        renamingIndex = -1
+                    }) { Text("Save") }
+                    TextButton(onClick = { renamingIndex = -1 }) { Text("Cancel") }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Text(loc, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (canEdit) {
+                        TextButton(onClick = { renamingIndex = index; renameText = loc }) { Text("Rename", fontSize = 11.sp) }
+                        TextButton(onClick = {
+                            gardenLocations = gardenLocations.filterIndexed { i, _ -> i != index }
+                            setGardenLocations(context, gardenLocations)
+                        }) { Text("Remove", fontSize = 11.sp, color = Color(0xFFB23B3B)) }
+                    }
+                }
+            }
+        }
+        if (gardenLocations.isEmpty()) {
+            Text("No zones yet — add one below.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(8.dp))
+        }
+        if (canEdit) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = newLocationText, onValueChange = { newLocationText = it },
+                label = { Text("Add a zone") }, modifier = Modifier.weight(1f).imePadding(), singleLine = true
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = {
+                val trimmed = newLocationText.trim()
+                if (trimmed.isNotBlank() && trimmed !in gardenLocations) {
+                    gardenLocations = gardenLocations + trimmed
+                    setGardenLocations(context, gardenLocations)
+                }
+                newLocationText = ""
+            }) { Text("Add") }
+        }
+        }
+    }
+}
+
+/**
+ * Garden picker + create/share/join/approve controls, embedded in Help's "Sync with other
+ * devices" section (see GardenMembershipClient.kt for the backend calls this drives). Switching
+ * the picker updates ActiveGardenState immediately, which every screen's ViewModel already reacts
+ * to (see PlantViewModel.plants) — no navigation or restart needed.
+ */
+/** Small circular initial-letter avatar, used wherever the sharing UI names a person/device — gives requests and member rows a face to anchor on instead of a wall of plain text. */
+@Composable
+fun AvatarBubble(name: String) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF3A5A40)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(name.trim().take(1).uppercase().ifBlank { "?" }, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Small rounded label used throughout the sharing UI for a role/permission at a glance (e.g. "Owner", "View-only") instead of parenthetical text. */
+@Composable
+fun PermissionChip(label: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = color)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostState: SnackbarHostState) {
+    val installId = remember { getOrCreateInstallId(context) }
+    var knownGardens by remember { mutableStateOf(GardenMembershipStore.getKnownGardens(context)) }
+    var pendingMyRequests by remember { mutableStateOf(GardenMembershipStore.getPendingRequests(context)) }
+    var refreshing by remember { mutableStateOf(false) }
+
+    // "My Garden" (this device's own default, gardenId == installId) always shows as an option,
+    // even before the first sync/refresh has ever populated the known-gardens cache.
+    val gardens = remember(knownGardens) {
+        if (knownGardens.any { it.gardenId == installId }) knownGardens
+        else listOf(KnownGarden(installId, "My Garden", "owner", "write", "")) + knownGardens
+    }
+    var activeGardenId by remember { mutableStateOf(ActiveGardenState.activeGardenId ?: installId) }
+    val activeGarden = gardens.firstOrNull { it.gardenId == activeGardenId }
+    val isOwner = activeGarden?.role == "owner"
+
+    var pendingForActiveGarden by remember { mutableStateOf<List<PendingGardenRequest>>(emptyList()) }
+    var expanded by remember { mutableStateOf(false) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
+    var shareCode by remember { mutableStateOf<String?>(null) }
+    var showJoinDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showManageAccessDialog by remember { mutableStateOf(false) }
+    var showLeaveConfirm by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        refreshing = true
+        scope.launch {
+            GardenMembershipClient.refreshKnownGardens(context)
+            knownGardens = GardenMembershipStore.getKnownGardens(context)
+            pendingMyRequests = GardenMembershipStore.getPendingRequests(context)
+            refreshing = false
+        }
+    }
+    // Polls every 15s for as long as this section stays expanded/visible (ExpandableSection only
+    // composes its content while open), rather than only refreshing once on open — so a new join
+    // request, or your own request finally getting approved, shows up without needing to collapse
+    // and re-expand this section (or switch tabs and back) to force a re-fetch.
+    LaunchedEffect(Unit) {
+        while (true) {
+            GardenMembershipClient.refreshKnownGardens(context)
+            knownGardens = GardenMembershipStore.getKnownGardens(context)
+            pendingMyRequests = GardenMembershipStore.getPendingRequests(context)
+            refreshing = false
+            delay(15_000L)
+        }
+    }
+
+    LaunchedEffect(activeGardenId) {
+        var previousCount = -1
+        while (true) {
+            val currentIsOwner = activeGardenId == installId ||
+                GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == activeGardenId }?.role == "owner"
+            if (currentIsOwner) {
+                when (val result = GardenMembershipClient.listPendingRequestsForGarden(context, activeGardenId)) {
+                    is GardenMembershipResult.Success -> {
+                        pendingForActiveGarden = result.value
+                        // Only announce a genuine increase, not the first load (previousCount == -1) or a
+                        // decrease (someone got approved/rejected) — otherwise every poll after the very
+                        // first would either spam a snackbar for nothing new or announce on every load.
+                        if (previousCount in 0 until result.value.size) {
+                            snackbarHostState.showSnackbar("New request to join ${activeGarden?.name ?: "this garden"}")
+                        }
+                        previousCount = result.value.size
+                    }
+                    else -> {}
+                }
+            } else {
+                pendingForActiveGarden = emptyList()
+                previousCount = -1
+            }
+            delay(15_000L)
+        }
+    }
+
+    Text("Choose which garden's plants and care history you're viewing and editing.", fontSize = 12.sp, color = Color.Gray)
+    Spacer(Modifier.height(10.dp))
+
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = activeGarden?.name ?: "My Garden", onValueChange = {}, readOnly = true,
+            label = { Text("Active garden") },
+            leadingIcon = { Text("🌿", fontSize = 16.sp) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            gardens.forEach { garden ->
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(garden.name, modifier = Modifier.weight(1f))
+                            if (garden.role == "owner") {
+                                PermissionChip("Owner", Color(0xFF3A5A40))
+                            } else {
+                                PermissionChip(if (garden.permission == "read") "View-only" else "Editor", Color(0xFF6E6E6E))
+                            }
+                        }
+                    },
+                    onClick = {
+                        activeGardenId = garden.gardenId
+                        GardenMembershipStore.setActiveGardenId(context, if (garden.gardenId == installId) null else garden.gardenId)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+
+    if (pendingForActiveGarden.isNotEmpty()) {
+        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    "🔔 ${pendingForActiveGarden.size} request${if (pendingForActiveGarden.size == 1) "" else "s"} to join ${activeGarden?.name ?: "this garden"}",
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B5300)
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f)) { Text("🌱 Create garden", fontSize = 12.sp) }
+        if (isOwner) {
+            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f)) { Text("🔗 Share", fontSize = 12.sp) }
+        }
+        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f)) { Text("🔑 Have a code?", fontSize = 12.sp) }
+    }
+    if (isOwner) {
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f)) { Text("✏️ Rename", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showManageAccessDialog = true }, modifier = Modifier.weight(1f)) {
+                Text(
+                    if (pendingForActiveGarden.isNotEmpty()) "👥 Manage access (${pendingForActiveGarden.size})" else "👥 Manage access",
+                    fontSize = 12.sp
+                )
+            }
+        }
+    } else if (activeGardenId != installId) {
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { showLeaveConfirm = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+        ) { Text("🚪 Leave ${activeGarden?.name ?: "this garden"}", fontSize = 12.sp) }
+    }
+
+    if (pendingForActiveGarden.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Requests to join ${activeGarden?.name ?: "this garden"}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        pendingForActiveGarden.forEach { req ->
+            val requesterLabel = req.displayName?.takeIf { it.isNotBlank() } ?: "Device ${req.requestingDeviceId.take(8)}"
+            Card(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AvatarBubble(requesterLabel)
+                        Spacer(Modifier.width(10.dp))
+                        Text(requesterLabel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        PermissionChip(if (req.requestedPermission == "read") "View-only" else "Edit", Color(0xFF6E6E6E))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    GardenMembershipClient.respondToJoinRequest(context, activeGardenId, req.requestingDeviceId, approve = true, permission = req.requestedPermission)
+                                    pendingForActiveGarden = pendingForActiveGarden.filterNot { it.requestingDeviceId == req.requestingDeviceId }
+                                    snackbarHostState.showSnackbar("Approved")
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("✓ Approve", fontSize = 12.sp) }
+                        OutlinedButton(
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B)),
+                            onClick = {
+                                scope.launch {
+                                    GardenMembershipClient.respondToJoinRequest(context, activeGardenId, req.requestingDeviceId, approve = false)
+                                    pendingForActiveGarden = pendingForActiveGarden.filterNot { it.requestingDeviceId == req.requestingDeviceId }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("✕ Reject", fontSize = 12.sp) }
+                    }
+                }
+            }
+        }
+    }
+
+    if (pendingMyRequests.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Your pending requests", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        pendingMyRequests.forEach { req ->
+            Text("• ${req.name} — waiting for approval", fontSize = 12.sp, color = Color.Gray)
+        }
+    }
+
+    if (showCreateDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("Create a new garden") },
+            text = {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Garden name") }, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmed = name.trim().ifBlank { "New Garden" }
+                        scope.launch {
+                            when (val result = GardenMembershipClient.createGarden(context, trimmed)) {
+                                is GardenMembershipResult.Success -> {
+                                    knownGardens = GardenMembershipStore.getKnownGardens(context)
+                                    activeGardenId = result.value.gardenId
+                                    GardenMembershipStore.setActiveGardenId(context, result.value.gardenId)
+                                    snackbarHostState.showSnackbar("Created \"$trimmed\"")
+                                }
+                                else -> snackbarHostState.showSnackbar("Couldn't create garden — try again.")
+                            }
+                        }
+                        showCreateDialog = false
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showShareDialog) {
+        var loadingShareCode by remember { mutableStateOf(true) }
+        LaunchedEffect(showShareDialog) {
+            loadingShareCode = true
+            when (val result = GardenMembershipClient.getInviteCode(context, activeGardenId)) {
+                is GardenMembershipResult.Success -> shareCode = result.value
+                else -> {}
+            }
+            loadingShareCode = false
+        }
+        AlertDialog(
+            onDismissRequest = { showShareDialog = false },
+            title = { Text("Share ${activeGarden?.name ?: "this garden"}") },
+            text = {
+                Column {
+                    when {
+                        loadingShareCode -> Text("Loading…", fontSize = 12.sp, color = Color.Gray)
+                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have a code?\" on their own device.", fontSize = 12.sp, color = Color.Gray)
+                        else -> {
+                            Text("Share this code:", fontSize = 12.sp, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                shareCode ?: "", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Garden invite code", shareCode))
+                                    scope.launch { snackbarHostState.showSnackbar("Code copied") }
+                                }
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text("(tap to copy)", fontSize = 11.sp, color = Color.Gray)
+                            Spacer(Modifier.height(10.dp))
+                            Text("Regenerating invalidates this code for anyone you haven't shared it with yet.", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    loadingShareCode = true
+                    scope.launch {
+                        when (val result = GardenMembershipClient.regenerateInviteCode(context, activeGardenId)) {
+                            is GardenMembershipResult.Success -> shareCode = result.value
+                            else -> snackbarHostState.showSnackbar("Couldn't generate a code — try again.")
+                        }
+                        loadingShareCode = false
+                    }
+                }, enabled = !loadingShareCode) { Text(if (shareCode == null) "Generate" else "Regenerate") }
+            },
+            dismissButton = { TextButton(onClick = { showShareDialog = false }) { Text("Close") } }
+        )
+    }
+
+    if (showJoinDialog) {
+        var code by remember { mutableStateOf("") }
+        var wantsWrite by remember { mutableStateOf(true) }
+        var displayName by remember { mutableStateOf(GardenMembershipStore.getDeviceDisplayName(context)) }
+        AlertDialog(
+            onDismissRequest = { showJoinDialog = false },
+            title = { Text("Request access to a garden") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = displayName, onValueChange = { displayName = it },
+                        label = { Text("Your name") }, placeholder = { Text("e.g. Dan's phone") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("Shown to the garden's owner so they know whose request this is.", fontSize = 11.sp, color = Color.Gray)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Invite code") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Request edit access", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(checked = wantsWrite, onCheckedChange = { wantsWrite = it })
+                    }
+                    Text(
+                        if (wantsWrite) "The owner can still grant view-only instead." else "View-only — you won't be able to make changes.",
+                        fontSize = 11.sp, color = Color.Gray
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmedCode = code.trim()
+                        val trimmedName = displayName.trim()
+                        GardenMembershipStore.setDeviceDisplayName(context, trimmedName)
+                        showJoinDialog = false
+                        scope.launch {
+                            when (GardenMembershipClient.requestJoinGarden(context, trimmedCode, if (wantsWrite) "write" else "read", trimmedName.ifBlank { null })) {
+                                is GardenMembershipResult.Success -> {
+                                    refresh()
+                                    snackbarHostState.showSnackbar("Request sent — the owner needs to approve it.")
+                                }
+                                else -> snackbarHostState.showSnackbar("Couldn't find that code — check it and try again.")
+                            }
+                        }
+                    },
+                    enabled = code.isNotBlank()
+                ) { Text("Request") }
+            },
+            dismissButton = { TextButton(onClick = { showJoinDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showRenameDialog) {
+        var name by remember { mutableStateOf(activeGarden?.name?.takeIf { it != "My Garden" } ?: "") }
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename garden") },
+            text = {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Garden name") }, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmed = name.trim().ifBlank { "My Garden" }
+                        showRenameDialog = false
+                        scope.launch {
+                            when (GardenMembershipClient.renameGarden(context, activeGardenId, trimmed)) {
+                                is GardenMembershipResult.Success -> {
+                                    knownGardens = GardenMembershipStore.getKnownGardens(context)
+                                    snackbarHostState.showSnackbar("Renamed to \"$trimmed\"")
+                                }
+                                else -> snackbarHostState.showSnackbar("Couldn't rename — try again.")
+                            }
+                        }
+                    },
+                    enabled = name.isNotBlank()
+                ) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showManageAccessDialog) {
+        var members by remember { mutableStateOf<List<GardenMember>>(emptyList()) }
+        var loadingMembers by remember { mutableStateOf(true) }
+        LaunchedEffect(showManageAccessDialog) {
+            loadingMembers = true
+            when (val result = GardenMembershipClient.listMembers(context, activeGardenId)) {
+                is GardenMembershipResult.Success -> members = result.value
+                else -> snackbarHostState.showSnackbar("Couldn't load members — try again.")
+            }
+            loadingMembers = false
+        }
+        AlertDialog(
+            onDismissRequest = { showManageAccessDialog = false },
+            title = { Text("Who has access") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    when {
+                        loadingMembers -> Text("Loading…", fontSize = 12.sp, color = Color.Gray)
+                        members.isEmpty() -> Text("No one else has access yet.", fontSize = 12.sp, color = Color.Gray)
+                        else -> members.forEach { member ->
+                            val memberLabel = member.displayName?.takeIf { it.isNotBlank() }
+                                ?: (if (member.role == "owner") "You" else "Device ${member.deviceId.take(8)}")
+                            Column(Modifier.padding(vertical = 8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    AvatarBubble(memberLabel)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(memberLabel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                    if (member.role == "owner") {
+                                        PermissionChip("Owner", Color(0xFF3A5A40))
+                                    } else {
+                                        PermissionChip(if (member.permission == "write") "Editor" else "View-only", Color(0xFF6E6E6E))
+                                    }
+                                }
+                                if (member.role != "owner") {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 42.dp)) {
+                                        Text("Edit access", fontSize = 12.sp, modifier = Modifier.weight(1f), color = Color.Gray)
+                                        Switch(
+                                            checked = member.permission == "write",
+                                            onCheckedChange = { checked ->
+                                                val newPermission = if (checked) "write" else "read"
+                                                members = members.map { if (it.deviceId == member.deviceId) it.copy(permission = newPermission) else it }
+                                                scope.launch {
+                                                    when (GardenMembershipClient.updateMemberPermission(context, activeGardenId, member.deviceId, newPermission)) {
+                                                        is GardenMembershipResult.Success -> {}
+                                                        else -> snackbarHostState.showSnackbar("Couldn't update access — try again.")
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                    TextButton(
+                                        contentPadding = PaddingValues(start = 42.dp, top = 0.dp, end = 0.dp, bottom = 0.dp),
+                                        onClick = {
+                                            scope.launch {
+                                                when (GardenMembershipClient.removeMember(context, activeGardenId, member.deviceId)) {
+                                                    is GardenMembershipResult.Success -> {
+                                                        members = members.filterNot { it.deviceId == member.deviceId }
+                                                        snackbarHostState.showSnackbar("Removed")
+                                                    }
+                                                    else -> snackbarHostState.showSnackbar("Couldn't remove — try again.")
+                                                }
+                                            }
+                                        }
+                                    ) { Text("Remove access", color = Color(0xFFB23B3B), fontSize = 12.sp) }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showManageAccessDialog = false }) { Text("Close") } }
+        )
+    }
+
+    if (showLeaveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLeaveConfirm = false },
+            title = { Text("Leave ${activeGarden?.name ?: "this garden"}?") },
+            text = { Text("You'll lose access to its plants and history until someone invites you back in.", fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val leavingId = activeGardenId
+                    showLeaveConfirm = false
+                    scope.launch {
+                        when (GardenMembershipClient.leaveGarden(context, leavingId)) {
+                            is GardenMembershipResult.Success -> {
+                                knownGardens = GardenMembershipStore.getKnownGardens(context)
+                                activeGardenId = ActiveGardenState.activeGardenId ?: installId
+                                snackbarHostState.showSnackbar("Left the garden")
+                            }
+                            else -> snackbarHostState.showSnackbar("Couldn't leave — try again.")
+                        }
+                    }
+                }) { Text("Leave", color = Color(0xFFB23B3B)) }
+            },
+            dismissButton = { TextButton(onClick = { showLeaveConfirm = false }) { Text("Cancel") } }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelpScreen(
@@ -6017,29 +6767,17 @@ fun HelpScreen(
                 enabled = promoCode.isNotBlank() && !redeemingPromo,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (redeemingPromo) "Redeeming…" else "Redeem promo code") }
-
-            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
-            Text(
-                "Drag the floating 🌿 button up or down if it's covering something. Stuck somewhere awkward?",
-                fontSize = 11.sp, color = Color.Gray
-            )
-            Spacer(Modifier.height(6.dp))
-            TextButton(onClick = {
-                FeatureVisibility.setSageFabOffsetDp(context, 0f)
-                SageFabResetState.requested = true
-            }) {
-                Text("Reset button position", fontSize = 12.sp)
-            }
         }
 
         // 4) Custom garden map
+        val canManageActiveGardenMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+        if (canManageActiveGardenMap && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)) {
         ExpandableSection(title = "Custom garden map") {
             Text("Upload a hand-drawn or custom image of your garden instead of using the real-world map.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
 
-            var customMapUri by remember { mutableStateOf(getCustomMapUri(context)) }
-            var useCustomMap by remember { mutableStateOf(isUsingCustomMap(context)) }
+            var customMapUri by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getCustomMapUri(context)) }
+            var useCustomMap by remember(ActiveGardenState.activeGardenId) { mutableStateOf(isUsingCustomMap(context)) }
             val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
                     try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
@@ -6290,12 +7028,23 @@ fun HelpScreen(
             ) { Text("Reset garden") }
         }
 
+        if (FeatureVisibility.shouldShow(context, Feature.GARDEN_SHARING)) {
         ExpandableSection(title = "Sync with other devices") {
             Text(
-                "Keep this garden's plants and care history in sync between this phone and the desktop app. Enter this device's Install ID (below) into the desktop app once to link them, then use \"Sync now\" on either device whenever you want to pull in the other's changes.",
+                "Keep this garden's plants and care history in sync between this phone, another phone sharing this garden, and the desktop app. Enter this device's Install ID (below) into the desktop app once to link them, then use \"Sync plants & care history\" on either device whenever you want to pull in the other's changes. (This is separate from the Irrigation section's \"Sync watering history\" button, which only pulls Tuya/Rachio watering events.)",
                 fontSize = 12.sp, color = Color.Gray
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
+
+            GardenSharingControls(context, scope, snackbarHostState)
+
+            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
+
+            Text(
+                "Only relevant if you also use the desktop app — enter this device's Install ID there once to link them. Not needed for phone-to-phone garden sharing above.",
+                fontSize = 11.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(6.dp))
             val syncInstallId = remember { getOrCreateInstallId(context) }
             Text(
                 "Install ID: $syncInstallId (tap to copy)",
@@ -6320,20 +7069,23 @@ fun HelpScreen(
                 onClick = {
                     syncing = true
                     scope.launch {
-                        when (val result = GardenSyncClient.sync(context, syncInstallId)) {
+                        when (val result = GardenSyncClient.sync(context, syncInstallId, effectiveGardenId(context))) {
                             is GardenSyncResult.Success -> {
                                 lastSyncedAt = GardenSyncStore.getLastSyncedAt(context)
-                                snackbarHostState.showSnackbar("Synced — ${result.plantCount} plant(s) up to date")
+                                val note = if (result.permission == "read") " (view-only)" else ""
+                                snackbarHostState.showSnackbar("Synced — ${result.plantCount} plant(s) up to date$note")
                             }
                             GardenSyncResult.NetworkError -> snackbarHostState.showSnackbar("Couldn't reach the sync server — check your connection.")
                             GardenSyncResult.ServerError -> snackbarHostState.showSnackbar("Sync failed — try again shortly.")
+                            GardenSyncResult.NotAuthorized -> snackbarHostState.showSnackbar("This device no longer has access to that garden.")
                         }
                         syncing = false
                     }
                 },
                 enabled = !syncing,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (syncing) "Syncing…" else "Sync now") }
+            ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
+        }
         }
 
         ExpandableSection(title = "Support Sage Garden") {

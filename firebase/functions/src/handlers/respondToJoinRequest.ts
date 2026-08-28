@@ -61,6 +61,7 @@ export const respondToJoinRequest = onRequest({ cors: false }, async (req, res) 
           permission,
           memberToken,
           joinedAt: Date.now(),
+          displayName: request.displayName ?? null,
         });
         deviceDoc.gardens[gardenId] = { gardenId, name: gardenName, role: "member", permission, memberToken };
         tx.set(requestRef, { ...request, status: "approved" });

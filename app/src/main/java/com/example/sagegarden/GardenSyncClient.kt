@@ -12,17 +12,21 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 sealed class GardenSyncResult {
-    data class Success(val plantCount: Int, val careLogCount: Int) : GardenSyncResult()
+    data class Success(val plantCount: Int, val careLogCount: Int, val permission: String = "write") : GardenSyncResult()
     data object NetworkError : GardenSyncResult()
     data object ServerError : GardenSyncResult()
+    data object NotAuthorized : GardenSyncResult()
 }
 
 /**
- * Syncs this device's plants/care-log against the shared Firestore doc for [deviceId] — see
- * syncGarden.ts for the merge logic. Both this and the desktop app's equivalent client send their
- * full local state every call and simply overwrite local state with whatever comes back; neither
- * client does any merging itself. Pass a phone's own install ID to sync "as itself", or another
- * device's install ID (e.g. entered once on desktop) to join that same garden.
+ * Syncs this device's plants/care-log against the shared Firestore doc for [gardenId] (defaulting
+ * to [deviceId] — this device's own default garden — when not given a shared garden to sync
+ * against instead) — see syncGarden.ts for the merge logic and its membership/token check. Both
+ * this and the desktop app's equivalent client send their full local state every call and simply
+ * overwrite local state with whatever comes back; neither client does any merging itself. Pass a
+ * phone's own install ID as [deviceId] to sync "as itself", or another device's install ID (e.g.
+ * entered once on desktop) as [gardenId] to join that same garden — see GardenMembershipClient for
+ * the newer, explicit-invite version of joining someone else's garden.
  */
 object GardenSyncClient {
     private val httpClient = OkHttpClient.Builder()
@@ -37,7 +41,7 @@ object GardenSyncClient {
 
     private fun plantToJson(p: PlantEntity): JSONObject = JSONObject().apply {
         put("id", p.id); put("name", p.name); put("sci", p.sci); put("location", p.location)
-        put("sun", p.sun); put("water", p.water); put("soil", p.soil); put("soilPh", p.soilPh); put("frost", p.frost)
+        put("sun", p.sun); put("water", p.water); put("soil", p.soil); put("soilPh", p.soilPh); put("category", p.category); put("frost", p.frost)
         put("native", p.native); put("pollinator", p.pollinator); put("source", p.source)
         put("date", p.date); put("qty", p.qty); put("notes", p.notes)
         put("wateringSystem", p.wateringSystem)
@@ -69,6 +73,7 @@ object GardenSyncClient {
         water = o.optString("water", ""),
         soil = o.optString("soil", ""),
         soilPh = o.optString("soilPh", ""),
+        category = o.optString("category", ""),
         frost = o.optString("frost", ""),
         native = o.optString("native", ""),
         pollinator = o.optString("pollinator", ""),
@@ -124,7 +129,7 @@ object GardenSyncClient {
             SyncTombstone(o.getString("id"), o.getLong("deletedAt"))
         }
 
-    suspend fun sync(context: Context, deviceId: String): GardenSyncResult = withContext(Dispatchers.IO) {
+    suspend fun sync(context: Context, deviceId: String, gardenId: String = deviceId): GardenSyncResult = withContext(Dispatchers.IO) {
         try {
             val db = AppDatabase.getInstance(context)
             val plantDao = db.plantDao()
@@ -132,43 +137,85 @@ object GardenSyncClient {
 
             val body = JSONObject().apply {
                 put("deviceId", deviceId)
-                put("plants", JSONArray(plantDao.getAllOnce().map { plantToJson(it) }))
-                put("plantTombstones", tombstonesToJson(GardenSyncStore.getPlantTombstones(context)))
-                put("careLog", JSONArray(careLogDao.getAllOnce().map { careLogToJson(it) }))
-                put("careLogTombstones", tombstonesToJson(GardenSyncStore.getCareLogTombstones(context)))
+                put("gardenId", gardenId)
+                GardenMembershipStore.getMemberToken(context, gardenId)?.let { put("memberToken", it) }
+                put("plants", JSONArray(plantDao.getAllOnceForGarden(gardenId).map { plantToJson(it) }))
+                put("plantTombstones", tombstonesToJson(GardenSyncStore.getPlantTombstones(context, gardenId)))
+                put("careLog", JSONArray(careLogDao.getAllOnceForGarden(gardenId).map { careLogToJson(it) }))
+                put("careLogTombstones", tombstonesToJson(GardenSyncStore.getCareLogTombstones(context, gardenId)))
+                // The garden address/coordinates/zones are basic shared context (unlike the custom map
+                // image or irrigation setup, which stay device-local) — pushed here so a view-only
+                // member who never set their own address for this garden still sees where it actually
+                // is instead of the map's hardcoded fallback location. Only the OWNER'S device ever
+                // sends these: the server only accepts them from the owner anyway (a non-owner editor's
+                // own locally-cached values from an unrelated garden must never overwrite the real
+                // shared ones — see syncGarden.ts), so a non-owner simply omits them and relies on
+                // whatever the server echoes back. getGardenAddress/getGardenLatLng/getGardenLocations
+                // resolve via effectiveGardenId(context), which callers of sync() always pass as gardenId.
+                if (isOwnerOfGarden(context, gardenId)) {
+                    getGardenAddress(context).takeIf { it.isNotBlank() }?.let { put("gardenAddress", it) }
+                    getGardenLatLng(context)?.let { (lat, lng) -> put("gardenLat", lat); put("gardenLng", lng) }
+                    getGardenLocations(context)?.let { locs -> put("gardenLocations", JSONArray(locs)) }
+                }
             }
             val request = Request.Builder().url("$BASE_URL/syncGarden").post(jsonBody(body)).build()
 
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string() ?: return@withContext GardenSyncResult.NetworkError
+                if (response.code == 403) return@withContext GardenSyncResult.NotAuthorized
                 if (!response.isSuccessful) return@withContext GardenSyncResult.ServerError
                 val json = JSONObject(text)
+
+                // The server may auto-provision membership (a brand-new garden, or a legacy pre-sharing
+                // device) and hand back a freshly-issued token — persist it so the next sync already
+                // has it. Existing known-garden metadata (name, role) is preserved; only the token is
+                // ever missing for a freshly-provisioned membership.
+                val returnedToken = json.optString("memberToken", "")
+                if (returnedToken.isNotBlank()) {
+                    val permission = json.optString("permission", "write")
+                    val existing = GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == gardenId }
+                    val role = existing?.role ?: if (gardenId == deviceId) "owner" else "member"
+                    val name = existing?.name ?: "My Garden"
+                    GardenMembershipStore.upsertKnownGarden(context, KnownGarden(gardenId, name, role, permission, returnedToken))
+                }
 
                 val mergedPlantsArr = json.getJSONArray("plants")
                 val mergedPlantIds = mutableSetOf<String>()
                 for (i in 0 until mergedPlantsArr.length()) {
-                    val plant = jsonToPlant(mergedPlantsArr.getJSONObject(i))
+                    val plant = jsonToPlant(mergedPlantsArr.getJSONObject(i)).copy(gardenId = gardenId)
                     plantDao.upsert(plant)
                     mergedPlantIds += plant.id
                 }
                 val plantTombstones = jsonToTombstones(json.getJSONArray("plantTombstones"))
                 plantTombstones.forEach { if (it.id !in mergedPlantIds) plantDao.deleteById(it.id) }
-                GardenSyncStore.setPlantTombstones(context, plantTombstones)
+                GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
 
                 val mergedCareLogArr = json.getJSONArray("careLog")
                 val mergedCareLogIds = mutableSetOf<String>()
                 for (i in 0 until mergedCareLogArr.length()) {
-                    val entry = jsonToCareLog(mergedCareLogArr.getJSONObject(i))
+                    val entry = jsonToCareLog(mergedCareLogArr.getJSONObject(i)).copy(gardenId = gardenId)
                     careLogDao.upsert(entry)
                     mergedCareLogIds += entry.id
                 }
                 val careLogTombstones = jsonToTombstones(json.getJSONArray("careLogTombstones"))
                 careLogTombstones.forEach { if (it.id !in mergedCareLogIds) careLogDao.deleteById(it.id) }
-                GardenSyncStore.setCareLogTombstones(context, careLogTombstones)
+                GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
+
+                json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { setGardenAddress(context, it) }
+                if (!json.isNull("gardenLat") && !json.isNull("gardenLng")) {
+                    setGardenLatLng(context, json.getDouble("gardenLat"), json.getDouble("gardenLng"))
+                }
+                // null (vs an empty array) means no garden member has ever explicitly set zones yet —
+                // leave this device's own getOrSeedGardenLocations fallback alone in that case, rather
+                // than locking in a premature empty list.
+                if (!json.isNull("gardenLocations")) {
+                    val arr = json.getJSONArray("gardenLocations")
+                    setGardenLocations(context, (0 until arr.length()).map { arr.getString(it) })
+                }
 
                 GardenSyncStore.setLastSyncedAt(context, System.currentTimeMillis())
                 refreshWateringWidgets(context)
-                GardenSyncResult.Success(mergedPlantsArr.length(), mergedCareLogArr.length())
+                GardenSyncResult.Success(mergedPlantsArr.length(), mergedCareLogArr.length(), json.optString("permission", "write"))
             }
         } catch (_: Exception) {
             GardenSyncResult.NetworkError

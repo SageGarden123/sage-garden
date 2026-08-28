@@ -45,7 +45,13 @@ export const requestJoinGarden = onRequest({ cors: false }, async (req, res) => 
 
   const now = Date.now();
   try {
+    const deviceGardensRef = db.collection("deviceGardens").doc(deviceId);
     await db.runTransaction(async (tx) => {
+      // Firestore transactions require every read before any write — the deviceGardens read must
+      // come first, or the whole transaction throws (previously surfaced to the user as a
+      // misleading "couldn't find that code", since the client shows that for any failure here).
+      const deviceSnap = await tx.get(deviceGardensRef);
+
       tx.set(gardenRef.collection("joinRequests").doc(deviceId), {
         status: "pending",
         requestedPermission,
@@ -53,8 +59,6 @@ export const requestJoinGarden = onRequest({ cors: false }, async (req, res) => 
         displayName,
       });
 
-      const deviceGardensRef = db.collection("deviceGardens").doc(deviceId);
-      const deviceSnap = await tx.get(deviceGardensRef);
       const deviceDoc: DeviceGardensDoc = deviceSnap.exists ? (deviceSnap.data() as DeviceGardensDoc) : emptyDeviceGardensDoc();
       deviceDoc.pendingRequests[gardenId] = { gardenId, name: gardenName, requestedPermission, requestedAt: now };
       tx.set(deviceGardensRef, deviceDoc);

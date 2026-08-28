@@ -20,6 +20,7 @@ export interface MemberDoc {
   permission: MemberPermission;
   memberToken: string;
   joinedAt: number;
+  displayName?: string | null;
 }
 
 export interface JoinRequestDoc {
