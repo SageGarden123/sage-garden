@@ -188,7 +188,11 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         GardenSyncStore.recordPlantDeleted(getApplication(), gardenId, id)
         dao.deleteById(id)
     }
-    fun resetAll() = viewModelScope.launch { dao.deleteForGarden(effectiveGardenId(getApplication())) }
+    fun resetAll() = viewModelScope.launch {
+        val gardenId = effectiveGardenId(getApplication())
+        dao.getAllOnceForGarden(gardenId).forEach { GardenSyncStore.recordPlantDeleted(getApplication(), gardenId, it.id) }
+        dao.deleteForGarden(gardenId)
+    }
 
     fun runDropboxAutoLink(context: Context, folderPath: String) {
         if (DropboxLinkState.linking) return
