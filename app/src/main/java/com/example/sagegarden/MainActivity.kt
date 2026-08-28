@@ -973,8 +973,7 @@ suspend fun uploadPhotoToDropbox(context: Context, localUri: Uri): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext null
-            val bytes = context.contentResolver.openInputStream(localUri)?.use { it.readBytes() }
-                ?: return@withContext null
+            val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
             val fileName = "/garden_${System.currentTimeMillis()}.jpg"
             client.files().uploadBuilder(fileName).uploadAndFinish(bytes.inputStream())
             val sharedLink = client.sharing().createSharedLinkWithSettings(fileName)
@@ -1027,8 +1026,7 @@ suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plant
             val folderPath = getDropboxPhotoFolderPath(context) ?: ""
             val targetName = previewDropboxUploadName(context, plantId) ?: return@withContext null
 
-            val bytes = context.contentResolver.openInputStream(localUri)?.use { it.readBytes() }
-                ?: return@withContext null
+            val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
             val filePath = "$folderPath/$targetName".replace("//", "/")
             client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
             // The upload itself (above) can succeed while this next call alone fails/times out —
