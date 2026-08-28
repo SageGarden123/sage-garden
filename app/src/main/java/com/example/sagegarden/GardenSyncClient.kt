@@ -143,9 +143,17 @@ object GardenSyncClient {
             // otherwise only happens when FormScreen sees photoUri actually change (see
             // PhotoThumbnail.kt), which a plant saved long ago will never trigger again on its own.
             // Filling the gap here means it converges within one sync pass instead of requiring the
-            // owner to reopen and re-save every existing plant. Persisted via the DAO directly (not
-            // viewModel.save()) so this doesn't bump updatedAt — it's not a genuine edit, matching
-            // the same convention BackupHelper.kt uses for a passive/derived write.
+            // owner to reopen and re-save every existing plant.
+            //
+            // Must bump updatedAt: the server's merge is strict last-write-wins on updatedAt
+            // (mergeCollection in gardenSync.ts only accepts incoming when strictly newer than
+            // stored). An earlier version of this backfill deliberately left updatedAt unchanged —
+            // matching BackupHelper.kt's convention for a passive/derived write — but that was wrong
+            // here: with an unchanged (tied) timestamp the backfilled thumbnail could never win the
+            // merge against the already-synced thumbnail-less record, so it silently never reached
+            // Firestore no matter how many times the owner re-synced. This IS a genuine local change
+            // (new thumbnail data that didn't exist before), so it needs a fresh timestamp to
+            // actually propagate.
             val localPlants = plantDao.getAllOnceForGarden(gardenId).map { plant ->
                 val uri = plant.photoUri
                 if (plant.photoThumbnailBase64 == null && uri != null) {
@@ -153,7 +161,7 @@ object GardenSyncClient {
                     if (parsed.scheme != "http" && parsed.scheme != "https") {
                         val thumbnail = generatePhotoThumbnailBase64(context, parsed)
                         if (thumbnail != null) {
-                            val updated = plant.copy(photoThumbnailBase64 = thumbnail)
+                            val updated = plant.copy(photoThumbnailBase64 = thumbnail, updatedAt = System.currentTimeMillis())
                             plantDao.upsert(updated)
                             updated
                         } else plant
