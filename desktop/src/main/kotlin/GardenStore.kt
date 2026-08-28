@@ -101,6 +101,7 @@ class GardenStore(private val file: File) {
                 lng = o.optDoubleOrNull("lng"),
                 photoUri = if (o.isNull("photoUri")) null else o.optString("photoUri", null),
                 photoUris = o.optJSONArray("photoUris")?.let { p -> (0 until p.length()).map { p.getString(it) } } ?: emptyList(),
+                photoThumbnailBase64 = if (o.isNull("photoThumbnail")) null else o.optString("photoThumbnail", null),
                 mapX = o.optDoubleOrNull("mapX"),
                 mapY = o.optDoubleOrNull("mapY"),
                 summerWateringFrequencyDays = o.optIntOrNull("summerWateringFrequencyDays"),
@@ -123,6 +124,7 @@ class GardenStore(private val file: File) {
             o.put("lat", p.lat ?: JSONObject.NULL); o.put("lng", p.lng ?: JSONObject.NULL)
             o.put("photoUri", p.photoUri ?: JSONObject.NULL)
             o.put("photoUris", JSONArray(p.photoUris))
+            o.put("photoThumbnail", p.photoThumbnailBase64 ?: JSONObject.NULL)
             o.put("mapX", p.mapX ?: JSONObject.NULL); o.put("mapY", p.mapY ?: JSONObject.NULL)
             o.put("lastWateredDate", p.lastWateredDate ?: JSONObject.NULL)
             o.put("wateringFrequencyDays", p.wateringFrequencyDays ?: JSONObject.NULL)

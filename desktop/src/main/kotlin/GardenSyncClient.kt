@@ -39,6 +39,7 @@ object GardenSyncClient {
         put("lat", p.lat ?: JSONObject.NULL); put("lng", p.lng ?: JSONObject.NULL)
         put("photoUri", p.photoUri ?: JSONObject.NULL)
         put("photoUris", JSONArray(p.photoUris))
+        put("photoThumbnail", p.photoThumbnailBase64 ?: JSONObject.NULL)
         put("mapX", p.mapX ?: JSONObject.NULL); put("mapY", p.mapY ?: JSONObject.NULL)
         put("lastWateredDate", p.lastWateredDate ?: JSONObject.NULL)
         put("wateringFrequencyDays", p.wateringFrequencyDays ?: JSONObject.NULL)
@@ -85,6 +86,7 @@ object GardenSyncClient {
         lng = if (o.isNull("lng")) null else o.optDouble("lng"),
         photoUri = if (o.isNull("photoUri")) null else o.optString("photoUri"),
         photoUris = o.optJSONArray("photoUris")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList(),
+        photoThumbnailBase64 = if (o.isNull("photoThumbnail")) null else o.optString("photoThumbnail"),
         mapX = if (o.isNull("mapX")) null else o.optDouble("mapX"),
         mapY = if (o.isNull("mapY")) null else o.optDouble("mapY"),
         summerWateringFrequencyDays = if (o.isNull("summerWateringFrequencyDays")) null else o.optInt("summerWateringFrequencyDays"),

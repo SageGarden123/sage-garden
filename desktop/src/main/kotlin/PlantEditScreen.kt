@@ -67,7 +67,7 @@ fun PlantEditScreen(
         Spacer(Modifier.height(16.dp))
 
         if (existing?.photoUri != null) {
-            PlantThumbnail(existing.photoUri, size = 96.dp, onClick = { showPhotoPreview = true })
+            PlantThumbnail(existing.photoUri, existing.photoThumbnailBase64, size = 96.dp, onClick = { showPhotoPreview = true })
             Spacer(Modifier.height(16.dp))
         }
 
@@ -168,7 +168,7 @@ fun PlantEditScreen(
 
     val existingPhotoUri = existing?.photoUri
     if (showPhotoPreview && existingPhotoUri != null) {
-        PhotoPreviewDialog(existingPhotoUri, onDismiss = { showPhotoPreview = false })
+        PhotoPreviewDialog(existingPhotoUri, existing.photoThumbnailBase64, onDismiss = { showPhotoPreview = false })
     }
 }
 

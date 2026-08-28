@@ -47,6 +47,25 @@ private val imageHttpClient = HttpClient.newBuilder()
 
 private val imageCache = mutableMapOf<String, ImageBitmap?>()
 
+/**
+ * Decodes the small base64 JPEG a phone client embeds alongside a local-storage-mode photoUri (see
+ * PlantEntity.photoThumbnailBase64 on the Android side) — this is what lets desktop show at least a
+ * thumbnail for a plant whose real photoUri is an Android content:// URI that means nothing here.
+ */
+private fun decodeThumbnailBase64(base64: String): ImageBitmap? = try {
+    SkiaImage.makeFromEncoded(java.util.Base64.getDecoder().decode(base64)).toComposeImageBitmap()
+} catch (_: Exception) {
+    null
+}
+
+/** Tries the real photo first, falling back to the embedded thumbnail if the URL isn't fetchable from this machine (e.g. an Android content:// URI). */
+@Composable
+fun rememberPlantPhoto(photoUri: String?, photoThumbnailBase64: String?): ImageBitmap? {
+    val network = rememberNetworkImage(photoUri)
+    if (network != null) return network
+    return photoThumbnailBase64?.let { remember(it) { decodeThumbnailBase64(it) } }
+}
+
 @Composable
 fun rememberNetworkImage(url: String?): ImageBitmap? {
     var bitmap by remember(url) { mutableStateOf(imageCache[url]) }
@@ -78,8 +97,8 @@ fun rememberNetworkImage(url: String?): ImageBitmap? {
 
 /** Full-size preview shown when a plant thumbnail is clicked, in both the Plants list and the edit screen. */
 @Composable
-fun PhotoPreviewDialog(photoUri: String, onDismiss: () -> Unit) {
-    val bitmap = rememberNetworkImage(photoUri)
+fun PhotoPreviewDialog(photoUri: String, photoThumbnailBase64: String? = null, onDismiss: () -> Unit) {
+    val bitmap = rememberPlantPhoto(photoUri, photoThumbnailBase64)
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier.size(560.dp),

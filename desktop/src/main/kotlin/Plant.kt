@@ -38,6 +38,10 @@ data class Plant(
     var lng: Double? = null,
     var photoUri: String? = null,
     var photoUris: List<String> = emptyList(),
+    // Small base64 JPEG cached alongside a phone-local (content://) photoUri — see PlantEntity in
+    // the Android app. Not generated here (desktop never captures photos), only preserved so a
+    // sync/backup round-trip doesn't drop what the Android client needs to show a fallback thumbnail.
+    var photoThumbnailBase64: String? = null,
     var mapX: Double? = null,
     var mapY: Double? = null,
     var summerWateringFrequencyDays: Int? = null,

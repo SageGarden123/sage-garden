@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun PlantThumbnail(photoUri: String?, size: androidx.compose.ui.unit.Dp = 40.dp, onClick: (() -> Unit)? = null) {
-    val bitmap = rememberNetworkImage(photoUri)
+fun PlantThumbnail(photoUri: String?, photoThumbnailBase64: String? = null, size: androidx.compose.ui.unit.Dp = 40.dp, onClick: (() -> Unit)? = null) {
+    val bitmap = rememberPlantPhoto(photoUri, photoThumbnailBase64)
     Box(
         modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE3DDCF))
             .let { if (bitmap != null && onClick != null) it.clickable(onClick = onClick) else it },
@@ -64,7 +64,7 @@ fun PlantListScreen(
     onLogCare: (Plant, String) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var previewPhotoUri by remember { mutableStateOf<String?>(null) }
+    var previewPlant by remember { mutableStateOf<Plant?>(null) }
     val filtered = plants.filter {
         query.isBlank() || it.name.contains(query, ignoreCase = true) || it.sci.contains(query, ignoreCase = true) || it.location.contains(query, ignoreCase = true)
     }.sortedBy { it.name.lowercase() }
@@ -97,7 +97,7 @@ fun PlantListScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                PlantThumbnail(plant.photoUri, onClick = { previewPhotoUri = plant.photoUri })
+                                PlantThumbnail(plant.photoUri, plant.photoThumbnailBase64, onClick = { previewPlant = plant })
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(plant.name.ifBlank { "(unnamed)" }, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -125,5 +125,5 @@ fun PlantListScreen(
         }
     }
 
-    previewPhotoUri?.let { uri -> PhotoPreviewDialog(uri, onDismiss = { previewPhotoUri = null }) }
+    previewPlant?.let { p -> p.photoUri?.let { uri -> PhotoPreviewDialog(uri, p.photoThumbnailBase64, onDismiss = { previewPlant = null }) } }
 }
