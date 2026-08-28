@@ -4914,13 +4914,14 @@ fun FormScreen(
                         when (val result = SageClient.autoFillConditions(context, sci)) {
                             is SageAutoFillConditionsResult.Success -> {
                                 EntitlementManager.updateSagePromptsRemaining(context, result.promptsRemaining)
-                                val hasExisting = listOf(sun, water, soil, frost, native, pollinatorChoice).any { it.isNotBlank() }
+                                val hasExisting = listOf(sun, water, soil, soilPh, frost, native, pollinatorChoice).any { it.isNotBlank() }
                                 if (hasExisting) {
                                     showConditionsAutoFillConfirm = result.suggestion
                                 } else {
                                     result.suggestion.sun?.let { sun = it }
                                     result.suggestion.water?.let { water = it }
                                     result.suggestion.soil?.let { soil = it }
+                                    result.suggestion.soilPh?.let { soilPh = it }
                                     result.suggestion.frost?.let { frost = it }
                                     result.suggestion.native?.let { native = it }
                                     result.suggestion.pollinator?.let { pollinatorChoice = it }
@@ -5269,6 +5270,7 @@ fun FormScreen(
             if (sun.isNotBlank() && suggestion.sun != null) add("Sun")
             if (water.isNotBlank() && suggestion.water != null) add("Water")
             if (soil.isNotBlank() && suggestion.soil != null) add("Soil")
+            if (soilPh.isNotBlank() && suggestion.soilPh != null) add("Soil pH")
             if (frost.isNotBlank() && suggestion.frost != null) add("Frost")
             if (native.isNotBlank() && suggestion.native != null) add("Native/Exotic")
             if (pollinatorChoice.isNotBlank() && suggestion.pollinator != null) add("Pollinator-friendly")
@@ -5288,6 +5290,7 @@ fun FormScreen(
                     suggestion.sun?.let { sun = it }
                     suggestion.water?.let { water = it }
                     suggestion.soil?.let { soil = it }
+                    suggestion.soilPh?.let { soilPh = it }
                     suggestion.frost?.let { frost = it }
                     suggestion.native?.let { native = it }
                     suggestion.pollinator?.let { pollinatorChoice = it }

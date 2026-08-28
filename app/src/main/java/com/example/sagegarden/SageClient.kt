@@ -29,6 +29,7 @@ data class ConditionsSuggestion(
     val sun: String?,
     val water: String?,
     val soil: String?,
+    val soilPh: String?,
     val frost: String?,
     val native: String?,
     val pollinator: String?
@@ -208,6 +209,7 @@ object SageClient {
                         sun = if (s.isNull("sun")) null else s.optString("sun"),
                         water = if (s.isNull("water")) null else s.optString("water"),
                         soil = if (s.isNull("soil")) null else s.optString("soil"),
+                        soilPh = if (s.isNull("soilPh")) null else s.optString("soilPh"),
                         frost = if (s.isNull("frost")) null else s.optString("frost"),
                         native = if (s.isNull("native")) null else s.optString("native"),
                         pollinator = if (s.isNull("pollinator")) null else s.optString("pollinator")

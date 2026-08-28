@@ -68,6 +68,7 @@ export async function getCachedConditions(sciName: string): Promise<ConditionsSu
     sun: data.sun ?? null,
     water: data.water ?? null,
     soil: data.soil ?? null,
+    soilPh: data.soilPh ?? null,
     frost: data.frost ?? null,
     native: data.native ?? null,
     pollinator: data.pollinator ?? null,
