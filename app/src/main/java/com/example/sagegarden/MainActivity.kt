@@ -7430,7 +7430,9 @@ fun HelpScreen(
         }
         }
 
-        // 5) Data
+        // 5) Data — export/import/backup/reset all mutate or dump the whole garden's data; a
+        // view-only member shouldn't see any of it, not just have individual buttons disabled.
+        if (canEditActiveGarden) {
         ExpandableSection(title = "Data") {
             Text("Export to spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
@@ -7646,6 +7648,7 @@ fun HelpScreen(
             ) { Text("Reset garden") }
             if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 11.sp, color = Color.Gray) }
         }
+        }
 
         if (FeatureVisibility.shouldShow(context, Feature.GARDEN_SHARING)) {
         ExpandableSection(title = "Sync with other devices") {
@@ -7701,9 +7704,10 @@ fun HelpScreen(
                         syncing = false
                     }
                 },
-                enabled = !syncing,
+                enabled = !syncing && canEditActiveGarden,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 11.sp, color = Color.Gray) }
         }
         }
 
