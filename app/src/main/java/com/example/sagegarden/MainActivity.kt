@@ -162,6 +162,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                     (f.sun == "All" || p.sun == f.sun) &&
                     (f.soil == "All" || p.soil == f.soil) &&
                     (f.soilPh == "All" || p.soilPh == f.soilPh) &&
+                    (f.category == "All" || p.category == f.category) &&
                     (f.water == "All" || p.water == f.water) &&
                     (f.frost == "All" || p.frost == f.frost)
         }
@@ -212,13 +213,35 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 // DROPDOWN OPTIONS
 // ============================================================================
 
-val sunOptions = listOf("Full", "Full-Partial", "Partial", "Partial-Shade", "Shade")
-val waterOptions = listOf("Low", "Moderate", "High")
+val sunOptions = listOf("Full", "Full-Partial", "Partial", "Partial-Shade", "Shade", "Unknown")
+val waterOptions = listOf("Low", "Moderate", "High", "Unknown")
 val soilOptions = listOf(
     "Sandy", "Loamy", "Clay", "Silty", "Peaty", "Chalky", "Rocky/Stony", "Potting Mix", "Other", "Unknown"
 )
 val soilPhOptions = listOf("Acidic", "Neutral", "Alkaline", "Unknown")
-val frostOptions = listOf("Hardy", "Half-hardy", "Tender", "Tender (indoor only)")
+val categoryOptions = listOf(
+    "Trees", "Shrubs", "Ground Cover", "Climbers/Vines", "Grasses", "Ferns", "Perennials",
+    "Annuals", "Bulbs", "Succulents", "Palms/Cycads", "Aquatic", "Herbs", "Other"
+)
+
+/** Emoji used as this category's map marker — falls back to a plain pin for "Other"/unset. */
+fun categoryMarkerEmoji(category: String): String = when (category) {
+    "Trees" -> "🌳"
+    "Shrubs" -> "🪴"
+    "Ground Cover" -> "🍀"
+    "Climbers/Vines" -> "🍃"
+    "Grasses" -> "🌾"
+    "Ferns" -> "🌿"
+    "Perennials" -> "🌸"
+    "Annuals" -> "🌻"
+    "Bulbs" -> "🌷"
+    "Succulents" -> "🌵"
+    "Palms/Cycads" -> "🌴"
+    "Aquatic" -> "🪷"
+    "Herbs" -> "🌱"
+    else -> "📍"
+}
+val frostOptions = listOf("Hardy", "Half-hardy", "Tender", "Tender (indoor only)", "Unknown")
 val nativeOptions = listOf("Native (Aus)", "Exotic")
 val pollinatorOptions = listOf(
     "Yes - bees", "Yes - butterflies", "Yes - bees & butterflies",
@@ -1695,6 +1718,7 @@ data class DashboardFilters(
     val sun: String = "All",
     val soil: String = "All",
     val soilPh: String = "All",
+    val category: String = "All",
     val water: String = "All",
     val frost: String = "All"
 )
@@ -1922,7 +1946,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
         0.0
     }
     val activeFilterCount = listOf(
-        filters.location, filters.source, filters.plant, filters.sun, filters.soil, filters.soilPh, filters.water, filters.frost
+        filters.location, filters.source, filters.plant, filters.sun, filters.soil, filters.soilPh, filters.category, filters.water, filters.frost
     ).count { it != "All" }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -2056,7 +2080,11 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                     Spacer(Modifier.height(10.dp))
                     SimpleFilterDropdown("Soil", listOf("All") + soilOptions, draft.soil) { draft = draft.copy(soil = it) }
                     Spacer(Modifier.height(10.dp))
-                    SimpleFilterDropdown("Soil pH", listOf("All") + soilPhOptions, draft.soilPh) { draft = draft.copy(soilPh = it) }
+                    if (FeatureVisibility.shouldShow(context, Feature.SOIL_PH)) {
+                        SimpleFilterDropdown("Soil pH", listOf("All") + soilPhOptions, draft.soilPh) { draft = draft.copy(soilPh = it) }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    SimpleFilterDropdown("Category", listOf("All") + categoryOptions, draft.category) { draft = draft.copy(category = it) }
                     Spacer(Modifier.height(10.dp))
                     SimpleFilterDropdown("Water", listOf("All") + waterOptions, draft.water) { draft = draft.copy(water = it) }
                     Spacer(Modifier.height(10.dp))
@@ -2179,7 +2207,8 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                     DetailRow("Sun", plantToShow.sun)
                     DetailRow("Water", plantToShow.water)
                     DetailRow("Soil", plantToShow.soil)
-                    DetailRow("Soil pH", plantToShow.soilPh)
+                    if (FeatureVisibility.shouldShow(context, Feature.SOIL_PH)) DetailRow("Soil pH", plantToShow.soilPh)
+                    DetailRow("Category", plantToShow.category)
                     DetailRow("Frost", plantToShow.frost)
                     DetailRow("Native/Exotic", plantToShow.native)
                     DetailRow("Pollinator-friendly", plantToShow.pollinator)
@@ -3082,13 +3111,15 @@ fun CustomMapScreen(
                     val xDp = with(density) { (plant.mapX * containerSize.width).toFloat().toDp() }
                     val yDp = with(density) { (plant.mapY * containerSize.height).toFloat().toDp() }
                     val isPendingTarget = attachingDripSegment != null && pendingDripTargets.contains(plant.id)
+                    val hasCategoryIcon = plant.category.isNotBlank() && plant.category != "Other"
+                    val markerSize = if (hasCategoryIcon) 14.dp else 5.dp
                     val markerColor = Color(0xFFFF7A45)
                     Box(
                         modifier = Modifier
-                            .offset(x = xDp - 2.5.dp, y = yDp - 2.5.dp)
-                            .size(5.dp)
+                            .offset(x = xDp - markerSize / 2, y = yDp - markerSize / 2)
+                            .size(markerSize)
                             .clip(RoundedCornerShape(50))
-                            .background(markerColor)
+                            .background(if (hasCategoryIcon) Color.White else markerColor)
                             .then(if (isPendingTarget) Modifier.border(1.dp, Color.White, RoundedCornerShape(50)) else Modifier)
                             .then(
                                 // Only intercepts taps while picking drip-segment targets. Plain
@@ -3101,8 +3132,11 @@ fun CustomMapScreen(
                                         else pendingDripTargets.add(plant.id)
                                     }
                                 } else Modifier
-                            )
-                    )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (hasCategoryIcon) Text(categoryMarkerEmoji(plant.category), fontSize = 8.sp)
+                    }
                 }
             }
 
@@ -4240,7 +4274,8 @@ fun FormScreen(
         return PlantEntity(
             id = plantId ?: generatedId.ifBlank { generateNextPlantId(allPlants) },
             name = name, sci = sci, location = location,
-            sun = sun, water = water, soil = soil, soilPh = soilPh, frost = frost,
+            sun = sun, water = water, soil = soil, soilPh = soilPh, category = category, frost = frost,
+            gardenId = gardenId,
             native = native, pollinator = finalPollinator, source = source, date = date,
             qty = qty.toIntOrNull() ?: 1,
             notes = notes,
@@ -4322,6 +4357,8 @@ fun FormScreen(
                 water = existing.water
                 soil = existing.soil
                 soilPh = existing.soilPh
+                category = existing.category
+                gardenId = existing.gardenId
                 frost = existing.frost
                 native = existing.native
                 if (pollinatorOptions.contains(existing.pollinator)) {
@@ -5878,7 +5915,7 @@ fun HelpScreen(
                     plants.forEach { p ->
                         val row = listOf(
                             p.id, p.name, p.qty.toString(), p.sci, p.location, p.date, p.source,
-                            p.sun, p.soil, p.soilPh, p.water, p.frost, p.native, p.pollinator, p.notes,
+                            p.sun, p.soil, p.soilPh, p.category, p.water, p.frost, p.native, p.pollinator, p.notes,
                             p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem
                         ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
                         sb.append(row).append("\n")
@@ -5934,6 +5971,7 @@ fun HelpScreen(
                             water = csvFindValue(headers, cells, "Water") ?: "",
                             soil = csvFindValue(headers, cells, "Soil") ?: "",
                             soilPh = csvFindValue(headers, cells, "Soil pH") ?: "",
+                            category = csvFindValue(headers, cells, "Category") ?: "",
                             frost = csvFindValue(headers, cells, "Frost") ?: "",
                             native = csvFindValue(headers, cells, "Native/Exotic") ?: "Native (Aus)",
                             pollinator = csvFindValue(headers, cells, "Pollinator-Friendly") ?: "",
@@ -7397,7 +7435,7 @@ fun DropboxFolderPickerDialog(
 
 val CSV_HEADERS = listOf(
     "Plant ID", "Plant", "Amount", "Scientific name", "Location", "Date planted", "Source",
-    "Sun", "Soil", "Soil pH", "Water", "Frost", "Native/Exotic", "Pollinator-Friendly", "Notes",
+    "Sun", "Soil", "Soil pH", "Category", "Water", "Frost", "Native/Exotic", "Pollinator-Friendly", "Notes",
     "Latitude", "Longitude", "Watering System"
 )
 

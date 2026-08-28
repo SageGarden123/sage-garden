@@ -13,6 +13,7 @@ data class PlantEntity(
     val water: String,
     val soil: String,
     val soilPh: String = "",
+    val category: String = "",
     val frost: String,
     val native: String,
     val pollinator: String,
@@ -39,5 +40,6 @@ data class PlantEntity(
     val pruneFrequencyDays: Int? = null,
     val lastFedDate: Long? = null,
     val feedFrequencyDays: Int? = null,
-    val updatedAt: Long = 0L // last local write time — used only by GardenSyncClient's last-write-wins merge
+    val updatedAt: Long = 0L, // last local write time — used only by GardenSyncClient's last-write-wins merge
+    val gardenId: String = "" // which garden this plant belongs to — blank means "not yet stamped", filled in by PlantViewModel.saveSync on first write
 )
