@@ -28,6 +28,7 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun addPhoto(location: String, uri: String, label: String = "", takenAtOverride: Long? = null) {
+        android.util.Log.d("LocationPhoto", "addPhoto location=$location uri=$uri")
         viewModelScope.launch {
             val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(

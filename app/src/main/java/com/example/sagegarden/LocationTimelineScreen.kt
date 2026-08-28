@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,12 +47,16 @@ fun LocationPhotoSlider(photos: List<LocationPhotoEntity>, modifier: Modifier = 
         ) {
             AsyncImage(
                 model = Uri.parse(photos[lowerIndex].uri), contentDescription = null,
-                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
+                onError = { Log.e("LocationPhoto", "slider load failed for ${photos[lowerIndex].uri}", it.result.throwable) },
+                onSuccess = { Log.d("LocationPhoto", "slider load OK for ${photos[lowerIndex].uri}") }
             )
             if (upperIndex != lowerIndex) {
                 AsyncImage(
                     model = Uri.parse(photos[upperIndex].uri), contentDescription = null,
-                    modifier = Modifier.fillMaxSize().graphicsLayer(alpha = blend), contentScale = ContentScale.Crop
+                    modifier = Modifier.fillMaxSize().graphicsLayer(alpha = blend), contentScale = ContentScale.Crop,
+                    onError = { Log.e("LocationPhoto", "slider load failed for ${photos[upperIndex].uri}", it.result.throwable) },
+                    onSuccess = { Log.d("LocationPhoto", "slider load OK for ${photos[upperIndex].uri}") }
                 )
             }
         }
@@ -134,7 +139,11 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
         sorted.reversed().forEach { photo ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                    AsyncImage(
+                        model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop,
+                        onError = { Log.e("LocationPhoto", "list thumbnail load failed for ${photo.uri}", it.result.throwable) },
+                        onSuccess = { Log.d("LocationPhoto", "list thumbnail load OK for ${photo.uri}") }
+                    )
                     Spacer(Modifier.width(10.dp))
                     Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     if (canEdit) {
@@ -147,7 +156,11 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     }
 
     if (showDropboxPicker) {
-        DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
-            onImageSelected = { link, clientModified -> locationViewModel.addPhoto(location, link, takenAtOverride = clientModified) })
+        DropboxImagePickerDialog(
+            context, onDismiss = { showDropboxPicker = false },
+            onImageSelected = { link, clientModified -> locationViewModel.addPhoto(location, link, takenAtOverride = clientModified) },
+            initialPath = remember(location) { getProgressPhotoDropboxFolder(context, location) ?: "" },
+            onPathChanged = { path -> setProgressPhotoDropboxFolder(context, location, path) }
+        )
     }
 }

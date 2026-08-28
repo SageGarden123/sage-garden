@@ -1053,13 +1053,24 @@ suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plant
     }
 }
 
+/**
+ * The classic `?raw=1` query-param swap on www.dropbox.com reliably serves inline image bytes for
+ * Dropbox's older `/s/<hash>/...` share-link format, but is known to be unreliable for the newer
+ * `/scl/fi/<id>/...?rlkey=...` format Dropbox's UI now generates — that format needs the request
+ * served from the dl.dropboxusercontent.com CDN domain instead, not just a query tweak on
+ * www.dropbox.com. Swapping the host (rather than stripping/rebuilding query params) preserves
+ * rlkey and everything else a scl-format link needs to stay valid.
+ */
 fun toDirectDropboxLink(url: String): String {
+    val onDirectHost = url
+        .replace("://www.dropbox.com", "://dl.dropboxusercontent.com")
+        .replace("://dropbox.com", "://dl.dropboxusercontent.com")
     return when {
-        url.contains("?dl=0") -> url.replace("?dl=0", "?raw=1")
-        url.contains("&dl=0") -> url.replace("&dl=0", "&raw=1")
-        url.contains("dl=0") -> url.replace("dl=0", "raw=1")
-        url.contains("?") -> "$url&raw=1"
-        else -> "$url?raw=1"
+        onDirectHost.contains("?dl=0") -> onDirectHost.replace("?dl=0", "?raw=1")
+        onDirectHost.contains("&dl=0") -> onDirectHost.replace("&dl=0", "&raw=1")
+        onDirectHost.contains("dl=0") -> onDirectHost.replace("dl=0", "raw=1")
+        onDirectHost.contains("?") -> "$onDirectHost&raw=1"
+        else -> "$onDirectHost?raw=1"
     }
 }
 
@@ -1135,6 +1146,19 @@ fun getIrrigationLogDropboxFolderPath(context: Context): String? {
 fun setIrrigationLogDropboxFolderPath(context: Context, path: String?) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putString("irrigation_log_dropbox_folder_path", path).apply()
+}
+
+/** Remembers the last Dropbox folder browsed to for a given zone's progress photos, so reopening
+ * that zone's picker starts back where you left off — keyed per zone (not shared with any other
+ * zone or with the main Photos & cloud storage Dropbox folder) since different zones' reference
+ * photos often live in entirely different Dropbox folders. */
+fun getProgressPhotoDropboxFolder(context: Context, location: String): String? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("progress_photo_dropbox_folder.$location", null)
+}
+fun setProgressPhotoDropboxFolder(context: Context, location: String, path: String) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("progress_photo_dropbox_folder.$location", path).apply()
 }
 
 fun getDropboxPhotoFolderPath(context: Context): String? {
@@ -7861,17 +7885,36 @@ suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = 
 }
 
 @Composable
-fun DropboxImagePickerDialog(context: Context, onDismiss: () -> Unit, onImageSelected: (String, Long?) -> Unit) {
-    var currentPath by remember { mutableStateOf("") }
-    var currentLabel by remember { mutableStateOf("Dropbox (root)") }
+fun DropboxImagePickerDialog(
+    context: Context, onDismiss: () -> Unit, onImageSelected: (String, Long?) -> Unit,
+    initialPath: String = "", onPathChanged: ((String) -> Unit)? = null
+) {
+    var currentPath by remember { mutableStateOf(initialPath) }
+    var currentLabel by remember { mutableStateOf(initialPath.trim('/').substringAfterLast("/").ifBlank { "Dropbox (root)" }) }
     var entries by remember { mutableStateOf<List<DropboxEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var resolving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val pathStack = remember { mutableStateListOf<Pair<String, String>>() }
+    // Reconstructs breadcrumbs for an initialPath so "‹ Back" still works from a remembered
+    // starting folder — segment names are just the path's own segments (Dropbox doesn't give us
+    // the real display name without an extra lookup per level, but the path segment reads fine).
+    val pathStack = remember {
+        val stack = mutableStateListOf<Pair<String, String>>()
+        val segments = initialPath.trim('/').split("/").filter { it.isNotBlank() }
+        if (segments.isNotEmpty()) {
+            stack.add("" to "Dropbox (root)")
+            var acc = ""
+            for (i in 0 until segments.size - 1) {
+                acc = "$acc/${segments[i]}"
+                stack.add(acc to segments[i])
+            }
+        }
+        stack
+    }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(currentPath) {
+        onPathChanged?.invoke(currentPath)
         loading = true; error = null
         listDropboxEntries(context, currentPath).onSuccess { entries = it }.onFailure { error = it.message }
         loading = false
