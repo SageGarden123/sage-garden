@@ -43,7 +43,8 @@ object BackupHelper {
         plants.forEach { p ->
             val o = JSONObject()
             o.put("id", p.id); o.put("name", p.name); o.put("sci", p.sci); o.put("location", p.location)
-            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("soilPh", p.soilPh); o.put("frost", p.frost)
+            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("soilPh", p.soilPh); o.put("category", p.category); o.put("frost", p.frost)
+            o.put("gardenId", p.gardenId)
             o.put("native", p.native); o.put("pollinator", p.pollinator); o.put("source", p.source)
             o.put("date", p.date); o.put("qty", p.qty); o.put("notes", p.notes)
             o.put("wateringSystem", p.wateringSystem)
@@ -73,7 +74,7 @@ object BackupHelper {
             val o = JSONObject()
             o.put("id", p.id); o.put("zone", p.zone)
             o.put("outletX", p.outletX); o.put("outletY", p.outletY)
-            o.put("segmentsJson", p.segmentsJson)
+            o.put("segmentsJson", p.segmentsJson); o.put("gardenId", p.gardenId)
             pathsArr.put(o)
         }
         root.put("irrigationPaths", pathsArr)
@@ -83,7 +84,7 @@ object BackupHelper {
             val o = JSONObject()
             o.put("id", e.id); o.put("zone", e.zone); o.put("outlet", e.outlet)
             o.put("startTime", e.startTime); o.put("durationMinutes", e.durationMinutes)
-            o.put("source", e.source)
+            o.put("source", e.source); o.put("gardenId", e.gardenId)
             eventsArr.put(o)
         }
         root.put("wateringEvents", eventsArr)
@@ -91,9 +92,10 @@ object BackupHelper {
         val db = AppDatabase.getInstance(context)
 
         val sunZonesArr = JSONArray()
-        db.sunZoneDao().getAllOnce().forEach { z ->
+        db.sunZoneDao().getAllOnceForGarden(effectiveGardenId(context)).forEach { z ->
             val o = JSONObject()
             o.put("id", z.id); o.put("category", z.category); o.put("pointsJson", z.pointsJson); o.put("mapType", z.mapType)
+            o.put("gardenId", z.gardenId)
             sunZonesArr.put(o)
         }
         root.put("sunZones", sunZonesArr)
@@ -129,15 +131,16 @@ object BackupHelper {
         db.careLogDao().getAllOnce().forEach { c ->
             val o = JSONObject()
             o.put("id", c.id); o.put("plantId", c.plantId); o.put("type", c.type)
-            o.put("date", c.date); o.put("notes", c.notes); o.put("updatedAt", c.updatedAt)
+            o.put("date", c.date); o.put("notes", c.notes); o.put("updatedAt", c.updatedAt); o.put("gardenId", c.gardenId)
             careLogArr.put(o)
         }
         root.put("careLog", careLogArr)
 
         val flowRatesArr = JSONArray()
-        db.waterFlowRateDao().getAllOnce().forEach { f ->
+        db.waterFlowRateDao().getAllOnceForGarden(effectiveGardenId(context)).forEach { f ->
             val o = JSONObject()
             o.put("zone", f.zone); o.put("outlet", f.outlet); o.put("litersPerMinute", f.litersPerMinute)
+            o.put("gardenId", f.gardenId)
             flowRatesArr.put(o)
         }
         root.put("waterFlowRates", flowRatesArr)
@@ -225,7 +228,7 @@ object BackupHelper {
                 PlantEntity(
                     id = o.getString("id"), name = o.getString("name"), sci = o.optString("sci", ""),
                     location = o.optString("location", ""), sun = o.optString("sun", ""),
-                    water = o.optString("water", ""), soil = o.optString("soil", ""), soilPh = o.optString("soilPh", ""), frost = o.optString("frost", ""),
+                    water = o.optString("water", ""), soil = o.optString("soil", ""), soilPh = o.optString("soilPh", ""), category = o.optString("category", ""), frost = o.optString("frost", ""),
                     native = o.optString("native", "Native (Aus)"), pollinator = o.optString("pollinator", ""),
                     source = o.optString("source", ""), date = o.optString("date", ""), qty = o.optInt("qty", 1),
                     notes = o.optString("notes", ""), wateringSystem = o.optString("wateringSystem", ""),
@@ -247,7 +250,8 @@ object BackupHelper {
                     pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays"),
                     lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
                     feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays"),
-                    updatedAt = o.optLong("updatedAt", 0L)
+                    updatedAt = o.optLong("updatedAt", 0L),
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
         }
@@ -260,7 +264,8 @@ object BackupHelper {
                 IrrigationPathEntity(
                     id = o.getString("id"), zone = o.getString("zone"),
                     outletX = o.getDouble("outletX"), outletY = o.getDouble("outletY"),
-                    segmentsJson = o.getString("segmentsJson")
+                    segmentsJson = o.getString("segmentsJson"),
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
         }
@@ -271,7 +276,8 @@ object BackupHelper {
             WateringEvent(
                 id = o.getString("id"), zone = o.getString("zone"), outlet = o.optString("outlet", "1"),
                 startTime = o.getLong("startTime"), durationMinutes = o.getInt("durationMinutes"),
-                source = o.optString("source", "Tuya")
+                source = o.optString("source", "Tuya"),
+                gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
             )
         }
         if (restoredEvents.isNotEmpty()) wateringViewModel.importEvents(restoredEvents)
@@ -284,7 +290,8 @@ object BackupHelper {
             db.sunZoneDao().upsert(
                 SunZoneEntity(
                     id = o.getString("id"), category = o.getString("category"), pointsJson = o.getString("pointsJson"),
-                    mapType = o.optString("mapType", "custom") // older backups predate real-map zones
+                    mapType = o.optString("mapType", "custom"), // older backups predate real-map zones
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
         }
@@ -329,7 +336,8 @@ object BackupHelper {
                 CareLogEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), type = o.getString("type"),
                     date = o.getLong("date"), notes = o.optString("notes", ""),
-                    updatedAt = o.optLong("updatedAt", 0L)
+                    updatedAt = o.optLong("updatedAt", 0L),
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
         }
@@ -338,7 +346,10 @@ object BackupHelper {
         for (i in 0 until flowRatesArr.length()) {
             val o = flowRatesArr.getJSONObject(i)
             db.waterFlowRateDao().upsert(
-                WaterFlowRateEntity(zone = o.getString("zone"), outlet = o.optString("outlet", "1"), litersPerMinute = o.getDouble("litersPerMinute"))
+                WaterFlowRateEntity(
+                    zone = o.getString("zone"), outlet = o.optString("outlet", "1"), litersPerMinute = o.getDouble("litersPerMinute"),
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                )
             )
         }
 

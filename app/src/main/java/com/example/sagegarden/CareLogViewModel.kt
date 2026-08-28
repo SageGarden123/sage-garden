@@ -24,8 +24,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
      */
     suspend fun logCareSync(plantId: String, type: String, date: Long, notes: String = "") {
         val now = System.currentTimeMillis()
-        dao.upsert(CareLogEntity(id = UUID.randomUUID().toString(), plantId = plantId, type = type, date = date, notes = notes, updatedAt = now))
         val plant = plantDao.getById(plantId) ?: return
+        dao.upsert(CareLogEntity(id = UUID.randomUUID().toString(), plantId = plantId, type = type, date = date, notes = notes, updatedAt = now, gardenId = plant.gardenId))
         val updated = when (type) {
             "watering" -> plant.copy(lastWateredDate = date)
             "fertilise" -> plant.copy(lastFertilisedDate = date)
@@ -43,7 +43,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun delete(id: String) = viewModelScope.launch {
-        GardenSyncStore.recordCareLogDeleted(getApplication(), id)
+        val gardenId = dao.getById(id)?.gardenId ?: effectiveGardenId(getApplication())
+        GardenSyncStore.recordCareLogDeleted(getApplication(), gardenId, id)
         dao.deleteById(id)
     }
 }

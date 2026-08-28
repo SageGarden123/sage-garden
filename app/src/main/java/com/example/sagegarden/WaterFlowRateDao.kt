@@ -8,15 +8,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WaterFlowRateDao {
-    @Query("SELECT * FROM water_flow_rates")
-    fun getAll(): Flow<List<WaterFlowRateEntity>>
+    @Query("SELECT * FROM water_flow_rates WHERE gardenId = :gardenId")
+    fun getAll(gardenId: String): Flow<List<WaterFlowRateEntity>>
 
-    @Query("SELECT * FROM water_flow_rates")
-    suspend fun getAllOnce(): List<WaterFlowRateEntity>
+    @Query("SELECT * FROM water_flow_rates WHERE gardenId = :gardenId")
+    suspend fun getAllOnceForGarden(gardenId: String): List<WaterFlowRateEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WaterFlowRateEntity)
 
-    @Query("DELETE FROM water_flow_rates WHERE zone = :zone AND outlet = :outlet")
-    suspend fun deleteByZoneOutlet(zone: String, outlet: String)
+    @Query("DELETE FROM water_flow_rates WHERE gardenId = :gardenId AND zone = :zone AND outlet = :outlet")
+    suspend fun deleteByZoneOutlet(gardenId: String, zone: String, outlet: String)
 }

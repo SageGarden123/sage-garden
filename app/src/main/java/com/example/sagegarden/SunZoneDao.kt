@@ -8,11 +8,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SunZoneDao {
-    @Query("SELECT * FROM sun_zones")
-    fun getAll(): Flow<List<SunZoneEntity>>
+    @Query("SELECT * FROM sun_zones WHERE gardenId = :gardenId")
+    fun getAll(gardenId: String): Flow<List<SunZoneEntity>>
 
-    @Query("SELECT * FROM sun_zones")
-    suspend fun getAllOnce(): List<SunZoneEntity>
+    @Query("SELECT * FROM sun_zones WHERE gardenId = :gardenId")
+    suspend fun getAllOnceForGarden(gardenId: String): List<SunZoneEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(zone: SunZoneEntity)

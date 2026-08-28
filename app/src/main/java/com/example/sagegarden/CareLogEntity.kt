@@ -11,5 +11,6 @@ data class CareLogEntity(
     val type: String, // "fertilise" or "prune"
     val date: Long,
     val notes: String = "",
-    val updatedAt: Long = 0L // last local write time — used only by GardenSyncClient's last-write-wins merge
+    val updatedAt: Long = 0L, // last local write time — used only by GardenSyncClient's last-write-wins merge
+    val gardenId: String = "" // which garden this entry belongs to — blank means "not yet stamped", filled in by CareLogViewModel on first write
 )

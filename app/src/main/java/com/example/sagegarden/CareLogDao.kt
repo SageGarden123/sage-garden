@@ -14,6 +14,12 @@ interface CareLogDao {
     @Query("SELECT * FROM care_log")
     suspend fun getAllOnce(): List<CareLogEntity>
 
+    @Query("SELECT * FROM care_log WHERE gardenId = :gardenId")
+    suspend fun getAllOnceForGarden(gardenId: String): List<CareLogEntity>
+
+    @Query("SELECT * FROM care_log WHERE id = :id")
+    suspend fun getById(id: String): CareLogEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: CareLogEntity)
 

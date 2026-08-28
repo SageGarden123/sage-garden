@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class], version = 22, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class], version = 25, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context))
                     .build().also { INSTANCE = it }
             }
         }
@@ -195,5 +195,75 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_location_photos_location` ON `location_photos` (`location`)")
+    }
+}
+
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE plants ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+/**
+ * First step of multi-garden sharing's local Room scoping (see GardenMembershipClient.kt) — adds
+ * gardenId to the two tables that are actually synced across devices (plants, care_log; see
+ * gardenSync.ts, which only ever handles these two collections). Every other table (zones, photos,
+ * irrigation paths, chat history) stays device-global for now — none of them were ever part of the
+ * phone/desktop sync payload either, so this doesn't reduce anything that worked before.
+ * Existing rows are backfilled to this device's own install ID, which is exactly the gardenId
+ * `effectiveGardenId()` resolves to until the user explicitly switches to a different garden — so
+ * this migration is invisible to anyone not using sharing yet.
+ */
+fun migration23To24(context: Context) = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val installId = getOrCreateInstallId(context)
+        db.execSQL("ALTER TABLE plants ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE care_log ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE plants SET gardenId = ?", arrayOf(installId))
+        db.execSQL("UPDATE care_log SET gardenId = ?", arrayOf(installId))
+    }
+}
+
+/**
+ * Second step of multi-garden sharing's local Room scoping — extends gardenId to watering history,
+ * water flow rates (cost/usage tracking), the sun map, and custom-map irrigation drawings, all of
+ * which stayed device-global in migration23To24 because they were never part of the cloud sync
+ * payload. That's still true here (none of this syncs to the server) — this migration only fixes
+ * these tables being visible/editable regardless of which garden is active locally, addressed after
+ * a user with two shared gardens found the first garden's watering history and sun map bleeding
+ * into the second garden's view. Existing rows are backfilled to this device's own install ID, same
+ * as migration23To24, so a device not using sharing sees no change.
+ */
+fun migration24To25(context: Context) = object : Migration(24, 25) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val installId = getOrCreateInstallId(context)
+
+        db.execSQL("ALTER TABLE watering_events ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE watering_events SET gardenId = ?", arrayOf(installId))
+
+        db.execSQL("ALTER TABLE sun_zones ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE sun_zones SET gardenId = ?", arrayOf(installId))
+
+        db.execSQL("ALTER TABLE irrigation_paths ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE irrigation_paths SET gardenId = ?", arrayOf(installId))
+
+        // water_flow_rates' primary key changes from (zone, outlet) to (gardenId, zone, outlet) — a
+        // device sharing a second garden could otherwise have that garden's "Front" zone flow-rate
+        // upsert silently overwrite its own default garden's "Front" zone row, since REPLACE keys
+        // off the primary key alone. SQLite can't alter a primary key in place, so recreate the table.
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `water_flow_rates_new` (
+                `gardenId` TEXT NOT NULL DEFAULT '', `zone` TEXT NOT NULL, `outlet` TEXT NOT NULL, `litersPerMinute` REAL NOT NULL,
+                PRIMARY KEY(`gardenId`, `zone`, `outlet`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "INSERT INTO water_flow_rates_new (gardenId, zone, outlet, litersPerMinute) SELECT ?, zone, outlet, litersPerMinute FROM water_flow_rates",
+            arrayOf(installId)
+        )
+        db.execSQL("DROP TABLE water_flow_rates")
+        db.execSQL("ALTER TABLE water_flow_rates_new RENAME TO water_flow_rates")
     }
 }
