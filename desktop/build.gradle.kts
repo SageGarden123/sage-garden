@@ -33,7 +33,7 @@ compose.desktop {
             // first) or looks like the same version again (in which case Windows Installer may
             // just no-op instead of actually updating anything). Keeping it at a fixed value across
             // builds is what forced manual uninstall/reinstall for every test build so far.
-            packageVersion = "1.2.0"
+            packageVersion = "1.3.0"
 
             // jlink's automatic module detection scans compiled bytecode for module dependencies,
             // but java.net.http.HttpClient's actual implementation lives behind an internal SPI
@@ -52,6 +52,13 @@ compose.desktop {
                 perUserInstall = true
                 menuGroup = "Sage Garden"
                 shortcut = true
+                // Was missing (defaults to false) — meant only the desktop shortcut was ever
+                // created, no Start Menu entry. Both `shortcut` and `menu` register their shortcuts
+                // as tracked MSI components, so Windows Installer removes them automatically on
+                // uninstall with no extra config needed — that part was already correct for the
+                // desktop shortcut, this just extends the same tracked (and therefore
+                // auto-removed) treatment to the Start Menu entry.
+                menu = true
             }
         }
     }
