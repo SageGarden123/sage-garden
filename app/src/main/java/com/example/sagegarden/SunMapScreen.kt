@@ -242,11 +242,17 @@ fun SunMapScreen(onBack: () -> Unit) {
     }
 
     // Only ever runs once per process (not on every re-entry to this screen), so it never overrides
-    // wherever the user last panned/zoomed to — see SunMapCameraState's doc comment.
+    // wherever the user last panned/zoomed to — see SunMapCameraState's doc comment. Prefers the
+    // garden address configured in Help (the same one the real Map tab centers on) over raw device
+    // GPS, since that's a deliberate choice about which garden this is, not just "wherever this
+    // phone happens to be standing right now" — falls back to GPS only when no garden address is set.
     LaunchedEffect(Unit) {
         if (SunMapCameraState.initialized) return@LaunchedEffect
         SunMapCameraState.initialized = true
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        val gardenLatLng = getGardenLatLng(context)
+        if (gardenLatLng != null) {
+            cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(gardenLatLng.first, gardenLatLng.second), 18f)
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             try {
                 LocationServices.getFusedLocationProviderClient(context).lastLocation.addOnSuccessListener { location ->
                     if (location != null) {

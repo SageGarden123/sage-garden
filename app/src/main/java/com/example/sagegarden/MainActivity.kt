@@ -6637,17 +6637,29 @@ fun HelpScreen(
             ExpandableSection(title = "Hemisphere") {
             Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
-            var hemisphere by remember { mutableStateOf(getHemisphere(context)) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
-                    Button(
-                        onClick = { hemisphere = value; setHemisphere(context, value) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (hemisphere == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                            contentColor = if (hemisphere == value) Color.White else Color.Black
-                        ),
-                        modifier = Modifier.weight(1f)
-                    ) { Text(label, fontSize = 12.sp) }
+            val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { getGardenLatLng(context) != null }
+            if (gardenHasAddress) {
+                val hemisphere = remember(ActiveGardenState.activeGardenId) { getHemisphere(context) }
+                Text(
+                    "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3A5A40)
+                )
+                Text("Set a different garden address above to change this.", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+            } else {
+                var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getHemisphere(context)) }
+                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
+                        Button(
+                            onClick = { hemisphere = value; setHemisphere(context, value) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (hemisphere == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
+                                contentColor = if (hemisphere == value) Color.White else Color.Black
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(label, fontSize = 12.sp) }
+                    }
                 }
             }
             }
@@ -6657,22 +6669,19 @@ fun HelpScreen(
             Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
 
-            var weatherSkipEnabled by remember { mutableStateOf(getWeatherSkipEnabled(context)) }
-            var rainThreshold by remember { mutableStateOf(getRainProbabilityThreshold(context)) }
-            var gardenAddressQuery by remember { mutableStateOf(getGardenAddress(context)) }
-            var gardenAddressEditedByUser by remember { mutableStateOf(false) }
-            var gardenCoords by remember { mutableStateOf(getGardenLatLng(context)) }
-            var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
-            var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
-            val gardenPlacesClient = remember { Places.createClient(context) }
-            var gardenSessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
+            var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getWeatherSkipEnabled(context)) }
+            var rainThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRainProbabilityThreshold(context)) }
+            val hasGardenAddress = remember { getGardenLatLng(context) != null }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; setWeatherSkipEnabled(context, it) })
             }
-            var frostWarningsEnabled by remember { mutableStateOf(getFrostWarningsEnabled(context)) }
-            var frostThreshold by remember { mutableStateOf(getFrostTempThreshold(context).toFloat()) }
+            if (!hasGardenAddress) {
+                Text("Set your garden address above (Garden address) to use this.", fontSize = 11.sp, color = Color.Gray)
+            }
+            var frostWarningsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFrostWarningsEnabled(context)) }
+            var frostThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFrostTempThreshold(context).toFloat()) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Warn about frost risk for tender outdoor plants", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = frostWarningsEnabled, onCheckedChange = { frostWarningsEnabled = it; setFrostWarningsEnabled(context, it) })
