@@ -3432,6 +3432,7 @@ fun ListScreen(
     onChangeLocation: (String, Boolean) -> Unit, onOpenLocationPhotos: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val growthViewModel: GrowthPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
@@ -3513,7 +3514,9 @@ fun ListScreen(
             Spacer(modifier = Modifier.height(4.dp))
             Row {
                 TextButton(onClick = { showListFieldsDialog = true }) { Text("Customise fields shown", fontSize = 12.sp) }
-                TextButton(onClick = { showProgressPhotosPicker = true }) { Text("📷 Progress photos", fontSize = 12.sp) }
+                if (FeatureVisibility.shouldShow(context, Feature.PROGRESS_PHOTOS)) {
+                    TextButton(onClick = { showProgressPhotosPicker = true }) { Text("📷 Progress photos", fontSize = 12.sp) }
+                }
             }
             Spacer(modifier = Modifier.height(4.dp))
 
@@ -3589,7 +3592,9 @@ fun ListScreen(
                                             Text(subtitle, fontSize = 12.sp, color = Color.Gray)
                                         }
                                     }
-                                    IconButton(onClick = { locationChangePlantId = plant.id }) { Text("📍") }
+                                    if (canEdit) {
+                                        IconButton(onClick = { locationChangePlantId = plant.id }) { Text("📍") }
+                                    }
                                 }
                             }
                             }
@@ -3688,18 +3693,23 @@ fun ListScreen(
                         if (allLocations.isEmpty()) {
                             Text("Add a location to a plant first to track progress photos for it.", fontSize = 12.sp, color = Color.Gray)
                         } else {
-                            Text("See how each area of your garden has changed over time.", fontSize = 12.sp, color = Color.Gray)
+                            Text("Tap a zone below to view or add photos of that area.", fontSize = 12.sp, color = Color.Gray)
                             Spacer(Modifier.height(10.dp))
                             allLocations.forEach { location ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .clickable { showProgressPhotosPicker = false; onOpenLocationPhotos(location) }
-                                        .padding(vertical = 8.dp)
+                                val count = photoCounts[location] ?: 0
+                                OutlinedButton(
+                                    onClick = { showProgressPhotosPicker = false; onOpenLocationPhotos(location) },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
                                 ) {
-                                    Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                    val count = photoCounts[location] ?: 0
-                                    Text(if (count == 1) "1 photo" else "$count photos", fontSize = 11.sp, color = Color.Gray)
+                                    Text("📷", fontSize = 14.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                                    Text(
+                                        if (count == 1) "1 photo" else "$count photos",
+                                        fontSize = 11.sp, color = Color.Gray
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("›", fontSize = 16.sp, color = Color.Gray)
                                 }
                             }
                         }
@@ -4010,19 +4020,19 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
 @Composable
 fun DropdownField(
     label: String, options: List<String>, selected: String,
-    onSelect: (String) -> Unit, helperText: String? = null
+    onSelect: (String) -> Unit, helperText: String? = null, enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+    ExposedDropdownMenuBox(expanded = expanded && enabled, onExpandedChange = { if (enabled) expanded = it }) {
         OutlinedTextField(
-            value = selected, onValueChange = {}, readOnly = true,
+            value = selected, onValueChange = {}, readOnly = true, enabled = enabled,
             label = { Text(label) },
             placeholder = { Text("Pick an option") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
             supportingText = helperText?.let { { Text(it, fontSize = 11.sp) } },
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth()
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = enabled).fillMaxWidth()
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })
             }
@@ -4040,13 +4050,14 @@ fun DatePickerField(
     label: String, dateString: String, onDateChange: (String) -> Unit,
     restrictToPastOrToday: Boolean = false,
     allowNotApplicable: Boolean = false,
-    allowClear: Boolean = true
+    allowClear: Boolean = true,
+    enabled: Boolean = true
 ) {
     var showDialog by remember { mutableStateOf(false) }
     OutlinedTextField(
-        value = dateString, onValueChange = {}, readOnly = true,
+        value = dateString, onValueChange = {}, readOnly = true, enabled = enabled,
         label = { Text(label) }, placeholder = { Text("YYYY-MM-DD") },
-        trailingIcon = { IconButton(onClick = { showDialog = true }) { Text("📅") } },
+        trailingIcon = { IconButton(onClick = { if (enabled) showDialog = true }, enabled = enabled) { Text("📅") } },
         modifier = Modifier.fillMaxWidth()
     )
     if (showDialog) {
@@ -4446,16 +4457,31 @@ fun FormScreen(
         return
     }
 
+    // A view-only member of a shared garden can still open this form to look at a plant, but
+    // shouldn't be able to change anything — the server already discards their writes (see
+    // hasWriteAccessToActiveGarden), but leaving the fields editable and a Save button visible
+    // would make it look like their edits took effect when they're silently dropped on next sync.
+    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
+
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp)
     ) {
+        if (!canEdit) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "View-only — you don't have edit access to this garden.",
+                    modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFF6B5300)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+        }
         if (photoMode == "cloud" && !dropboxConnected) {
             Text("Connect your cloud storage in the Help tab first.", color = Color.Gray, fontSize = 13.sp)
         } else {
             Box(
                 modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFFE3DDCF))
-                    .clickable {
+                    .clickable(enabled = canEdit || photoUri != null) {
                         if (photoUri != null) {
                             showPhotoViewer = true
                         } else {
@@ -4467,18 +4493,63 @@ fun FormScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Gated on photoMode == "cloud" so this can never show while in local mode.
+                // Gated on photoMode == "cloud" so this can never show while in local mode. Viewing
+                // the existing photo full-screen is harmless read-only behaviour, so that tap stays
+                // enabled above even when canEdit is false — only capturing a NEW photo is blocked.
                 if (photoUri != null) AsyncImage(model = photoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 else Text("📷 Tap to take a photo", color = Color.Gray)
             }
             Spacer(Modifier.height(8.dp))
 
+            if (canEdit) {
+            if (photoUri != null) {
+                OutlinedButton(
+                    onClick = {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri)
+                        } else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("📷 Replace with a new photo") }
+                Spacer(Modifier.height(8.dp))
+            }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (photoUri != null) "🖼️ Replace with a photo from your device" else "🖼️ Choose a photo from your device")
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (photoUri != null) "☁️ Replace with a photo from Dropbox" else "☁️ Choose a photo from Dropbox")
+            if (dropboxConnected) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (photoUri != null) "☁️ Replace with a photo from Dropbox" else "☁️ Choose a photo from Dropbox")
+                }
+            }
+            val currentPhotoUri = photoUri
+            if (currentPhotoUri != null && dropboxConnected && currentPhotoUri.scheme != "http" && currentPhotoUri.scheme != "https") {
+                Spacer(Modifier.height(8.dp))
+                // Previews the actual target filename (accounting for the "_1"/"_2" suffix a repeat
+                // upload for this plant ID would get) before the user commits, rather than always
+                // showing the bare ID as if every upload were the first for this plant.
+                var previewName by remember(displayId) { mutableStateOf(displayId) }
+                LaunchedEffect(displayId) {
+                    previewDropboxUploadName(context, displayId)?.let { previewName = it.removeSuffix(".jpg") }
+                }
+                OutlinedButton(
+                    onClick = {
+                        uploadingPhotoToDropbox = true
+                        scope.launch {
+                            val link = uploadPhotoToDropboxAsPlantId(context, currentPhotoUri, displayId)
+                            uploadingPhotoToDropbox = false
+                            if (link != null) {
+                                photoUri = Uri.parse(link)
+                                snackbarHostState.showSnackbar("Uploaded to Dropbox")
+                            } else {
+                                snackbarHostState.showSnackbar("Upload to Dropbox failed — try again shortly.")
+                            }
+                        }
+                    },
+                    enabled = !uploadingPhotoToDropbox && displayId.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (uploadingPhotoToDropbox) "Uploading…" else "☁️ Upload this photo to Dropbox as $previewName") }
             }
             if (photoUri != null) {
                 Spacer(Modifier.height(8.dp))
@@ -4487,6 +4558,7 @@ fun FormScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
                 ) { Text("🗑️ Remove photo from plant") }
+            }
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -4506,7 +4578,8 @@ fun FormScreen(
         )
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Plant name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Plant name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        if (canEdit) {
         Spacer(Modifier.height(6.dp))
         Button(
             onClick = {
@@ -4543,68 +4616,129 @@ fun FormScreen(
             "AI suggestions are a starting point - always double-check the result.",
             fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp)
         )
+        }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text("Scientific name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text("Scientific name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(
-            value = location, onValueChange = { location = it }, label = { Text("Garden location") },
-            supportingText = { Text("e.g., back garden, front garden, verandah", fontSize = 11.sp) },
-            modifier = Modifier.fillMaxWidth()
+        val locationOptions = remember(allPlants) {
+            (getOrSeedGardenLocations(context, allPlants) + allPlants.map { it.location }.filter { it.isNotBlank() })
+                .distinct().sorted()
+        }
+        DropdownField(
+            "Garden location", locationOptions, location, { location = it },
+            "Manage these from Help → Garden locations", enabled = canEdit
         )
         Spacer(Modifier.height(14.dp))
 
-        DropdownField("Sun", sunOptions, sun, { sun = it }, "How much direct sunlight this plant should get to thrive")
+        DropdownField("Category", categoryOptions, category, { category = it }, "What kind of plant this is — also picks its icon on the map", enabled = canEdit)
         Spacer(Modifier.height(14.dp))
-        DropdownField("Water", waterOptions, water, { water = it }, "How much water this plant needs to thrive")
+        DropdownField("Sun", sunOptions, sun, { sun = it }, "Optimal sunlight conditions for your plant", enabled = canEdit)
         Spacer(Modifier.height(14.dp))
-        DropdownField("Soil", soilOptions, soil, { soil = it }, "What type of soil this plant needs to thrive")
+        DropdownField("Water", waterOptions, water, { water = it }, "Optimal watering conditions for your plant", enabled = canEdit)
         Spacer(Modifier.height(14.dp))
-        DropdownField("Soil pH", soilPhOptions, soilPh, { soilPh = it }, "How acidic or alkaline this plant's soil should be")
+        DropdownField("Soil", soilOptions, soil, { soil = it }, "Optimal soil conditions for your plant", enabled = canEdit)
         Spacer(Modifier.height(14.dp))
-        DropdownField("Frost", frostOptions, frost, { frost = it }, "The frost tolerance of this plant")
+        if (FeatureVisibility.shouldShow(context, Feature.SOIL_PH)) {
+            DropdownField("Soil pH", soilPhOptions, soilPh, { soilPh = it }, "How acidic or alkaline this plant's soil should be", enabled = canEdit)
+            Spacer(Modifier.height(14.dp))
+        }
+        DropdownField("Frost", frostOptions, frost, { frost = it }, "Optimal frost conditions for your plant", enabled = canEdit)
         Spacer(Modifier.height(14.dp))
-        DropdownField("Native / Exotic", nativeOptions, native, { native = it })
+        DropdownField("Native / Exotic", nativeOptions, native, { native = it }, enabled = canEdit)
         Spacer(Modifier.height(14.dp))
 
-        DropdownField("Pollinator-friendly?", pollinatorOptions, pollinatorChoice, { pollinatorChoice = it })
+        DropdownField("Pollinator-friendly?", pollinatorOptions, pollinatorChoice, { pollinatorChoice = it }, enabled = canEdit)
         if (pollinatorChoice == "Other") {
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = pollinatorOther, onValueChange = { pollinatorOther = it },
-                label = { Text("Describe pollinator-friendliness") }, modifier = Modifier.fillMaxWidth()
+                label = { Text("Describe pollinator-friendliness") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
+        }
+        Spacer(Modifier.height(10.dp))
+
+        if (canEdit && FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT)) {
+            Button(
+                onClick = {
+                    conditionsAutoFillLoading = true
+                    scope.launch {
+                        when (val result = SageClient.autoFillConditions(context, sci)) {
+                            is SageAutoFillConditionsResult.Success -> {
+                                EntitlementManager.updateSagePromptsRemaining(context, result.promptsRemaining)
+                                val hasExisting = listOf(sun, water, soil, frost, native, pollinatorChoice).any { it.isNotBlank() }
+                                if (hasExisting) {
+                                    showConditionsAutoFillConfirm = result.suggestion
+                                } else {
+                                    result.suggestion.sun?.let { sun = it }
+                                    result.suggestion.water?.let { water = it }
+                                    result.suggestion.soil?.let { soil = it }
+                                    result.suggestion.frost?.let { frost = it }
+                                    result.suggestion.native?.let { native = it }
+                                    result.suggestion.pollinator?.let { pollinatorChoice = it }
+                                }
+                            }
+                            is SageAutoFillConditionsResult.FreeLimitReached -> {
+                                EntitlementManager.updateSagePromptsRemaining(context, 0)
+                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code under Help → Basic/Advanced mode for unlimited access.")
+                            }
+                            is SageAutoFillConditionsResult.DailyLimitReached ->
+                                snackbarHostState.showSnackbar("Sage is busy right now — try again later.")
+                            else ->
+                                snackbarHostState.showSnackbar("Couldn't get suggestions right now.")
+                        }
+                        conditionsAutoFillLoading = false
+                    }
+                },
+                enabled = sci.isNotBlank() && !conditionsAutoFillLoading,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D8FB0))
+            ) { Text(if (conditionsAutoFillLoading) "Asking Sage…" else "🌿 Suggest optimal conditions with Sage") }
+            if (sci.isBlank()) {
+                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = Color.Gray)
+            }
         }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Source (e.g. nursery)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Source (e.g. nursery)") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
-        DatePickerField(label = "Date planted", dateString = date, onDateChange = { date = it }, allowNotApplicable = true)
+        DatePickerField(label = "Date planted", dateString = date, onDateChange = { date = it }, allowNotApplicable = true, enabled = canEdit)
         Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
             value = qty, onValueChange = { qty = it }, label = { Text("Quantity") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text("Watering System") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text("Watering System") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
-        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true, allowClear = false)
+        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true, allowClear = false, enabled = canEdit)
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(
-            value = wateringFrequency, onValueChange = { new -> wateringFrequency = new.filter { it.isDigit() } },
+            value = wateringFrequency, onValueChange = { new ->
+                wateringFrequency = new.filter { it.isDigit() }
+                if (wateringFrequency.isNotBlank() && lastWateredDate.isBlank()) {
+                    lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                }
+            },
             label = { Text("Watering frequency (days)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            supportingText = { Text("How often this plant should be watered, in days", fontSize = 11.sp) },
-            modifier = Modifier.fillMaxWidth()
+            supportingText = {
+                Text(
+                    "This is a guide only — your plant's needs may vary with conditions. Before watering, check the soil by inserting your finger about 2–3 cm deep. If the soil feels dry, it's time to water; if it's still moist, wait and check again later.",
+                    fontSize = 11.sp
+                )
+            },
+            modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
         Spacer(Modifier.height(10.dp))
 
+        if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
             Text("Overrides the frequency above during summer/winter. Leave blank to use the default year-round.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
@@ -4613,7 +4747,7 @@ fun FormScreen(
                 onValueChange = { summerWateringFrequency = it.filter { c -> c.isDigit() } },
                 label = { Text("Summer frequency (days)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -4621,45 +4755,50 @@ fun FormScreen(
                 onValueChange = { winterWateringFrequency = it.filter { c -> c.isDigit() } },
                 label = { Text("Winter frequency (days)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
         }
         Spacer(Modifier.height(4.dp))
+        }
 
+        if (FeatureVisibility.shouldShow(context, Feature.FERTILISE_PRUNE)) {
         ExpandableSection(title = "Fertilising & pruning (optional)") {
-            DatePickerField("Last fertilised", lastFertilisedDate, { lastFertilisedDate = it }, restrictToPastOrToday = true)
+            DatePickerField("Last fertilised", lastFertilisedDate, { lastFertilisedDate = it }, restrictToPastOrToday = true, enabled = canEdit)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = fertiliseFrequency, onValueChange = { fertiliseFrequency = it.filter { c -> c.isDigit() } },
                 label = { Text("Fertilise frequency (days)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-            DatePickerField("Last pruned", lastPrunedDate, { lastPrunedDate = it }, restrictToPastOrToday = true)
+            DatePickerField("Last pruned", lastPrunedDate, { lastPrunedDate = it }, restrictToPastOrToday = true, enabled = canEdit)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = pruneFrequency, onValueChange = { pruneFrequency = it.filter { c -> c.isDigit() } },
                 label = { Text("Prune frequency (days)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
         }
         Spacer(Modifier.height(4.dp))
+        }
 
+        if (FeatureVisibility.shouldShow(context, Feature.FEEDING)) {
         ExpandableSection(title = "Feeding (optional)") {
-            DatePickerField("Last fed", lastFedDate, { lastFedDate = it }, restrictToPastOrToday = true)
+            DatePickerField("Last fed", lastFedDate, { lastFedDate = it }, restrictToPastOrToday = true, enabled = canEdit)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = feedFrequency, onValueChange = { feedFrequency = it.filter { c -> c.isDigit() } },
                 label = { Text("Feeding frequency (days)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
         }
         Spacer(Modifier.height(10.dp))
+        }
 
-        if (FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT)) {
+        if (canEdit && FeatureVisibility.shouldShow(context, Feature.SAGE_CARE_FREQUENCIES) && FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT)) {
             Button(
                 onClick = {
                     autoFillLoading = true
@@ -4720,42 +4859,43 @@ fun FormScreen(
                 "Indoor plant (exempt from rain-based reminder skipping)",
                 fontSize = 13.sp, modifier = Modifier.weight(1f)
             )
-            Switch(checked = isIndoor, onCheckedChange = { isIndoor = it })
+            Switch(checked = isIndoor, onCheckedChange = { isIndoor = it }, enabled = canEdit)
         }
         Spacer(Modifier.height(14.dp))
 
+        if (FeatureVisibility.shouldShow(context, Feature.COORDINATES)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(value = lat, onValueChange = { lat = it }, label = { Text("Latitude") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(value = lng, onValueChange = { lng = it }, label = { Text("Longitude") }, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = lat, onValueChange = { lat = it }, label = { Text("Latitude") }, modifier = Modifier.weight(1f), readOnly = !canEdit)
+            OutlinedTextField(value = lng, onValueChange = { lng = it }, label = { Text("Longitude") }, modifier = Modifier.weight(1f), readOnly = !canEdit)
         }
         Text(
             "Coordinates based on map location - update the location using the red pin in list view, or by manually updating the coordinates below",
             fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp)
         )
-        if (plantId != null) {
+        }
+        if (plantId != null && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
             val hasReal = lat.toDoubleOrNull() != null && lng.toDoubleOrNull() != null
             val hasCustom = mapX != null && mapY != null
             val customMapExists = remember { getCustomMapUri(context) != null }
-            if (customMapExists && !hasCustom) {
+            if (customMapExists) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$plantId") } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("📍 Place on custom map") }
+                ) { Text(if (hasCustom) "📍 Change location on custom map" else "📍 Place on custom map") }
             }
-            if (!hasReal) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$plantId") } },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("📍 Place on real-world map") }
-            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$plantId") } },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (hasReal) "📍 Change location on real-world map" else "📍 Place on real-world map") }
         }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(20.dp))
 
+        if (canEdit) {
         Button(
             onClick = {
                 if (name.isBlank()) { scope.launch { snackbarHostState.showSnackbar("Please give the plant a name.") }; return@Button }
@@ -4789,16 +4929,19 @@ fun FormScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A5A40))
         ) { Text("Save plant") }
+        }
 
-        if (plantId != null) {
-            if (FeatureVisibility.shouldShow(context, Feature.GROWTH_TIMELINES)) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { onOpenGrowthTimeline(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("🌱 View growth timeline")
-                }
-            }
+        if (plantId != null && FeatureVisibility.shouldShow(context, Feature.GROWTH_TIMELINES)) {
             Spacer(Modifier.height(8.dp))
-            ExtraPhotosSection(plantId = plantId)
+            OutlinedButton(onClick = { onOpenGrowthTimeline(plantId) }, modifier = Modifier.fillMaxWidth()) {
+                Text("🌱 View growth timeline")
+            }
+        }
+        if (displayId.isNotBlank() && FeatureVisibility.shouldShow(context, Feature.EXTRA_PHOTOS)) {
+            Spacer(Modifier.height(8.dp))
+            ExtraPhotosSection(plantId = displayId, canEdit = canEdit)
+        }
+        if (plantId != null && canEdit) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth(),
@@ -4807,10 +4950,20 @@ fun FormScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+        TextButton(
+            onClick = {
+                // A brand-new (never-saved) plant may have picked up extra photos already —
+                // they were staged against a display ID that's about to become meaningless.
+                if (plantId == null && displayId.isNotBlank()) {
+                    val extraPhotoDao = AppDatabase.getInstance(context).extraPhotoDao()
+                    scope.launch { extraPhotoDao.deleteForPlant(displayId) }
+                }
+                onCancel()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Cancel") }
         Spacer(Modifier.height(30.dp))
     }
-
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -4963,9 +5116,20 @@ fun FormScreen(
         )
     }
     if (showPhotoViewer && photoUri != null) {
+        var photoLoadFailed by remember(photoUri) { mutableStateOf(false) }
         Dialog(onDismissRequest = { showPhotoViewer = false }) {
-            Box(modifier = Modifier.fillMaxWidth().height(400.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black)) {
-                AsyncImage(model = photoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            Box(modifier = Modifier.fillMaxWidth().height(400.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+                if (photoLoadFailed) {
+                    Text(
+                        "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
+                        color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
+                    )
+                } else {
+                    AsyncImage(
+                        model = photoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+                        onError = { photoLoadFailed = true }
+                    )
+                }
             }
         }
     }
@@ -4979,7 +5143,7 @@ fun FormScreen(
 // ============================================================================
 
 @Composable
-fun ExtraPhotosSection(plantId: String) {
+fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     val context = LocalContext.current
     val extraPhotoViewModel: ExtraPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
@@ -5007,6 +5171,7 @@ fun ExtraPhotosSection(plantId: String) {
             fontSize = 12.sp, color = Color.Gray
         )
         Spacer(Modifier.height(10.dp))
+        if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -5017,7 +5182,10 @@ fun ExtraPhotosSection(plantId: String) {
                 modifier = Modifier.weight(1f)
             ) { Text("📷 Camera", fontSize = 12.sp) }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
-            OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            if (DropboxAuthState.token != null) {
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            }
+        }
         }
 
         if (photos.isNotEmpty()) {
@@ -5036,9 +5204,12 @@ fun ExtraPhotosSection(plantId: String) {
                             onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
                             label = { Text("Label", fontSize = 11.sp) },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            readOnly = !canEdit
                         )
-                        TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                        if (canEdit) {
+                            TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                        }
                     }
                 }
             }

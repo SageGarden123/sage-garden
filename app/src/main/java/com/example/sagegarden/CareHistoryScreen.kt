@@ -23,6 +23,7 @@ import java.util.Locale
 @Composable
 fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val careViewModel: CareLogViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
@@ -37,6 +38,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
         Text("Watering, fertilising, feeding & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(14.dp))
 
+        if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("💧 Log watering", fontSize = 12.sp) }
             Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🌱 Log fertilising", fontSize = 12.sp) }
@@ -47,6 +49,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
             Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("✂️ Log pruning", fontSize = 12.sp) }
         }
         Spacer(Modifier.height(20.dp))
+        }
 
         if (entries.isEmpty()) {
             Text("No entries yet — log watering, fertilising, feeding, or pruning above.", color = Color.Gray, fontSize = 13.sp)
@@ -60,7 +63,9 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
                             Text(careTypeLabel(entry.type), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             Text(sdf.format(Date(entry.date)), fontSize = 11.sp, color = Color.Gray)
                         }
-                        TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
+                        if (canEdit) {
+                            TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
+                        }
                     }
                 }
             }

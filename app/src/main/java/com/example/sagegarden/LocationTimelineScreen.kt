@@ -69,6 +69,7 @@ fun LocationPhotoSlider(photos: List<LocationPhotoEntity>, modifier: Modifier = 
 @Composable
 fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val locationViewModel: LocationPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
@@ -94,6 +95,11 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
         Text("Progress photos — $location", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "For the best before/after comparison, take one photo of this whole area each season, from roughly the same spot.",
+            fontSize = 12.sp, color = Color.Gray
+        )
         Spacer(Modifier.height(14.dp))
 
         if (sorted.size >= 2) {
@@ -104,6 +110,7 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
             Spacer(Modifier.height(14.dp))
         }
 
+        if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -114,7 +121,10 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f)
             ) { Text("📷 Camera", fontSize = 12.sp) }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
-            OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            if (DropboxAuthState.token != null) {
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            }
+        }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -127,7 +137,9 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                     AsyncImage(model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                     Spacer(Modifier.width(10.dp))
                     Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    if (canEdit) {
+                        TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    }
                 }
             }
         }

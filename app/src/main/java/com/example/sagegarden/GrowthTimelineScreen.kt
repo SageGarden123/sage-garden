@@ -71,6 +71,7 @@ fun GrowthPhotoSlider(photos: List<GrowthPhotoEntity>, modifier: Modifier = Modi
 @Composable
 fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val growthViewModel: GrowthPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
@@ -106,6 +107,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
             Spacer(Modifier.height(14.dp))
         }
 
+        if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -116,7 +118,10 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f)
             ) { Text("📷 Camera", fontSize = 12.sp) }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
-            OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            if (DropboxAuthState.token != null) {
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+            }
+        }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -129,7 +134,9 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                     AsyncImage(model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                     Spacer(Modifier.width(10.dp))
                     Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { growthViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    if (canEdit) {
+                        TextButton(onClick = { growthViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    }
                 }
             }
         }
