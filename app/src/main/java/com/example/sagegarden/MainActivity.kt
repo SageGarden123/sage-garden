@@ -59,6 +59,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
@@ -1510,9 +1511,9 @@ fun PlantTooltipCard(plant: PlantEntity, onEdit: () -> Unit, onDismiss: () -> Un
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (plant.photoUri != null) {
-                    AsyncImage(
-                        model = Uri.parse(plant.photoUri), contentDescription = null,
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop
+                    PlantPhoto(
+                        photoUri = plant.photoUri, photoThumbnailBase64 = plant.photoThumbnailBase64,
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
                     )
                     Spacer(Modifier.width(10.dp))
                 }
@@ -2146,10 +2147,9 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                 ) {
                     Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (plant.photoUri != null) {
-                            AsyncImage(
-                                model = Uri.parse(plant.photoUri), contentDescription = null,
-                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
+                            PlantPhoto(
+                                photoUri = plant.photoUri, photoThumbnailBase64 = plant.photoThumbnailBase64,
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
                             )
                         } else {
                             Box(
@@ -2306,10 +2306,9 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                         .verticalScroll(rememberScrollState())
                 ) {
                     if (plantToShow.photoUri != null) {
-                        AsyncImage(
-                            model = Uri.parse(plantToShow.photoUri), contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
+                        PlantPhoto(
+                            photoUri = plantToShow.photoUri, photoThumbnailBase64 = plantToShow.photoThumbnailBase64,
+                            modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp))
                         )
                         Spacer(Modifier.height(14.dp))
                     }
@@ -3756,10 +3755,9 @@ fun ListScreen(
                             ) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     if (plant.photoUri != null) {
-                                        AsyncImage(
-                                            model = Uri.parse(plant.photoUri), contentDescription = null,
-                                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                                            contentScale = ContentScale.Crop
+                                        PlantPhoto(
+                                            photoUri = plant.photoUri, photoThumbnailBase64 = plant.photoThumbnailBase64,
+                                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
                                         )
                                     } else {
                                         Box(
@@ -4438,6 +4436,11 @@ fun FormScreen(
     var notes by remember { mutableStateOf("") }
     var wateringSystem by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var photoThumbnailBase64 by remember { mutableStateOf<String?>(null) }
+    // Tracks which photoUri the cached thumbnail above was generated from, so loading an existing
+    // plant reuses its already-stored thumbnail instead of re-decoding the image every time the
+    // form opens — only a genuine photoUri change (new capture/pick) triggers regeneration below.
+    var photoThumbnailForUri by remember { mutableStateOf<String?>(null) }
     var uploadingPhotoToDropbox by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(plantId == null) }
@@ -4489,6 +4492,7 @@ fun FormScreen(
             wateringSystem = wateringSystem,
             lat = lat.toDoubleOrNull(), lng = lng.toDoubleOrNull(),
             photoUri = photoUri?.toString(),
+            photoThumbnailBase64 = photoThumbnailBase64,
             mapX = mapX, mapY = mapY,
             lastWateredDate = dateStringToMillis(lastWateredDate),
             wateringFrequencyDays = wateringFrequency.toIntOrNull(),
@@ -4588,6 +4592,8 @@ fun FormScreen(
                 notes = existing.notes
                 wateringSystem = existing.wateringSystem
                 photoUri = existing.photoUri?.let { Uri.parse(it) }
+                photoThumbnailBase64 = existing.photoThumbnailBase64
+                photoThumbnailForUri = existing.photoUri
                 mapX = existing.mapX
                 mapY = existing.mapY
                 lastWateredDate = millisToDateString(existing.lastWateredDate)
@@ -4608,6 +4614,22 @@ fun FormScreen(
                 isIndoor = existing.isIndoor
             }
             loaded = true
+        }
+    }
+
+    // Regenerates the cached thumbnail only when photoUri actually changes to something other than
+    // what it was last generated from (a fresh capture/pick), not on every recomposition or on the
+    // initial load of an existing plant (which already restored the cached value above).
+    LaunchedEffect(photoUri) {
+        val uri = photoUri
+        if (uri == null) {
+            photoThumbnailBase64 = null
+            photoThumbnailForUri = null
+        } else if (uri.toString() != photoThumbnailForUri) {
+            photoThumbnailBase64 = if (uri.scheme != "http" && uri.scheme != "https") {
+                withContext(Dispatchers.IO) { generatePhotoThumbnailBase64(context, uri) }
+            } else null
+            photoThumbnailForUri = uri.toString()
         }
     }
 
@@ -4695,7 +4717,7 @@ fun FormScreen(
                 // Gated on photoMode == "cloud" so this can never show while in local mode. Viewing
                 // the existing photo full-screen is harmless read-only behaviour, so that tap stays
                 // enabled above even when canEdit is false — only capturing a NEW photo is blocked.
-                if (photoUri != null) AsyncImage(model = photoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                if (photoUri != null) PlantPhoto(photoUri = photoUri.toString(), photoThumbnailBase64 = photoThumbnailBase64, modifier = Modifier.fillMaxSize())
                 else Text("📷 Tap to take a photo", color = Color.Gray)
             }
             Spacer(Modifier.height(8.dp))
@@ -5325,10 +5347,15 @@ fun FormScreen(
         Dialog(onDismissRequest = { showPhotoViewer = false }) {
             Box(modifier = Modifier.fillMaxWidth().height(400.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
                 if (photoLoadFailed) {
-                    Text(
-                        "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
-                        color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
-                    )
+                    val fallbackBitmap = remember(photoThumbnailBase64) { photoThumbnailBase64?.let(::decodePhotoThumbnail)?.asImageBitmap() }
+                    if (fallbackBitmap != null) {
+                        Image(bitmap = fallbackBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                    } else {
+                        Text(
+                            "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
+                            color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
+                        )
+                    }
                 } else {
                     AsyncImage(
                         model = photoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
@@ -6414,7 +6441,8 @@ fun HelpScreen(
                             lat = csvFindValue(headers, cells, "Latitude")?.toDoubleOrNull(),
                             lng = csvFindValue(headers, cells, "Longitude")?.toDoubleOrNull(),
                             photoUri = existing?.photoUri,
-                            photoUris = existing?.photoUris ?: emptyList()
+                            photoUris = existing?.photoUris ?: emptyList(),
+                            photoThumbnailBase64 = existing?.photoThumbnailBase64
                         )
                         viewModel.save(plant)
                         workingPlants.removeAll { it.id == resolvedId }
@@ -6872,7 +6900,7 @@ fun HelpScreen(
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        plants.forEach { viewModel.save(it.copy(photoUri = null, photoUris = emptyList())) }
+                        plants.forEach { viewModel.save(it.copy(photoUri = null, photoUris = emptyList(), photoThumbnailBase64 = null)) }
                         snackbarHostState.showSnackbar("Cleared photos from ${plants.size} plant(s)")
                     }
                 },

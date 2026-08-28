@@ -18,6 +18,7 @@ function isValidTombstone(x: unknown): x is Tombstone {
 
 class SyncAuthError extends Error {}
 class SyncNotFoundError extends Error {}
+class SyncTooLargeError extends Error {}
 
 /**
  * Syncs a device's local plant/care-log data against a shared Firestore document (now keyed by
@@ -204,6 +205,14 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
         toWrite.gardenLocations = incomingGardenLocations;
         responseGardenLocations = incomingGardenLocations;
       }
+      // MAX_ITEMS above only caps item *count* — now that plants can carry an embedded photo
+      // thumbnail (see photoThumbnail on the Android/desktop clients), a garden with many photographed
+      // plants could otherwise approach Firestore's 1MB-per-document ceiling. Reject before writing
+      // rather than letting Firestore itself throw partway through, which would look like a generic
+      // sync failure to the client.
+      if (Buffer.byteLength(JSON.stringify(toWrite), "utf8") > 900_000) {
+        throw new SyncTooLargeError();
+      }
       tx.set(gardenRef, toWrite, { merge: true });
 
       return { result, permission, responseToken, responseGardenAddress, responseGardenLat, responseGardenLng, responseGardenLocations };
@@ -229,6 +238,10 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
     }
     if (err instanceof SyncNotFoundError) {
       res.status(404).json({ error: "garden_not_found" });
+      return;
+    }
+    if (err instanceof SyncTooLargeError) {
+      res.status(400).json({ error: "garden_too_large" });
       return;
     }
     console.error("syncGarden failed", err);

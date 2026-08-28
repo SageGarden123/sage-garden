@@ -51,6 +51,7 @@ object BackupHelper {
             o.put("lat", p.lat ?: JSONObject.NULL); o.put("lng", p.lng ?: JSONObject.NULL)
             o.put("photoUri", p.photoUri ?: JSONObject.NULL)
             o.put("photoUris", JSONArray(p.photoUris))
+            o.put("photoThumbnail", p.photoThumbnailBase64 ?: JSONObject.NULL)
             o.put("mapX", p.mapX ?: JSONObject.NULL); o.put("mapY", p.mapY ?: JSONObject.NULL)
             o.put("lastWateredDate", p.lastWateredDate ?: JSONObject.NULL)
             o.put("wateringFrequencyDays", p.wateringFrequencyDays ?: JSONObject.NULL)
@@ -236,6 +237,7 @@ object BackupHelper {
                     lng = if (o.isNull("lng")) null else o.optDouble("lng"),
                     photoUri = if (o.isNull("photoUri")) null else o.optString("photoUri"),
                     photoUris = photoUris,
+                    photoThumbnailBase64 = if (o.isNull("photoThumbnail")) null else o.optString("photoThumbnail"),
                     mapX = if (o.isNull("mapX")) null else o.optDouble("mapX"),
                     mapY = if (o.isNull("mapY")) null else o.optDouble("mapY"),
                     lastWateredDate = if (o.isNull("lastWateredDate")) null else o.optLong("lastWateredDate"),

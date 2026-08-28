@@ -26,6 +26,12 @@ data class PlantEntity(
     val lng: Double?,
     val photoUri: String?,
     val photoUris: List<String> = emptyList(),
+    // Small base64 JPEG (~150px) cached alongside a local (content://) photoUri only — Dropbox/http
+    // photoUris don't need this, since a plain HTTPS link already works cross-device. Lets a member
+    // viewing a garden owner who uses local photo storage still see at least a thumbnail, since the
+    // owner's content:// URI is meaningless off their own device. See feature-visibility: this is
+    // generated once when the photo is set (FormScreen), not recomputed on every sync.
+    val photoThumbnailBase64: String? = null,
     val mapX: Double? = null,  // 0.0–1.0 fraction across the custom map image
     val mapY: Double? = null,  // 0.0–1.0 fraction down the custom map image
     val lastWateredDate: Long? = null,      // epoch millis, UTC midnight of the date picked

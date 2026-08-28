@@ -1,6 +1,7 @@
 package com.example.sagegarden
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -48,6 +49,7 @@ object GardenSyncClient {
         put("lat", p.lat ?: JSONObject.NULL); put("lng", p.lng ?: JSONObject.NULL)
         put("photoUri", p.photoUri ?: JSONObject.NULL)
         put("photoUris", JSONArray(p.photoUris))
+        put("photoThumbnail", p.photoThumbnailBase64 ?: JSONObject.NULL)
         put("mapX", p.mapX ?: JSONObject.NULL); put("mapY", p.mapY ?: JSONObject.NULL)
         put("lastWateredDate", p.lastWateredDate ?: JSONObject.NULL)
         put("wateringFrequencyDays", p.wateringFrequencyDays ?: JSONObject.NULL)
@@ -86,6 +88,7 @@ object GardenSyncClient {
         lng = if (o.isNull("lng")) null else o.optDouble("lng"),
         photoUri = if (o.isNull("photoUri")) null else o.optString("photoUri"),
         photoUris = o.optJSONArray("photoUris")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList(),
+        photoThumbnailBase64 = if (o.isNull("photoThumbnail")) null else o.optString("photoThumbnail"),
         mapX = if (o.isNull("mapX")) null else o.optDouble("mapX"),
         mapY = if (o.isNull("mapY")) null else o.optDouble("mapY"),
         lastWateredDate = if (o.isNull("lastWateredDate")) null else o.optLong("lastWateredDate"),
@@ -135,11 +138,34 @@ object GardenSyncClient {
             val plantDao = db.plantDao()
             val careLogDao = db.careLogDao()
 
+            // Backfill: a plant saved before the thumbnail feature existed (or on a version that
+            // predates it) has a local photoUri but no cached photoThumbnailBase64 yet — generation
+            // otherwise only happens when FormScreen sees photoUri actually change (see
+            // PhotoThumbnail.kt), which a plant saved long ago will never trigger again on its own.
+            // Filling the gap here means it converges within one sync pass instead of requiring the
+            // owner to reopen and re-save every existing plant. Persisted via the DAO directly (not
+            // viewModel.save()) so this doesn't bump updatedAt — it's not a genuine edit, matching
+            // the same convention BackupHelper.kt uses for a passive/derived write.
+            val localPlants = plantDao.getAllOnceForGarden(gardenId).map { plant ->
+                val uri = plant.photoUri
+                if (plant.photoThumbnailBase64 == null && uri != null) {
+                    val parsed = Uri.parse(uri)
+                    if (parsed.scheme != "http" && parsed.scheme != "https") {
+                        val thumbnail = generatePhotoThumbnailBase64(context, parsed)
+                        if (thumbnail != null) {
+                            val updated = plant.copy(photoThumbnailBase64 = thumbnail)
+                            plantDao.upsert(updated)
+                            updated
+                        } else plant
+                    } else plant
+                } else plant
+            }
+
             val body = JSONObject().apply {
                 put("deviceId", deviceId)
                 put("gardenId", gardenId)
                 GardenMembershipStore.getMemberToken(context, gardenId)?.let { put("memberToken", it) }
-                put("plants", JSONArray(plantDao.getAllOnceForGarden(gardenId).map { plantToJson(it) }))
+                put("plants", JSONArray(localPlants.map { plantToJson(it) }))
                 put("plantTombstones", tombstonesToJson(GardenSyncStore.getPlantTombstones(context, gardenId)))
                 put("careLog", JSONArray(careLogDao.getAllOnceForGarden(gardenId).map { careLogToJson(it) }))
                 put("careLogTombstones", tombstonesToJson(GardenSyncStore.getCareLogTombstones(context, gardenId)))
