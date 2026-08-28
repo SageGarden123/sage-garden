@@ -804,6 +804,20 @@ fun setWaterRatePerKiloliter(context: Context, value: Double) {
 }
 
 // ============================================================================
+// FIRST-PLANT NOTIFICATION HINT
+// ============================================================================
+
+/** Whether the one-time "set up reminders" hint has already been shown, device-wide (never re-shown after that). */
+fun hasShownNotificationHint(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getBoolean("notification_hint_shown", false)
+}
+fun setNotificationHintShown(context: Context) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("notification_hint_shown", true).apply()
+}
+
+// ============================================================================
 // DROPBOX CLOUD PHOTO STORAGE
 // ============================================================================
 
@@ -1698,7 +1712,7 @@ fun GardenMapperApp() {
             composable("irrigation") {
                 val events by wateringViewModel.events.collectAsState()
                 val plants by viewModel.plants.collectAsState()
-                IrrigationScreen(wateringEvents = events, plants = plants)
+                IrrigationScreen(wateringEvents = events, plants = plants, onPlantClick = { id -> navController.navigate("form_edit/$id") })
             }
             composable("audit") { AuditScreen() }
             composable(
@@ -3907,7 +3921,7 @@ fun ListScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEntity>) {
+fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEntity>, onPlantClick: (String) -> Unit = {}) {
     val context = LocalContext.current
     var zoneFilter by remember { mutableStateOf("All") }
     var dateFilter by remember { mutableStateOf("") }
@@ -3919,8 +3933,8 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
     val statused = remember(plants, now) {
         plants.mapNotNull { p -> computeWateringStatus(p, now)?.let { p to it } }
     }
-    val dueOrOverdue = remember(statused) {
-        statused.filter { (_, status) -> status.nextDueMillis != null }
+    val dueOrOverdue = remember(statused, now) {
+        statused.filter { (_, status) -> status.nextDueMillis != null && status.nextDueMillis <= now + 3 * 86_400_000L }
             .sortedBy { (_, status) -> status.sortKey() }
     }
     val unscheduled = remember(statused) {
@@ -3936,14 +3950,14 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
         Text("Irrigation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Spacer(Modifier.height(12.dp))
 
-        ExpandableSection(title = "Needs watering (${dueOrOverdue.size})", initiallyExpanded = true) {
+        ExpandableSection(title = "Water now/soon (${dueOrOverdue.size})", initiallyExpanded = true) {
             if (dueOrOverdue.isEmpty()) {
-                Text("Nothing due right now.", fontSize = 12.sp, color = Color.Gray)
+                Text("Nothing due within the next 3 days.", fontSize = 12.sp, color = Color.Gray)
             } else {
                 dueOrOverdue.forEach { (plant, status) ->
                     val overdue = status.nextDueMillis!! <= now
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onPlantClick(plant.id) },
                         colors = CardDefaults.cardColors(
                             containerColor = if (overdue) Color(0xFFFBE9E7) else Color(0xFFF5F5F0)
                         )
@@ -3974,7 +3988,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
                 unscheduled.forEach { (plant, _) ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onPlantClick(plant.id) },
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F0))
                     ) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4410,8 +4424,10 @@ fun FormScreen(
     var water by remember { mutableStateOf("") }
     var soil by remember { mutableStateOf("") }
     var soilPh by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("") }
+    var gardenId by remember { mutableStateOf("") }
     var frost by remember { mutableStateOf("") }
-    var native by remember { mutableStateOf("Native (Aus)") }
+    var native by remember { mutableStateOf("") }
     var pollinatorChoice by remember { mutableStateOf("") }
     var pollinatorOther by remember { mutableStateOf("") }
     var source by remember { mutableStateOf("") }
@@ -4439,6 +4455,8 @@ fun FormScreen(
     var showPlacementPrompt by remember { mutableStateOf(false) }
     var placementPromptRoute by remember { mutableStateOf("") }
     var placementPromptText by remember { mutableStateOf("") }
+    var showNotificationHint by remember { mutableStateOf(false) }
+    var pendingHintPlant by remember { mutableStateOf<PlantEntity?>(null) }
     var lastWateredDate by remember { mutableStateOf("") }
     var originalLastWateredDate by remember { mutableStateOf("") }
     var wateringFrequency by remember { mutableStateOf("") }
@@ -4507,6 +4525,12 @@ fun FormScreen(
     }
 
     fun checkPlacementPrompts(plant: PlantEntity) {
+        if (plantId == null && allPlants.isEmpty() && !hasShownNotificationHint(context)) {
+            setNotificationHintShown(context)
+            pendingHintPlant = plant
+            showNotificationHint = true
+            return
+        }
         val customMapExists = getCustomMapUri(context) != null
         val hasReal = plant.lat != null && plant.lng != null
         val hasCustom = plant.mapX != null && plant.mapY != null
@@ -4985,7 +5009,10 @@ fun FormScreen(
                                 if (hasExisting) {
                                     showAutoFillConfirm = result.suggestion
                                 } else {
-                                    result.suggestion.wateringFrequencyDays?.let { wateringFrequency = it.toString() }
+                                    result.suggestion.wateringFrequencyDays?.let {
+                                        wateringFrequency = it.toString()
+                                        if (lastWateredDate.isBlank()) lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                                    }
                                     result.suggestion.fertiliseFrequencyDays?.let { fertiliseFrequency = it.toString() }
                                     result.suggestion.pruneFrequencyDays?.let { pruneFrequency = it.toString() }
                                     result.suggestion.feedFrequencyDays?.let { feedFrequency = it.toString() }
@@ -5022,10 +5049,10 @@ fun FormScreen(
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Requires manual watering (not on an irrigation path)",
+                "Requires manual watering (not part of a watering system)",
                 fontSize = 13.sp, modifier = Modifier.weight(1f)
             )
-            Switch(checked = manualWateringOnly, onCheckedChange = { manualWateringOnly = it })
+            Switch(checked = manualWateringOnly, onCheckedChange = { manualWateringOnly = it }, enabled = canEdit)
         }
         Spacer(Modifier.height(14.dp))
 
@@ -5175,7 +5202,10 @@ fun FormScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    suggestion.wateringFrequencyDays?.let { wateringFrequency = it.toString() }
+                    suggestion.wateringFrequencyDays?.let {
+                        wateringFrequency = it.toString()
+                        if (lastWateredDate.isBlank()) lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                    }
                     suggestion.fertiliseFrequencyDays?.let { fertiliseFrequency = it.toString() }
                     suggestion.pruneFrequencyDays?.let { pruneFrequency = it.toString() }
                     suggestion.feedFrequencyDays?.let { feedFrequency = it.toString() }
