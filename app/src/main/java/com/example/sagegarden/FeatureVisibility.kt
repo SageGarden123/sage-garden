@@ -55,7 +55,19 @@ enum class Feature {
     WATERING_HISTORY,
     WEATHER_AWARE_REMINDERS,
     DROPBOX_BACKUP,
-    SAGE_ASSISTANT
+    SAGE_ASSISTANT,
+    SOIL_PH,
+    SEASONAL_WATERING,
+    FERTILISE_PRUNE,
+    FEEDING,
+    SAGE_CARE_FREQUENCIES,
+    PLANT_HISTORY,
+    COORDINATES,
+    PLACE_ON_MAP,
+    CUSTOM_MAP,
+    PROGRESS_PHOTOS,
+    EXTRA_PHOTOS,
+    GARDEN_SHARING
 }
 
 /**
@@ -70,6 +82,14 @@ enum class Feature {
  * Lives in the general "garden_mapper_prefs" file (existing convention) since the Basic/Advanced
  * toggle is a UI preference, not an entitlement fact — entitlement itself is cached separately by
  * EntitlementManager in its own prefs file.
+ *
+ * WEATHER_AWARE_REMINDERS used to be a hardcoded exception (available in both modes, alongside
+ * SAGE_ASSISTANT) — moved into the normal Advanced-only bucket per an explicit request to trim
+ * Basic mode down to the true essentials (plant list, watering schedule/reminders, photo log, plant
+ * care widget, Dropbox backup). Every SOIL_PH/SEASONAL_WATERING/FERTILISE_PRUNE/FEEDING/
+ * SAGE_CARE_FREQUENCIES/PLANT_HISTORY/COORDINATES/PLACE_ON_MAP/CUSTOM_MAP/PROGRESS_PHOTOS/
+ * EXTRA_PHOTOS/GARDEN_SHARING entry needs no special case either — they fall through to the same
+ * "Advanced mode only" default every other feature already uses.
  */
 object FeatureVisibility {
     private fun generalPrefs(context: Context) =
@@ -119,9 +139,6 @@ object FeatureVisibility {
     fun shouldShow(context: Context, feature: Feature): Boolean {
         if (feature == Feature.SAGE_ASSISTANT) {
             return SageEnabledState.enabled
-        }
-        if (feature == Feature.WEATHER_AWARE_REMINDERS) {
-            return true
         }
         if (!AdvancedModeState.enabled) return false
         return true

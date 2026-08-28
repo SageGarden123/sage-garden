@@ -5013,7 +5013,7 @@ fun FormScreen(
             Spacer(Modifier.height(14.dp))
         }
 
-        if (plantId != null) {
+        if (plantId != null && FeatureVisibility.shouldShow(context, Feature.PLANT_HISTORY)) {
             OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
                 Text("📋 View watering, fertilising, feeding & pruning history")
             }
@@ -7207,12 +7207,12 @@ fun HelpScreen(
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
 
             Text(
-                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget, and Dropbox backup. Advanced mode adds the sun map, Tuya/Rachio smart-irrigation integration, companion planting/spacing audit, cost & water usage tracking, growth photo timelines, and watering history.",
+                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget, and Dropbox backup. Advanced mode adds everything else — weather-aware reminders, irrigation, the sun map, the audit, cost & water usage tracking, watering history, growth photo timelines, the custom garden map, progress photos, soil pH, seasonal watering, fertilising/pruning/feeding, Sage's care-frequency suggestions, plant history, coordinates, place-on-map buttons, extra photos, and multi-device/garden sharing.",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Sage and weather-aware reminders aren't affected by this toggle — they're available in both modes.",
+                "Sage isn't affected by this toggle — it's available in both modes (its own on/off switch is above).",
                 fontSize = 12.sp, color = Color.Gray
             )
             Spacer(Modifier.height(10.dp))
