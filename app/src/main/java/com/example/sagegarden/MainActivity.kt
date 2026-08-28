@@ -716,6 +716,7 @@ fun setGardenLatLng(context: Context, lat: Double, lng: Double) {
     // first time, so anything reading HemisphereState (dashboard/list/audit "due" status) doesn't
     // wait for an unrelated recomposition.
     HemisphereState.value = getHemisphere(context)
+    GardenAddressState.latLng = lat to lng
 }
 private const val MAP_FALLBACK_LAT = 40.785091
 private const val MAP_FALLBACK_LNG = -73.968285
@@ -744,15 +745,26 @@ fun setMapCameraPosition(context: Context, lat: Double, lng: Double, zoom: Float
     setGardenScopedFloat(context, "map_camera_zoom", zoom)
 }
 fun getGardenAddress(context: Context): String = gardenScopedString(context, "garden_address", "")
-fun setGardenAddress(context: Context, address: String) = setGardenScopedString(context, "garden_address", address)
+fun setGardenAddress(context: Context, address: String) {
+    setGardenScopedString(context, "garden_address", address)
+    GardenAddressState.address = address
+}
 /** Null distinguishes "never set up" (seed from existing plants' locations) from "explicitly emptied". */
 fun getGardenLocations(context: Context): List<String>? {
     val prefs = gardenPrefs(context)
     val scopedKey = gardenScopedKey(context, "garden_locations")
-    val raw = (if (prefs.contains(scopedKey)) prefs.getString(scopedKey, null) else prefs.getString("garden_locations", null)) ?: return null
+    // Unlike gardenScopedString, this used to fall back to the legacy unscoped key unconditionally
+    // whenever the scoped key didn't exist yet — even for a garden that isn't this device's own
+    // default one (see feedback_garden_scoped_setting_fallback). That meant a member viewing a
+    // shared garden before its zones had ever synced down saw THEIR OWN pre-existing legacy zone
+    // list instead of nothing, which getOrSeedGardenLocations then trusted as the real value and
+    // never replaced with the owner's actual synced zones. Gated the same way every other scoped
+    // getter already is.
+    val raw = (if (prefs.contains(scopedKey)) prefs.getString(scopedKey, null) else if (canFallBackToLegacyKey(context)) prefs.getString("garden_locations", null) else null) ?: return null
     return raw.split("").filter { it.isNotBlank() }
 }
 fun setGardenLocations(context: Context, locations: List<String>) {
+    GardenAddressState.locations = locations
     setGardenScopedString(context, "garden_locations", locations.joinToString(""))
 }
 /**
@@ -1394,6 +1406,9 @@ class MainActivity : ComponentActivity() {
         AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(applicationContext)
         HemisphereState.value = getHemisphere(applicationContext)
         ActiveGardenState.activeGardenId = GardenMembershipStore.getActiveGardenId(applicationContext)
+        GardenAddressState.address = getGardenAddress(applicationContext)
+        GardenAddressState.latLng = getGardenLatLng(applicationContext)
+        GardenAddressState.locations = getGardenLocations(applicationContext)
         EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
@@ -5622,13 +5637,25 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
             Spacer(Modifier.height(6.dp))
         }
 
-        var gardenAddressQuery by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getGardenAddress(context)) }
+        var gardenAddressQuery by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenAddressState.address ?: "") }
         var gardenAddressEditedByUser by remember { mutableStateOf(false) }
-        var gardenCoords by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getGardenLatLng(context)) }
+        var gardenCoords by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenAddressState.latLng) }
         var gardenPredictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
         var gardenGeocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
         val gardenPlacesClient = remember { Places.createClient(context) }
         var gardenSessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
+
+        // Picks up a sync landing AFTER this section already composed with a stale/blank snapshot —
+        // the plain `remember(ActiveGardenState.activeGardenId)` above only re-reads on a garden
+        // switch, not when GardenAddressState is updated asynchronously by a sync response arriving
+        // later (see GardenAddressState's doc comment). Skipped while the user is actively typing so
+        // a background sync can't clobber their in-progress edit.
+        LaunchedEffect(GardenAddressState.address, GardenAddressState.latLng) {
+            if (!gardenAddressEditedByUser) {
+                gardenAddressQuery = GardenAddressState.address ?: ""
+                gardenCoords = GardenAddressState.latLng
+            }
+        }
 
         if (gardenCoords != null) {
             Text("Garden location set ✅", fontSize = 12.sp, color = Color(0xFF3A5A40))
@@ -5747,6 +5774,14 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
         var newLocationText by remember { mutableStateOf("") }
         var renamingIndex by remember { mutableStateOf(-1) }
         var renameText by remember { mutableStateOf("") }
+
+        // Same reactive-staleness fix as GardenAddressSection above — picks up a sync landing after
+        // this section already composed with a stale/seeded snapshot. Harmless for the owner too:
+        // their own add/rename/remove already calls setGardenLocations synchronously, so this just
+        // echoes back the value they set.
+        LaunchedEffect(GardenAddressState.locations) {
+            GardenAddressState.locations?.let { gardenLocations = it }
+        }
 
         gardenLocations.forEachIndexed { index, loc ->
             if (renamingIndex == index) {

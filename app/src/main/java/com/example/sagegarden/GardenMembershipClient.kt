@@ -52,6 +52,12 @@ object GardenMembershipStore {
         // hemisphere setting until this singleton itself is refreshed — see
         // feedback-compose-reactive-staleness for why a raw prefs read isn't enough here.
         HemisphereState.value = getHemisphere(context)
+        // Same reasoning as HemisphereState above — GardenAddressSection/GardenZonesSection must see
+        // the newly-active garden's own address/zones immediately, not whatever this device last had
+        // loaded for the previous garden.
+        GardenAddressState.address = getGardenAddress(context)
+        GardenAddressState.latLng = getGardenLatLng(context)
+        GardenAddressState.locations = getGardenLocations(context)
     }
 
     fun getKnownGardens(context: Context): List<KnownGarden> {
@@ -119,6 +125,24 @@ object GardenMembershipStore {
  */
 object ActiveGardenState {
     var activeGardenId by mutableStateOf<String?>(null)
+}
+
+/**
+ * Live, Compose-observable mirror of the active garden's address/coordinates/zones — same rationale
+ * as [ActiveGardenState]/[HemisphereState]. Without this, GardenAddressSection/GardenZonesSection
+ * (Help screen) captured a one-shot snapshot via `remember(ActiveGardenState.activeGardenId)`, which
+ * only re-read prefs when the garden itself changed — a real sync landing shortly *after* that
+ * snapshot (the normal case: switching garden fires an async network call, but the Help screen may
+ * already be composed and reading stale prefs before the response comes back) never refreshed it, so
+ * a member could be looking at their own device's blank/stale value indefinitely, only fixed by
+ * navigating away and back. Refreshed by setGardenAddress/setGardenLatLng/setGardenLocations
+ * (whether from a local edit or a sync pull) and by GardenMembershipStore.setActiveGardenId on
+ * garden switch.
+ */
+object GardenAddressState {
+    var address by mutableStateOf<String?>(null)
+    var latLng by mutableStateOf<Pair<Double, Double>?>(null)
+    var locations by mutableStateOf<List<String>?>(null)
 }
 
 /** The garden id that should actually be used for sync/data calls right now: the explicitly-selected active garden, or this device's own install-id-keyed default garden if none has been chosen. */
