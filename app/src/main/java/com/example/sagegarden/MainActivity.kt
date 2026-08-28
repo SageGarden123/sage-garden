@@ -2607,7 +2607,20 @@ fun MapScreen(
         }
     }
 
-    if (gardenLatLng == null && placementModeForPlantId == null) {
+    // Only the true "nothing to show a map from" case should get the placeholder instead of the
+    // real map — a garden with no address but at least one plant that already has coordinates
+    // (e.g. a view-only member before the owner's address has synced down) still has something to
+    // auto-fit the camera to, via the LaunchedEffect above. This used to just check gardenLatLng,
+    // which crashed: that LaunchedEffect runs unconditionally (it's declared earlier in this
+    // function, so a later `return` doesn't stop it from having already fired) and calls
+    // CameraUpdateFactory, which is only initialized once a real GoogleMap has been created — but
+    // the old condition skipped rendering GoogleMap entirely whenever gardenLatLng was null,
+    // regardless of whether there were plant coordinates to fit to, so CameraUpdateFactory was
+    // never initialized and the call threw "NullPointerException: CameraUpdateFactory is not
+    // initialized". Broadening this condition to also render the map (letting the SDK initialize)
+    // whenever plant coordinates exist fixes the crash and restores the auto-fit's actual purpose.
+    val hasPlantCoordinates = plants.any { it.lat != null && it.lng != null }
+    if (gardenLatLng == null && placementModeForPlantId == null && !hasPlantCoordinates) {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("🗺️", fontSize = 40.sp)
