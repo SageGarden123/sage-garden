@@ -6362,6 +6362,8 @@ fun HelpScreen(
 ) {
     val context = LocalContext.current
     val plants by viewModel.plants.collectAsState()
+    val isGardenOwner = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+    val canEditActiveGarden = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     var showResetDialog by remember { mutableStateOf(false) }
     var photoMode by remember { mutableStateOf(getPhotoStorageMode(context)) }
     var importResultDialog by remember { mutableStateOf<CsvImportOutcome?>(null) }
@@ -6831,7 +6833,10 @@ fun HelpScreen(
         }
         }
 
-        // 2) Photos & cloud storage
+        // 2) Photos & cloud storage — device-wide Dropbox connection/storage mode, not tied to any
+        // one garden, so hidden entirely for a non-owner viewing someone else's shared garden
+        // (matches the Custom garden map / Irrigation gating below).
+        if (isGardenOwner) {
         ExpandableSection(title = "Photos & cloud storage") {
             Text("Photo storage", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
@@ -6957,9 +6962,11 @@ fun HelpScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
             ) { Text("Clear auto-linked photos (keep plants)") }
         }
+        }
 
-        // 3) Irrigation (Advanced mode + Pro only — hiding it never touches the saved Tuya or Rachio credentials/zones below)
-        if (FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
+        // 3) Irrigation (Advanced mode + Pro only — hiding it never touches the saved Tuya or Rachio credentials/zones below).
+        // Also device-wide/owner-only, same reasoning as Photos & cloud storage above.
+        if (isGardenOwner && FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
         ExpandableSection(title = "Irrigation") {
             var irrigationSystem by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getIrrigationSystem(context)) }
             Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -7433,7 +7440,11 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text("Upload a CSV in the same format to add or update plants in bulk.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Choose CSV file") }
+            OutlinedButton(
+                onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
+                modifier = Modifier.fillMaxWidth(), enabled = canEditActiveGarden
+            ) { Text("Choose CSV file") }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden.", fontSize = 11.sp, color = Color.Gray) }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
@@ -7441,7 +7452,9 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text("Backs up all plants (including seasonal watering, fertilising, pruning, and indoor/manual-watering settings), irrigation paths and watering history, sun exposure zones, growth timeline photos, fertilise/prune history, Tuya zone mappings, your custom map drawing and its rotation, and all app preferences (weather-aware reminders, garden address, notification and reminder settings, default tab, and more) to a Dropbox folder you choose.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(6.dp))
-            Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+            if (isGardenOwner) {
+                Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+            }
             Spacer(Modifier.height(10.dp))
 
             var backupWorking by remember { mutableStateOf(false) }
@@ -7523,9 +7536,9 @@ fun HelpScreen(
             }
 
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && DropboxAuthState.token != null) { Text(if (restoreWorking) "Restoring…" else "Restore from Dropbox") }
+            OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && DropboxAuthState.token != null && canEditActiveGarden) { Text(if (restoreWorking) "Restoring…" else "Restore from Dropbox") }
 
-            if (DropboxAuthState.token == null) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray) }
+            if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray) }
             backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
 
             if (showRestoreConfirm) {
@@ -7592,7 +7605,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { showLocalRestoreConfirm = true },
-                    modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking
+                    modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking && canEditActiveGarden
                 ) { Text("Restore from this folder") }
             }
 
@@ -7624,9 +7637,10 @@ fun HelpScreen(
             Text("Clears every plant in this app. Cannot be undone.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
-                onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(),
+                onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(), enabled = isGardenOwner,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
             ) { Text("Reset garden") }
+            if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 11.sp, color = Color.Gray) }
         }
 
         if (FeatureVisibility.shouldShow(context, Feature.GARDEN_SHARING)) {
