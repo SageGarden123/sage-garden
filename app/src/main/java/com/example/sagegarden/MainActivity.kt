@@ -958,6 +958,72 @@ suspend fun uploadPhotoToDropbox(context: Context, localUri: Uri): String? {
     }
 }
 
+/**
+ * Figures out what filename [uploadPhotoToDropboxAsPlantId] will actually use for a given plant ID,
+ * without uploading anything — the plant's *first* photo gets the bare ID ("P0056.jpg"); every
+ * subsequent upload for the same ID (replacing a photo when editing) gets the next unused "_N"
+ * suffix ("P0056_1.jpg", "P0056_2.jpg", ...). Shared by the upload function itself and by the
+ * button text that previews the target name before the user commits to uploading. Returns null if
+ * Dropbox isn't reachable (folder listing failed) — callers should fall back to showing the bare
+ * plant ID in that case, same as before this preview existed.
+ */
+suspend fun previewDropboxUploadName(context: Context, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val existingNames = client.files().listFolder(folderPath.ifBlank { "" })
+                .entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
+                .toSet()
+            val bareName = "$plantId.jpg"
+            if (bareName !in existingNames) {
+                bareName
+            } else {
+                var suffix = 1
+                while ("${plantId}_$suffix.jpg" in existingNames) suffix++
+                "${plantId}_$suffix.jpg"
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/**
+ * Uploads a local photo to the configured Dropbox photo folder under the name [previewDropboxUploadName]
+ * computes for [plantId], so the file is recognisable in Dropbox itself.
+ */
+suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val targetName = previewDropboxUploadName(context, plantId) ?: return@withContext null
+
+            val bytes = context.contentResolver.openInputStream(localUri)?.use { it.readBytes() }
+                ?: return@withContext null
+            val filePath = "$folderPath/$targetName".replace("//", "/")
+            client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
+            // The upload itself (above) can succeed while this next call alone fails/times out —
+            // e.g. a transient network hiccup on just this second request, or Dropbox reporting
+            // "shared link already exists" if a previous attempt's response was lost after the link
+            // was actually created server-side. Either way the file is genuinely there by this point,
+            // so falling back to looking up whatever link already exists avoids reporting a false
+            // failure for an upload that actually succeeded — same pattern used elsewhere in this
+            // file (see autoLinkLocalPhotos) for the identical race.
+            val sharedLinkUrl = try {
+                client.sharing().createSharedLinkWithSettings(filePath).url
+            } catch (_: Exception) {
+                client.sharing().listSharedLinksBuilder().withPath(filePath).start()
+                    .links.firstOrNull()?.url
+            }
+            sharedLinkUrl?.let { toDirectDropboxLink(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
 fun toDirectDropboxLink(url: String): String {
     return when {
         url.contains("?dl=0") -> url.replace("?dl=0", "?raw=1")
