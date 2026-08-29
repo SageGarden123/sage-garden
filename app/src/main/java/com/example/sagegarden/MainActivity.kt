@@ -7779,10 +7779,10 @@ fun HelpScreen(
             var existingBackupDate by remember { mutableStateOf<Date?>(null) }
             var showReplaceBackupConfirm by remember { mutableStateOf(false) }
 
-            fun runDropboxBackup() {
+            fun runDropboxBackup(jsonFileName: String = BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))) {
                 scope.launch {
                     backupWorking = true; backupResultText = null
-                    val result = BackupHelper.createBackup(context, plants, irrigationPaths, irrigationEvents)
+                    val result = BackupHelper.createBackup(context, plants, irrigationPaths, irrigationEvents, jsonFileName)
                     backupWorking = false; backupResultText = result.message
                 }
             }
@@ -7791,7 +7791,7 @@ fun HelpScreen(
                 onClick = {
                     scope.launch {
                         checkingExistingBackup = true
-                        val existing = BackupHelper.existingBackupModifiedAt(context)
+                        val existing = BackupHelper.existingBackupModifiedAt(context, BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context)))
                         checkingExistingBackup = false
                         if (existing != null) {
                             existingBackupDate = existing
@@ -7818,31 +7818,115 @@ fun HelpScreen(
                     title = { Text("Replace existing backup?") },
                     text = {
                         Text(
-                            "A backup from ${existingBackupDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replacing it can't be undone."
+                            "A backup from ${existingBackupDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replace it, or keep it and save this as a separate new backup?"
                         )
                     },
                     confirmButton = { TextButton(onClick = { showReplaceBackupConfirm = false; runDropboxBackup() }) { Text("Replace") } },
-                    dismissButton = { TextButton(onClick = { showReplaceBackupConfirm = false }) { Text("Cancel") } }
+                    dismissButton = {
+                        Row {
+                            TextButton(onClick = { showReplaceBackupConfirm = false }) { Text("Cancel") }
+                            TextButton(onClick = {
+                                showReplaceBackupConfirm = false
+                                runDropboxBackup(BackupHelper.newDatedBackupFileName())
+                            }) { Text("Create new") }
+                        }
+                    }
                 )
             }
 
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { showRestoreConfirm = true }, modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && DropboxAuthState.token != null && canEditActiveGarden) { Text(if (restoreWorking) "Restoring…" else "Restore from Dropbox") }
+            var showBackupPicker by remember { mutableStateOf(false) }
+            var loadingBackupList by remember { mutableStateOf(false) }
+            var availableBackups by remember { mutableStateOf<List<BackupHelper.DropboxBackupInfo>>(emptyList()) }
+            var selectedRestoreFileName by remember { mutableStateOf<String?>(null) }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        loadingBackupList = true
+                        availableBackups = BackupHelper.listAvailableBackups(context)
+                        loadingBackupList = false
+                        // Skip the picker only when there's nothing to choose BETWEEN — either just
+                        // one backup total, or this garden's own default-named backup is the only
+                        // one present. A shared Dropbox folder can otherwise hold other gardens'
+                        // backups too (per-garden filenames), which should still show the picker
+                        // rather than silently guessing which file is "the" one to restore.
+                        val ownDefaultName = BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))
+                        val ownDefault = availableBackups.firstOrNull { it.fileName == ownDefaultName }
+                        if (availableBackups.size <= 1) {
+                            selectedRestoreFileName = availableBackups.firstOrNull()?.fileName ?: ownDefaultName
+                            showRestoreConfirm = true
+                        } else if (ownDefault != null && availableBackups.none { it.fileName != ownDefaultName && it.modifiedAt.after(ownDefault.modifiedAt) }) {
+                            // This garden's own backup exists and nothing else in the folder is
+                            // newer than it — treat it as the obvious choice rather than forcing a
+                            // picker every single time for the common single-garden case.
+                            selectedRestoreFileName = ownDefaultName
+                            showRestoreConfirm = true
+                        } else {
+                            showBackupPicker = true
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && !loadingBackupList && DropboxAuthState.token != null && canEditActiveGarden
+            ) { Text(if (restoreWorking) "Restoring…" else if (loadingBackupList) "Checking…" else "Restore from Dropbox") }
+
+            if (showBackupPicker) {
+                val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
+                AlertDialog(
+                    onDismissRequest = { showBackupPicker = false },
+                    title = { Text("Choose a backup to restore") },
+                    text = {
+                        Column {
+                            availableBackups.forEach { info ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable {
+                                            showBackupPicker = false
+                                            selectedRestoreFileName = info.fileName
+                                            showRestoreConfirm = true
+                                        }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Column {
+                                        Text(info.fileName, fontSize = 13.sp)
+                                        Text(sdf.format(info.modifiedAt), fontSize = 11.sp, color = Color.Gray)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { showBackupPicker = false }) { Text("Cancel") } }
+                )
+            }
 
             if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray) }
             backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
 
             if (showRestoreConfirm) {
+                var forceFreshRestore by remember { mutableStateOf(false) }
                 AlertDialog(
                     onDismissRequest = { showRestoreConfirm = false },
                     title = { Text("Restore from Dropbox?") },
-                    text = { Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from your Dropbox backup. Existing entries with matching IDs will be overwritten. This can't be undone.") },
+                    text = {
+                        Column {
+                            Text("Restoring \"${selectedRestoreFileName ?: BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))}\" adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from it. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { forceFreshRestore = !forceFreshRestore }
+                            ) {
+                                Checkbox(checked = forceFreshRestore, onCheckedChange = { forceFreshRestore = it })
+                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             showRestoreConfirm = false
+                            val fileName = selectedRestoreFileName ?: BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))
                             scope.launch {
                                 restoreWorking = true; backupResultText = null
-                                val result = BackupHelper.restoreBackup(context, viewModel, pathViewModel, wateringViewModel)
+                                val result = BackupHelper.restoreBackup(context, viewModel, pathViewModel, wateringViewModel, fileName, forceFreshRestore)
                                 restoreWorking = false; backupResultText = result.message
                             }
                         }) { Text("Restore") }
@@ -7903,16 +7987,29 @@ fun HelpScreen(
             localBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
 
             if (showLocalRestoreConfirm) {
+                var forceFreshLocalRestore by remember { mutableStateOf(false) }
                 AlertDialog(
                     onDismissRequest = { showLocalRestoreConfirm = false },
                     title = { Text("Restore from device backup?") },
-                    text = { Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from the backup in this folder. Existing entries with matching IDs will be overwritten. This can't be undone.") },
+                    text = {
+                        Column {
+                            Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from the backup in this folder. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { forceFreshLocalRestore = !forceFreshLocalRestore }
+                            ) {
+                                Checkbox(checked = forceFreshLocalRestore, onCheckedChange = { forceFreshLocalRestore = it })
+                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             showLocalRestoreConfirm = false
                             scope.launch {
                                 localBackupWorking = true; localBackupResultText = null
-                                val result = BackupHelper.restoreLocalBackup(context, viewModel, pathViewModel, wateringViewModel, localBackupFolder!!)
+                                val result = BackupHelper.restoreLocalBackup(context, viewModel, pathViewModel, wateringViewModel, localBackupFolder!!, forceFreshLocalRestore)
                                 localBackupWorking = false; localBackupResultText = result.message
                             }
                         }) { Text("Restore") }

@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.dropbox.core.v2.files.FileMetadata
 import com.dropbox.core.v2.files.WriteMode
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -33,7 +35,8 @@ object BackupHelper {
         context: Context,
         plants: List<PlantEntity>,
         paths: List<IrrigationPathEntity>,
-        events: List<WateringEvent>
+        events: List<WateringEvent>,
+        mapFileNameBase: String = BACKUP_MAP_FILENAME_PREFIX
     ): BackupPayload {
         val root = JSONObject()
         root.put("backupVersion", 2)
@@ -216,7 +219,7 @@ object BackupHelper {
             val bytes = context.contentResolver.openInputStream(mapUri)?.use { it.readBytes() }
             if (bytes != null) {
                 val ext = guessImageExtension(context, mapUri)
-                mapFileName = "$BACKUP_MAP_FILENAME_PREFIX.$ext"
+                mapFileName = "$mapFileNameBase.$ext"
                 mapBytes = bytes
             }
         }
@@ -234,7 +237,8 @@ object BackupHelper {
         root: JSONObject,
         viewModel: PlantViewModel,
         pathViewModel: IrrigationPathViewModel,
-        wateringViewModel: WateringZoneViewModel
+        wateringViewModel: WateringZoneViewModel,
+        forceFresh: Boolean = false
     ): BackupCounts {
         val plantsArr = root.optJSONArray("plants") ?: JSONArray()
         for (i in 0 until plantsArr.length()) {
@@ -242,9 +246,13 @@ object BackupHelper {
             val photoUrisArr = o.optJSONArray("photoUris") ?: JSONArray()
             val photoUris = (0 until photoUrisArr.length()).map { photoUrisArr.getString(it) }
             // Writes directly via the DAO (not viewModel.save()) so the backup's own updatedAt
-            // survives the restore — PlantViewModel.saveSync always stamps "now", which is right
-            // for a genuine edit but wrong here: it would make a restored-from-old-backup device
-            // look like it has the freshest data and incorrectly win the next multi-device sync.
+            // survives the restore by default — PlantViewModel.saveSync always stamps "now", which
+            // is right for a genuine edit but wrong here: it would make a restored-from-old-backup
+            // device look like it has the freshest data and incorrectly win the next multi-device
+            // sync. [forceFresh] deliberately opts INTO that "freshest wins" behavior instead — for
+            // when the user's actual intent is "roll back to this backup and make it the truth
+            // everywhere", not a passive local restore that should defer to genuinely newer edits
+            // from other devices.
             AppDatabase.getInstance(context).plantDao().upsert(
                 PlantEntity(
                     id = o.getString("id"), name = o.getString("name"), sci = o.optString("sci", ""),
@@ -272,7 +280,7 @@ object BackupHelper {
                     pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays"),
                     lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
                     feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays"),
-                    updatedAt = o.optLong("updatedAt", 0L),
+                    updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", 0L),
                     gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
@@ -358,7 +366,7 @@ object BackupHelper {
                 CareLogEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), type = o.getString("type"),
                     date = o.getLong("date"), notes = o.optString("notes", ""),
-                    updatedAt = o.optLong("updatedAt", 0L),
+                    updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", 0L),
                     gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
                 )
             )
@@ -451,38 +459,97 @@ object BackupHelper {
         )
     }
 
-    /** Null if no backup exists yet at the configured Dropbox path — otherwise when the existing one was last modified, for a "replace existing backup?" confirmation prompt before overwriting it. */
-    suspend fun existingBackupModifiedAt(context: Context): Date? = withContext(Dispatchers.IO) {
+    /** Null if no backup exists yet at [jsonFileName] in the configured Dropbox path — otherwise
+     * when the existing one was last modified, for a "replace existing backup?" confirmation
+     * prompt before overwriting it. */
+    suspend fun existingBackupModifiedAt(context: Context, jsonFileName: String = BACKUP_JSON_FILENAME): Date? = withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext null
             val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
-            val jsonPath = "$folderPath/$BACKUP_JSON_FILENAME".replace("//", "/")
+            val jsonPath = "$folderPath/$jsonFileName".replace("//", "/")
             (client.files().getMetadata(jsonPath) as? FileMetadata)?.serverModified
         } catch (_: Exception) {
             null // not found (or unreachable) — either way, nothing to confirm replacing
         }
     }
 
+    /** The single rolling-snapshot filename ("Replace" always writes here, and it's the default for
+     * a plain restore) — exposed so callers outside this file don't need their own copy of the
+     * private constant. */
+    fun defaultBackupFileName(): String = BACKUP_JSON_FILENAME
+
+    /**
+     * The rolling-snapshot filename to use for [gardenId] specifically — the device's own original
+     * default garden keeps the plain, unchanged [BACKUP_JSON_FILENAME] (no migration needed for
+     * existing users), but any OTHER garden gets its own name-derived filename
+     * ("garden_mapper_backup_<name>.json"). Without this, two gardens sharing the same Dropbox
+     * backup folder would silently overwrite each other's backup under the identical fixed
+     * filename — backing up Garden B after Garden A would destroy Garden A's only backup, the same
+     * device-wide-state-clobbering class of bug as the plant-id collision this feature exists
+     * alongside (see feedback_plant_id_cross_garden_collision). Recomputed fresh from whatever the
+     * garden is CURRENTLY named — renaming a garden starts a new backup file going forward rather
+     * than trying to track renames, so an old name's backup is left behind (harmless clutter, not
+     * silently lost).
+     */
+    fun defaultBackupFileNameForGarden(context: Context, gardenId: String): String {
+        if (gardenId.isBlank() || gardenId == getOrCreateInstallId(context)) return BACKUP_JSON_FILENAME
+        val name = GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == gardenId }?.name ?: "garden"
+        return "garden_mapper_backup_${sanitizeForDropboxFilename(name)}.json"
+    }
+
+    /** A fresh, never-yet-used dated filename for a "Create new" backup — distinguishable from (and
+     * never overwrites) the default rolling snapshot or any other dated backup already taken today. */
+    fun newDatedBackupFileName(): String =
+        "garden_mapper_backup_${SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date())}.json"
+
+    data class DropboxBackupInfo(val fileName: String, val modifiedAt: Date)
+
+    /** Every backup JSON file sitting in the configured Dropbox backup folder — the default rolling
+     * snapshot plus any dated ones from "Create new" — newest first, for a "choose which backup to
+     * restore" picker rather than always assuming the single fixed-name file is the one wanted. */
+    suspend fun listAvailableBackups(context: Context): List<DropboxBackupInfo> = withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext emptyList()
+            val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
+            client.files().listFolder(folderPath.ifBlank { "" }).entries
+                .filterIsInstance<FileMetadata>()
+                .filter { it.name.startsWith("garden_mapper_backup") && it.name.endsWith(".json") }
+                .map { DropboxBackupInfo(it.name, it.serverModified) }
+                .sortedByDescending { it.modifiedAt }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * [jsonFileName] defaults to the single rolling snapshot (replaced in place each time) — pass
+     * [newDatedBackupFileName] instead for a "Create new" backup that leaves every existing one
+     * untouched. The custom map image (if any) gets a filename derived from [jsonFileName] too, so
+     * each dated backup stays fully self-contained rather than all sharing one map file that a later
+     * backup could silently replace out from under an older JSON that still references it.
+     */
     suspend fun createBackup(
         context: Context,
         plants: List<PlantEntity>,
         paths: List<IrrigationPathEntity>,
-        events: List<WateringEvent>
+        events: List<WateringEvent>,
+        jsonFileName: String = BACKUP_JSON_FILENAME
     ): BackupResult = withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext BackupResult(false, "Dropbox isn't connected")
             val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
-            val payload = buildBackupPayload(context, plants, paths, events)
+            val mapFileNameBase = jsonFileName.removeSuffix(".json") + "_map"
+            val payload = buildBackupPayload(context, plants, paths, events, mapFileNameBase)
 
-            // This backup is meant to be a single rolling snapshot, not an accumulating history —
-            // WriteMode.OVERWRITE replaces the existing file in place instead of the default ADD
-            // mode, which throws a conflict error on every backup after the first.
+            // WriteMode.OVERWRITE replaces a same-named file in place instead of the default ADD
+            // mode, which throws a conflict error rather than actually overwriting — matters for the
+            // rolling-snapshot filename (backed up before), a no-op safety net for a fresh dated one.
             if (payload.mapBytes != null && payload.mapFileName != null) {
                 val mapPath = "$folderPath/${payload.mapFileName}".replace("//", "/")
                 client.files().uploadBuilder(mapPath).withMode(WriteMode.OVERWRITE).uploadAndFinish(payload.mapBytes.inputStream())
             }
 
-            val jsonPath = "$folderPath/$BACKUP_JSON_FILENAME".replace("//", "/")
+            val jsonPath = "$folderPath/$jsonFileName".replace("//", "/")
             client.files().uploadBuilder(jsonPath).withMode(WriteMode.OVERWRITE).uploadAndFinish(payload.root.toString().toByteArray().inputStream())
 
             BackupResult(true, "Backup complete — ${payload.counts.summary()}")
@@ -524,16 +591,27 @@ object BackupHelper {
         }
     }
 
+    /**
+     * [forceFresh] controls whether the restored data should defer to genuinely newer edits from
+     * other synced devices (false — the default, safe for "restore onto a device that lost local
+     * data") or override them everywhere (true — for a deliberate "roll back to this backup" that
+     * should win even against other devices' more recent changes; also pushes the result to the
+     * server immediately afterward, rather than waiting for the next passive auto-sync tick, which
+     * would otherwise use the backup's own old timestamps and could still lose a last-write-wins
+     * race against a device that syncs in the meantime). See feedback_plant_id_cross_garden_collision.
+     */
     suspend fun restoreBackup(
         context: Context,
         viewModel: PlantViewModel,
         pathViewModel: IrrigationPathViewModel,
-        wateringViewModel: WateringZoneViewModel
+        wateringViewModel: WateringZoneViewModel,
+        jsonFileName: String = BACKUP_JSON_FILENAME,
+        forceFresh: Boolean = false
     ): RestoreResult = withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext RestoreResult(false, "Dropbox isn't connected")
             val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
-            val jsonPath = "$folderPath/$BACKUP_JSON_FILENAME".replace("//", "/")
+            val jsonPath = "$folderPath/$jsonFileName".replace("//", "/")
 
             val out = java.io.ByteArrayOutputStream()
             try {
@@ -542,7 +620,7 @@ object BackupHelper {
                 return@withContext RestoreResult(false, "No backup found in this Dropbox folder")
             }
             val root = JSONObject(out.toString("UTF-8"))
-            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel)
+            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
 
             val mapFileName = if (root.isNull("customMapFileName")) null else root.optString("customMapFileName")
             if (!mapFileName.isNullOrBlank()) {
@@ -556,19 +634,24 @@ object BackupHelper {
                 } catch (_: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
             }
 
+            if (forceFresh) {
+                GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
+            }
+
             RestoreResult(true, "Restore complete — ${counts.summary()}")
         } catch (e: Exception) {
             RestoreResult(false, e.message ?: "Unknown error")
         }
     }
 
-    /** Restores from a backup JSON (+ custom map image, if present) previously exported to a device folder via [createLocalBackup]. */
+    /** Restores from a backup JSON (+ custom map image, if present) previously exported to a device folder via [createLocalBackup]. See [restoreBackup] for [forceFresh]. */
     suspend fun restoreLocalBackup(
         context: Context,
         viewModel: PlantViewModel,
         pathViewModel: IrrigationPathViewModel,
         wateringViewModel: WateringZoneViewModel,
-        folderUri: Uri
+        folderUri: Uri,
+        forceFresh: Boolean = false
     ): RestoreResult = withContext(Dispatchers.IO) {
         try {
             val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return@withContext RestoreResult(false, "Couldn't open the chosen folder")
@@ -576,7 +659,7 @@ object BackupHelper {
             val text = context.contentResolver.openInputStream(jsonFile.uri)?.use { it.bufferedReader().readText() }
                 ?: return@withContext RestoreResult(false, "Couldn't read the backup file")
             val root = JSONObject(text)
-            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel)
+            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
 
             val mapFileName = if (root.isNull("customMapFileName")) null else root.optString("customMapFileName")
             if (!mapFileName.isNullOrBlank()) {
@@ -590,6 +673,10 @@ object BackupHelper {
                         }
                     } catch (_: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
                 }
+            }
+
+            if (forceFresh) {
+                GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
             }
 
             RestoreResult(true, "Restore complete — ${counts.summary()}")
