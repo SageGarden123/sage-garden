@@ -38,7 +38,7 @@ fun resizeImageForDropboxUpload(context: Context, uri: Uri): ByteArray? {
     }
 }
 
-private fun applyExifRotation(bitmap: Bitmap, orientation: Int): Bitmap {
+fun applyExifRotation(bitmap: Bitmap, orientation: Int): Bitmap {
     val matrix = Matrix()
     when (orientation) {
         ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)

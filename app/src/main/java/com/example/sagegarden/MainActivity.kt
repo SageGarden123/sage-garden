@@ -1002,6 +1002,33 @@ suspend fun uploadPhotoToDropbox(context: Context, localUri: Uri): String? {
 }
 
 /**
+ * Fetches (or creates) a direct shared link for [filePath], which must already exist in Dropbox.
+ * Dropbox's sharing API can lag briefly right after a file is first uploaded — a fallback lookup
+ * immediately after a failed [DbxClientV2.sharing]`.createSharedLinkWithSettings` can itself come
+ * back empty even though the file is genuinely there, which used to be reported as a total upload
+ * failure despite the file having actually been saved (leaving that filename permanently used up,
+ * so the next attempt uploaded a duplicate under an incremented name instead of reusing it). Retries
+ * the lookup a few times with a short delay before giving up.
+ */
+private suspend fun fetchOrCreateSharedLink(client: DbxClientV2, filePath: String): String? {
+    try {
+        return client.sharing().createSharedLinkWithSettings(filePath).url
+    } catch (_: Exception) {
+        repeat(3) { attempt ->
+            val existing = try {
+                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
+                    .links.firstOrNull()?.url
+            } catch (_: Exception) {
+                null
+            }
+            if (existing != null) return existing
+            if (attempt < 2) kotlinx.coroutines.delay(600L)
+        }
+        return null
+    }
+}
+
+/**
  * Figures out what filename [uploadPhotoToDropboxAsPlantId] will actually use for a given plant ID,
  * without uploading anything — the plant's *first* photo gets the bare ID ("P0056.jpg"); every
  * subsequent upload for the same ID (replacing a photo when editing) gets the next unused "_N"
@@ -1046,26 +1073,10 @@ suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plant
             val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
             val filePath = "$folderPath/$targetName".replace("//", "/")
             client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
-            // The upload itself (above) can succeed while this next call alone fails/times out —
-            // e.g. a transient network hiccup on just this second request, or Dropbox reporting
-            // "shared link already exists" if a previous attempt's response was lost after the link
-            // was actually created server-side. Either way the file is genuinely there by this point,
-            // so falling back to looking up whatever link already exists avoids reporting a false
-            // failure for an upload that actually succeeded — same pattern used elsewhere in this
-            // file (see autoLinkLocalPhotos) for the identical race.
-            // withDirectOnly(true) matters here: without it, a file sitting inside a Dropbox folder
-            // the user has ALREADY shared as a whole gets back that folder's inherited "/scl/fo/..."
-            // link instead of a per-file "/scl/fi/..." one — an inherited folder link 404s when
-            // fetched as if it were a single image. direct_only restricts the lookup to a link
-            // created directly on this exact file, matching what createSharedLinkWithSettings itself
-            // would have returned had it not thrown (the same request scope, filePath).
-            val sharedLinkUrl = try {
-                client.sharing().createSharedLinkWithSettings(filePath).url
-            } catch (_: Exception) {
-                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
-                    .links.firstOrNull()?.url
-            }
-            sharedLinkUrl?.let { toDirectDropboxLink(it) }
+            // The upload itself (above) can succeed while getting a shareable link fails/lags —
+            // see fetchOrCreateSharedLink for why this is retried rather than reported as a hard
+            // failure immediately.
+            fetchOrCreateSharedLink(client, filePath)?.let { toDirectDropboxLink(it) }
         } catch (_: Exception) {
             null
         }
@@ -1111,19 +1122,7 @@ suspend fun uploadPhotoToDropboxAsProgressPhoto(context: Context, localUri: Uri,
             val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
             val filePath = "$folderPath/$targetName".replace("//", "/")
             client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
-            // withDirectOnly(true) matters here: without it, a file sitting inside a Dropbox folder
-            // the user has ALREADY shared as a whole gets back that folder's inherited "/scl/fo/..."
-            // link instead of a per-file "/scl/fi/..." one — an inherited folder link 404s when
-            // fetched as if it were a single image. direct_only restricts the lookup to a link
-            // created directly on this exact file, matching what createSharedLinkWithSettings itself
-            // would have returned had it not thrown (the same request scope, filePath).
-            val sharedLinkUrl = try {
-                client.sharing().createSharedLinkWithSettings(filePath).url
-            } catch (_: Exception) {
-                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
-                    .links.firstOrNull()?.url
-            }
-            sharedLinkUrl?.let { toDirectDropboxLink(it) }
+            fetchOrCreateSharedLink(client, filePath)?.let { toDirectDropboxLink(it) }
         } catch (_: Exception) {
             null
         }
@@ -4937,7 +4936,11 @@ fun FormScreen(
             }
             Spacer(Modifier.height(14.dp))
         }
-        if (photoMode == "cloud" && !dropboxConnected) {
+        if (photoUri == null && photoMode == "cloud" && !dropboxConnected) {
+            // An already-set photo (photoUri != null) is shown regardless of this device's own
+            // Dropbox connection — it's a plain HTTPS shared link that renders fine without this
+            // device being linked. Only picking/uploading a NEW cloud photo actually needs it,
+            // and those specific buttons below already gate on dropboxConnected individually.
             Text("Connect your cloud storage in the Help tab first.", color = Color.Gray, fontSize = 13.sp)
         } else {
             Box(
