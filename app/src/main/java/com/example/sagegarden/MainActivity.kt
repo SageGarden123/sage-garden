@@ -7822,7 +7822,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
-            Button(onClick = { exportLauncher.launch("sage_garden_plantdata.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV to device") }
+            Button(onClick = { exportLauncher.launch(csvExportFileNameForGarden(context, effectiveGardenId(context))) }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV to device") }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
                 var dropboxCsvFolderPath by remember {
