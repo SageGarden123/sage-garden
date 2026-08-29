@@ -57,5 +57,9 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
         } ?: System.currentTimeMillis()
     }
 
+    fun updateUri(photo: LocationPhotoEntity, uri: String) {
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+    }
+
     fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
 }

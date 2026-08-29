@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -80,8 +82,11 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     )
     val photos by remember(location) { locationViewModel.getForLocation(location) }.collectAsState()
     val sorted = remember(photos) { photos.sortedBy { it.takenAt } }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var uploadingPhotoId by remember { mutableStateOf<String?>(null) }
+    var uploadFailedId by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingCameraUri != null) locationViewModel.addPhoto(location, pendingCameraUri.toString())
@@ -138,16 +143,35 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
         val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
         sorted.reversed().forEach { photo ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop,
-                        onError = { Log.e("LocationPhoto", "list thumbnail load failed for ${photo.uri}", it.result.throwable) },
-                        onSuccess = { Log.d("LocationPhoto", "list thumbnail load OK for ${photo.uri}") }
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    if (canEdit) {
-                        TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                Column(Modifier.padding(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(
+                            model = Uri.parse(photo.uri), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop,
+                            onError = { Log.e("LocationPhoto", "list thumbnail load failed for ${photo.uri}", it.result.throwable) },
+                            onSuccess = { Log.d("LocationPhoto", "list thumbnail load OK for ${photo.uri}") }
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        if (canEdit) {
+                            TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                        }
+                    }
+                    val localUriScheme = Uri.parse(photo.uri).scheme
+                    if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
+                        TextButton(
+                            onClick = {
+                                uploadingPhotoId = photo.id; uploadFailedId = null
+                                scope.launch {
+                                    val link = uploadPhotoToDropboxAsProgressPhoto(context, Uri.parse(photo.uri), location)
+                                    uploadingPhotoId = null
+                                    if (link != null) locationViewModel.updateUri(photo, link) else uploadFailedId = photo.id
+                                }
+                            },
+                            enabled = uploadingPhotoId != photo.id
+                        ) { Text(if (uploadingPhotoId == photo.id) "Uploading…" else "☁️ Upload to Dropbox", fontSize = 11.sp) }
+                        if (uploadFailedId == photo.id) {
+                            Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                        }
                     }
                 }
             }

@@ -1042,10 +1042,74 @@ suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plant
             // so falling back to looking up whatever link already exists avoids reporting a false
             // failure for an upload that actually succeeded — same pattern used elsewhere in this
             // file (see autoLinkLocalPhotos) for the identical race.
+            // withDirectOnly(true) matters here: without it, a file sitting inside a Dropbox folder
+            // the user has ALREADY shared as a whole gets back that folder's inherited "/scl/fo/..."
+            // link instead of a per-file "/scl/fi/..." one — an inherited folder link 404s when
+            // fetched as if it were a single image. direct_only restricts the lookup to a link
+            // created directly on this exact file, matching what createSharedLinkWithSettings itself
+            // would have returned had it not thrown (the same request scope, filePath).
             val sharedLinkUrl = try {
                 client.sharing().createSharedLinkWithSettings(filePath).url
             } catch (_: Exception) {
-                client.sharing().listSharedLinksBuilder().withPath(filePath).start()
+                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
+                    .links.firstOrNull()?.url
+            }
+            sharedLinkUrl?.let { toDirectDropboxLink(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+fun sanitizeForDropboxFilename(raw: String): String =
+    raw.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "zone" }
+
+/**
+ * Progress (zone) photos have no plant ID to derive a Dropbox filename from, unlike
+ * [previewDropboxUploadName] — so they use "progress_<zone>_<N>.jpg" instead, always suffixed
+ * starting at _1 (unlike the plant-photo convention's bare name for the first upload, since
+ * "progress_frontyard.jpg" alone wouldn't obviously read as belonging to this app/feature).
+ */
+suspend fun previewProgressPhotoDropboxUploadName(context: Context, location: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val baseName = "progress_${sanitizeForDropboxFilename(location)}"
+            val existingNames = client.files().listFolder(folderPath.ifBlank { "" })
+                .entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
+                .toSet()
+            var suffix = 1
+            while ("${baseName}_$suffix.jpg" in existingNames) suffix++
+            "${baseName}_$suffix.jpg"
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** Uploads a local progress photo to the configured Dropbox photo folder under the name
+ * [previewProgressPhotoDropboxUploadName] computes for [location]. Mirrors [uploadPhotoToDropboxAsPlantId]. */
+suspend fun uploadPhotoToDropboxAsProgressPhoto(context: Context, localUri: Uri, location: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val targetName = previewProgressPhotoDropboxUploadName(context, location) ?: return@withContext null
+
+            val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
+            val filePath = "$folderPath/$targetName".replace("//", "/")
+            client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
+            // withDirectOnly(true) matters here: without it, a file sitting inside a Dropbox folder
+            // the user has ALREADY shared as a whole gets back that folder's inherited "/scl/fo/..."
+            // link instead of a per-file "/scl/fi/..." one — an inherited folder link 404s when
+            // fetched as if it were a single image. direct_only restricts the lookup to a link
+            // created directly on this exact file, matching what createSharedLinkWithSettings itself
+            // would have returned had it not thrown (the same request scope, filePath).
+            val sharedLinkUrl = try {
+                client.sharing().createSharedLinkWithSettings(filePath).url
+            } catch (_: Exception) {
+                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
                     .links.firstOrNull()?.url
             }
             sharedLinkUrl?.let { toDirectDropboxLink(it) }
@@ -1241,7 +1305,9 @@ suspend fun autoLinkDropboxPhotos(
             val link = try {
                 toDirectDropboxLink(client.sharing().createSharedLinkWithSettings(filePath).url)
             } catch (_: Exception) {
-                client.sharing().listSharedLinksBuilder().withPath(filePath).start()
+                // withDirectOnly(true): see uploadPhotoToDropboxAsPlantId — without it this can pick
+                // up an inherited link from an already-shared parent folder, which 404s as an image.
+                client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
                     .links.firstOrNull()?.url?.let { toDirectDropboxLink(it) }
             }
             if (link != null) {
@@ -5471,8 +5537,11 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
     val photos by remember(plantId) { extraPhotoViewModel.getForPlant(plantId) }.collectAsState()
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var uploadingPhotoId by remember { mutableStateOf<String?>(null) }
+    var uploadFailedId by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingCameraUri != null) extraPhotoViewModel.addPhoto(plantId, pendingCameraUri.toString())
@@ -5515,22 +5584,41 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
             photos.forEach { photo ->
                 var label by remember(photo.id) { mutableStateOf(photo.label) }
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(
-                            model = Uri.parse(photo.uri), contentDescription = null,
-                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        OutlinedTextField(
-                            value = label,
-                            onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
-                            label = { Text("Label", fontSize = 11.sp) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                            readOnly = !canEdit
-                        )
-                        if (canEdit) {
-                            TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                    Column(Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(
+                                model = Uri.parse(photo.uri), contentDescription = null,
+                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            OutlinedTextField(
+                                value = label,
+                                onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
+                                label = { Text("Label", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                readOnly = !canEdit
+                            )
+                            if (canEdit) {
+                                TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                            }
+                        }
+                        val localUriScheme = Uri.parse(photo.uri).scheme
+                        if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
+                            TextButton(
+                                onClick = {
+                                    uploadingPhotoId = photo.id; uploadFailedId = null
+                                    scope.launch {
+                                        val link = uploadPhotoToDropboxAsPlantId(context, Uri.parse(photo.uri), plantId)
+                                        uploadingPhotoId = null
+                                        if (link != null) extraPhotoViewModel.updateUri(photo, link) else uploadFailedId = photo.id
+                                    }
+                                },
+                                enabled = uploadingPhotoId != photo.id
+                            ) { Text(if (uploadingPhotoId == photo.id) "Uploading…" else "☁️ Upload to Dropbox", fontSize = 11.sp) }
+                            if (uploadFailedId == photo.id) {
+                                Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                            }
                         }
                     }
                 }
@@ -7925,7 +8013,14 @@ suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = 
         val link = try {
             client.sharing().createSharedLinkWithSettings(filePath).url
         } catch (_: Exception) {
-            client.sharing().listSharedLinksBuilder().withPath(filePath).start().links.firstOrNull()?.url
+            // withDirectOnly(true): see uploadPhotoToDropboxAsPlantId — without it this picks up an
+            // inherited link from an already-shared parent folder (a "/scl/fo/..." folder link),
+            // which 404s when loaded as if it were a single image. This is the exact path used by
+            // DropboxImagePickerDialog to resolve whatever file the user picks, so it's the one that
+            // actually surfaced this bug: any file living inside a folder the user has broadly
+            // shared came back blank everywhere it's picked from (main plant photo, progress
+            // photos, growth timeline, extra photos).
+            client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start().links.firstOrNull()?.url
         }
         link?.let { toDirectDropboxLink(it) }
     } catch (_: Exception) { null }
@@ -7995,10 +8090,14 @@ fun DropboxImagePickerDialog(
                                                 currentPath = entry.path; currentLabel = entry.name
                                             }
                                             is DropboxEntry.Image -> scope.launch {
-                                                resolving = true
+                                                resolving = true; error = null
                                                 val link = getDropboxDirectLink(context, entry.path)
                                                 resolving = false
-                                                if (link != null) { onImageSelected(link, entry.clientModified); onDismiss() }
+                                                if (link != null) {
+                                                    onImageSelected(link, entry.clientModified); onDismiss()
+                                                } else {
+                                                    error = "Couldn't get a link for that photo — check its sharing settings in Dropbox, or try a different file."
+                                                }
                                             }
                                         }
                                     }.padding(vertical = 12.dp),

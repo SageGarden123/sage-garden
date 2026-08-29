@@ -56,5 +56,9 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
         } ?: System.currentTimeMillis()
     }
 
+    fun updateUri(photo: GrowthPhotoEntity, uri: String) {
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+    }
+
     fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
 }

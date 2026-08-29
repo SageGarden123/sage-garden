@@ -31,5 +31,9 @@ class ExtraPhotoViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch { dao.upsert(photo.copy(label = label)) }
     }
 
+    fun updateUri(photo: ExtraPhotoEntity, uri: String) {
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+    }
+
     fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
 }
