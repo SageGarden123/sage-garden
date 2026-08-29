@@ -3,12 +3,15 @@ package com.example.sagegarden
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.snapshotFlow
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -16,26 +19,28 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LocationPhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).locationPhotoDao()
 
-    val locationsWithPhotoCounts: StateFlow<Map<String, Int>> = dao.getLocationPhotoCounts()
+    val locationsWithPhotoCounts: StateFlow<Map<String, Int>> = snapshotFlow { effectiveGardenId(application) }
+        .flatMapLatest { gardenId -> dao.getLocationPhotoCounts(gardenId) }
         .map { counts -> counts.associate { it.location to it.count } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    fun getForLocation(location: String): StateFlow<List<LocationPhotoEntity>> =
-        dao.getForLocation(location)
+    fun getForLocation(location: String, gardenId: String): StateFlow<List<LocationPhotoEntity>> =
+        dao.getForLocation(location, gardenId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun addPhoto(location: String, uri: String, label: String = "", takenAtOverride: Long? = null) {
-        android.util.Log.d("LocationPhoto", "addPhoto location=$location uri=$uri")
         viewModelScope.launch {
             val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(
                 LocationPhotoEntity(
                     id = "LP-${System.currentTimeMillis()}",
                     location = location, uri = uri,
-                    takenAt = takenAt, label = label
+                    takenAt = takenAt, label = label,
+                    gardenId = effectiveGardenId(getApplication())
                 )
             )
         }

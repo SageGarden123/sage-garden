@@ -400,17 +400,15 @@ object GardenMembershipClient {
      */
     private suspend fun deleteAllLocalDataForGarden(context: Context, gardenId: String) = withContext(Dispatchers.IO) {
         val db = AppDatabase.getInstance(context)
-        val plantIds = db.plantDao().getAllOnceForGarden(gardenId).map { it.id }
-        plantIds.forEach { id ->
-            db.extraPhotoDao().deleteForPlant(id)
-            db.growthPhotoDao().deleteForPlant(id)
-        }
         db.plantDao().deleteForGarden(gardenId)
         db.careLogDao().deleteForGarden(gardenId)
         db.sunZoneDao().deleteForGarden(gardenId)
         db.irrigationPathDao().deleteForGarden(gardenId)
         db.waterFlowRateDao().deleteForGarden(gardenId)
         db.wateringEventDao().deleteForGarden(gardenId)
+        db.extraPhotoDao().deleteForGarden(gardenId)
+        db.growthPhotoDao().deleteForGarden(gardenId)
+        db.locationPhotoDao().deleteForGarden(gardenId)
     }
 
     /**

@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class], version = 26, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class], version = 27, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context))
                     .build().also { INSTANCE = it }
             }
         }
@@ -271,5 +271,32 @@ fun migration24To25(context: Context) = object : Migration(24, 25) {
 val MIGRATION_25_26 = object : Migration(25, 26) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE plants ADD COLUMN photoThumbnailBase64 TEXT")
+    }
+}
+
+/**
+ * Extends gardenId scoping (see migration24To25) to extra photos, growth timeline photos, and
+ * progress (location) photos — none of these were ever part of the cloud sync payload, so like the
+ * earlier per-garden tables this stayed device-global by oversight rather than deliberate choice.
+ * Confirmed as a real bug 2026-08-29: a near-empty test garden's "Back up now" reported 5 growth
+ * photos and 7 progress photos that didn't belong to it — buildBackupPayload was reading these three
+ * tables completely unscoped (getAllOnce(), every garden combined). location_photos is the most
+ * pressing of the three since its key is a bare location NAME (e.g. "Back garden"), which two
+ * different gardens can legitimately both use — without gardenId that's a guaranteed cross-garden
+ * leak, not just a rare id-collision one. Existing rows are backfilled to this device's own install
+ * ID, same as every earlier gardenId migration, so a device not using sharing sees no change.
+ */
+fun migration26To27(context: Context) = object : Migration(26, 27) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val installId = getOrCreateInstallId(context)
+
+        db.execSQL("ALTER TABLE extra_photos ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE extra_photos SET gardenId = ?", arrayOf(installId))
+
+        db.execSQL("ALTER TABLE growth_photos ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE growth_photos SET gardenId = ?", arrayOf(installId))
+
+        db.execSQL("ALTER TABLE location_photos ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE location_photos SET gardenId = ?", arrayOf(installId))
     }
 }

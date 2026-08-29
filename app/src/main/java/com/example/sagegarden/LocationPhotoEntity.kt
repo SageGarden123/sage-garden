@@ -10,5 +10,6 @@ data class LocationPhotoEntity(
     val location: String,
     val uri: String,
     val label: String = "",
-    val takenAt: Long
+    val takenAt: Long,
+    val gardenId: String = "" // which garden this entry belongs to — blank means "not yet stamped"
 )

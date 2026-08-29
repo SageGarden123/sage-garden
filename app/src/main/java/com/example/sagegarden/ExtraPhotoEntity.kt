@@ -10,5 +10,6 @@ data class ExtraPhotoEntity(
     val plantId: String,
     val uri: String,
     val label: String = "",
-    val addedAt: Long
+    val addedAt: Long,
+    val gardenId: String = "" // which garden this entry belongs to — blank means "not yet stamped"
 )

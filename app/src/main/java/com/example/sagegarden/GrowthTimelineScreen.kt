@@ -77,7 +77,8 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     val growthViewModel: GrowthPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val photos by remember(plantId) { growthViewModel.getForPlant(plantId) }.collectAsState()
+    val gardenId = remember { effectiveGardenId(context) }
+    val photos by remember(plantId) { growthViewModel.getForPlant(plantId, gardenId) }.collectAsState()
     val sorted = remember(photos) { photos.sortedBy { it.takenAt } }
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }

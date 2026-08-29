@@ -80,7 +80,8 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     val locationViewModel: LocationPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val photos by remember(location) { locationViewModel.getForLocation(location) }.collectAsState()
+    val gardenId = remember { effectiveGardenId(context) }
+    val photos by remember(location) { locationViewModel.getForLocation(location, gardenId) }.collectAsState()
     val sorted = remember(photos) { photos.sortedBy { it.takenAt } }
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }

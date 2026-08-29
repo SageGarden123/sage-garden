@@ -11,8 +11,8 @@ import kotlinx.coroutines.launch
 class ExtraPhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).extraPhotoDao()
 
-    fun getForPlant(plantId: String): StateFlow<List<ExtraPhotoEntity>> =
-        dao.getForPlant(plantId)
+    fun getForPlant(plantId: String, gardenId: String): StateFlow<List<ExtraPhotoEntity>> =
+        dao.getForPlant(plantId, gardenId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun addPhoto(plantId: String, uri: String, label: String = "") {
@@ -21,7 +21,8 @@ class ExtraPhotoViewModel(application: Application) : AndroidViewModel(applicati
                 ExtraPhotoEntity(
                     id = "EP-${System.currentTimeMillis()}",
                     plantId = plantId, uri = uri, label = label,
-                    addedAt = System.currentTimeMillis()
+                    addedAt = System.currentTimeMillis(),
+                    gardenId = effectiveGardenId(getApplication())
                 )
             )
         }

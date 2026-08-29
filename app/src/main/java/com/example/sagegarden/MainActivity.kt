@@ -5663,7 +5663,8 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     val extraPhotoViewModel: ExtraPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val photos by remember(plantId) { extraPhotoViewModel.getForPlant(plantId) }.collectAsState()
+    val gardenId = remember { effectiveGardenId(context) }
+    val photos by remember(plantId) { extraPhotoViewModel.getForPlant(plantId, gardenId) }.collectAsState()
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()

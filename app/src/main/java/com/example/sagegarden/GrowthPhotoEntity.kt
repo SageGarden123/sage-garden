@@ -10,5 +10,6 @@ data class GrowthPhotoEntity(
     val plantId: String,
     val uri: String,
     val takenAt: Long,
-    val label: String = ""
+    val label: String = "",
+    val gardenId: String = "" // which garden this entry belongs to — blank means "not yet stamped"
 )

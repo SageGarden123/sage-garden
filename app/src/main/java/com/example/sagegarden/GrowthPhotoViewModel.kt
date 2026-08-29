@@ -3,10 +3,13 @@ package com.example.sagegarden
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.snapshotFlow
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,15 +19,17 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class GrowthPhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).growthPhotoDao()
 
-    val plantIdsWithPhotos: StateFlow<Set<String>> = dao.getAllPlantIdsWithPhotos()
+    val plantIdsWithPhotos: StateFlow<Set<String>> = snapshotFlow { effectiveGardenId(application) }
+        .flatMapLatest { gardenId -> dao.getAllPlantIdsWithPhotos(gardenId) }
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    fun getForPlant(plantId: String): StateFlow<List<GrowthPhotoEntity>> =
-        dao.getForPlant(plantId)
+    fun getForPlant(plantId: String, gardenId: String): StateFlow<List<GrowthPhotoEntity>> =
+        dao.getForPlant(plantId, gardenId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun addPhoto(plantId: String, uri: String, label: String = "", takenAtOverride: Long? = null) {
@@ -34,7 +39,8 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
                 GrowthPhotoEntity(
                     id = "GP-${System.currentTimeMillis()}",
                     plantId = plantId, uri = uri,
-                    takenAt = takenAt, label = label
+                    takenAt = takenAt, label = label,
+                    gardenId = effectiveGardenId(getApplication())
                 )
             )
         }
