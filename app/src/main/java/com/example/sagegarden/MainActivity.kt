@@ -2994,13 +2994,26 @@ fun MapScreen(
                 val categoryLabels = remember(usedCategories) {
                     listOf("All" to "All") + usedCategories.map { cat -> cat to "${categoryMarkerEmoji(cat)} $cat" }
                 }
-                Box(modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp))) {
-                    DropdownField(
-                        label = "Filter by category",
-                        options = categoryLabels.map { it.second },
-                        selected = categoryLabels.firstOrNull { it.first == mapCategoryFilter }?.second ?: "All",
-                        onSelect = { label -> mapCategoryFilter = categoryLabels.firstOrNull { it.second == label }?.first ?: "All" }
-                    )
+                val selectedCategoryLabel = categoryLabels.firstOrNull { it.first == mapCategoryFilter }?.second ?: "All"
+                var categoryMenuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(
+                        onClick = { categoryMenuExpanded = true },
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White.copy(alpha = 0.92f)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(selectedCategoryLabel, fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (categoryMenuExpanded) "▾" else "▸", fontSize = 12.sp, color = Color.Gray)
+                    }
+                    DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                        categoryLabels.forEach { (key, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label, fontSize = 13.sp) },
+                                onClick = { mapCategoryFilter = key; categoryMenuExpanded = false }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -6342,20 +6355,20 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🌱 Create garden", fontSize = 12.sp) }
+        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🌱 New garden", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
         if (isOwner) {
-            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔗 Share", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔗 Share", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
         }
-        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔑 Have a code?", fontSize = 12.sp) }
+        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔑 Have code?", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
     }
     if (isOwner) {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("✏️ Rename", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("✏️ Rename", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
             OutlinedButton(onClick = { showManageAccessDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) {
                 Text(
                     if (pendingForActiveGarden.isNotEmpty()) "👥 Manage access (${pendingForActiveGarden.size})" else "👥 Manage access",
-                    fontSize = 12.sp
+                    fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -6477,7 +6490,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                 Column {
                     when {
                         loadingShareCode -> Text("Loading…", fontSize = 12.sp, color = Color.Gray)
-                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have a code?\" on their own device.", fontSize = 12.sp, color = Color.Gray)
+                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have code?\" on their own device.", fontSize = 12.sp, color = Color.Gray)
                         else -> {
                             Text("Share this code:", fontSize = 12.sp, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
