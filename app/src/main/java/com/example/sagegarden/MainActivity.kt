@@ -1280,6 +1280,24 @@ fun setDropboxBackupFolderPath(context: Context, path: String?) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putString("dropbox_backup_folder_path", path).apply()
 }
+/** Null means "not set yet — falls back to the backup folder, then the photo folder". */
+fun getDropboxCsvFolderPath(context: Context): String? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("dropbox_csv_folder_path", null)
+}
+fun setDropboxCsvFolderPath(context: Context, path: String?) {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    prefs.edit().putString("dropbox_csv_folder_path", path).apply()
+}
+/** The device's own default garden keeps the plain "dans_garden_mapper.csv" (no migration for
+ * existing users); any other garden gets a name-derived filename, same reasoning as
+ * BackupHelper.defaultBackupFileNameForGarden — otherwise two gardens exporting CSV to the same
+ * Dropbox folder would silently overwrite each other's export. */
+fun csvExportFileNameForGarden(context: Context, gardenId: String): String {
+    if (gardenId.isBlank() || gardenId == getOrCreateInstallId(context)) return "dans_garden_mapper.csv"
+    val name = GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == gardenId }?.name ?: "garden"
+    return "dans_garden_mapper_${sanitizeForDropboxFilename(name)}.csv"
+}
 fun getLocalBackupFolderUri(context: Context): Uri? {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getString("local_backup_folder_uri", null)?.let { Uri.parse(it) }
@@ -7746,28 +7764,90 @@ fun HelpScreen(
             Button(onClick = { exportLauncher.launch("dans_garden_mapper.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV") }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
+                var dropboxCsvFolderPath by remember {
+                    mutableStateOf(getDropboxCsvFolderPath(context) ?: getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: "")
+                }
+                var showDropboxCsvFolderPicker by remember { mutableStateOf(false) }
+                Text("Dropbox folder", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = dropboxCsvFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
+                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { showDropboxCsvFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                if (showDropboxCsvFolderPicker) {
+                    DropboxFolderPickerDialog(
+                        context = context, onDismiss = { showDropboxCsvFolderPicker = false },
+                        onFolderSelected = { path -> dropboxCsvFolderPath = path; setDropboxCsvFolderPath(context, path) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
+                var checkingExistingCsv by remember { mutableStateOf(false) }
+                var existingCsvDate by remember { mutableStateOf<Date?>(null) }
+                var showReplaceCsvConfirm by remember { mutableStateOf(false) }
+
+                fun runDropboxCsvExport(fileName: String) {
+                    scope.launch {
+                        dropboxCsvExporting = true
+                        val sb = StringBuilder()
+                        sb.append(CSV_HEADERS.joinToString(",")).append("\n")
+                        plants.forEach { p ->
+                            val row = listOf(
+                                p.id, p.name, p.qty.toString(), p.sci, p.location, p.date, p.source,
+                                p.sun, p.soil, p.soilPh, p.category, p.water, p.frost, p.native, p.pollinator, p.notes,
+                                p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem
+                            ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
+                            sb.append(row).append("\n")
+                        }
+                        val ok = uploadTextFileToDropbox(context, dropboxCsvFolderPath, fileName, sb.toString())
+                        dropboxCsvExporting = false
+                        snackbarHostState.showSnackbar(if (ok) "Exported ${plants.size} plants to Dropbox as $fileName" else "Export to Dropbox failed")
+                    }
+                }
+
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            dropboxCsvExporting = true
-                            val sb = StringBuilder()
-                            sb.append(CSV_HEADERS.joinToString(",")).append("\n")
-                            plants.forEach { p ->
-                                val row = listOf(
-                                    p.id, p.name, p.qty.toString(), p.sci, p.location, p.date, p.source,
-                                    p.sun, p.soil, p.soilPh, p.category, p.water, p.frost, p.native, p.pollinator, p.notes,
-                                    p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem
-                                ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
-                                sb.append(row).append("\n")
+                            checkingExistingCsv = true
+                            val defaultName = csvExportFileNameForGarden(context, effectiveGardenId(context))
+                            val existing = try {
+                                val client = getDropboxClient(context)
+                                val path = "$dropboxCsvFolderPath/$defaultName".replace("//", "/")
+                                (client?.files()?.getMetadata(path) as? com.dropbox.core.v2.files.FileMetadata)?.serverModified
+                            } catch (_: Exception) { null }
+                            checkingExistingCsv = false
+                            if (existing != null) {
+                                existingCsvDate = existing
+                                showReplaceCsvConfirm = true
+                            } else {
+                                runDropboxCsvExport(defaultName)
                             }
-                            val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
-                            val ok = uploadTextFileToDropbox(context, folderPath, "dans_garden_mapper.csv", sb.toString())
-                            dropboxCsvExporting = false
-                            snackbarHostState.showSnackbar(if (ok) "Exported ${plants.size} plants to Dropbox" else "Export to Dropbox failed")
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(), enabled = !dropboxCsvExporting
-                ) { Text(if (dropboxCsvExporting) "Exporting…" else "☁️ Export CSV to Dropbox") }
+                    modifier = Modifier.fillMaxWidth(), enabled = !dropboxCsvExporting && !checkingExistingCsv
+                ) { Text(if (dropboxCsvExporting) "Exporting…" else if (checkingExistingCsv) "Checking…" else "☁️ Export CSV to Dropbox") }
+                if (showReplaceCsvConfirm) {
+                    val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
+                    val defaultName = remember { csvExportFileNameForGarden(context, effectiveGardenId(context)) }
+                    AlertDialog(
+                        onDismissRequest = { showReplaceCsvConfirm = false },
+                        title = { Text("Replace existing CSV?") },
+                        text = { Text("A CSV from ${existingCsvDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replace it, or keep it and save this as a separate new file?") },
+                        confirmButton = { TextButton(onClick = { showReplaceCsvConfirm = false; runDropboxCsvExport(defaultName) }) { Text("Replace") } },
+                        dismissButton = {
+                            Row {
+                                TextButton(onClick = { showReplaceCsvConfirm = false }) { Text("Cancel") }
+                                TextButton(onClick = {
+                                    showReplaceCsvConfirm = false
+                                    val timestamped = defaultName.removeSuffix(".csv") + "_${SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date())}.csv"
+                                    runDropboxCsvExport(timestamped)
+                                }) { Text("Create new") }
+                            }
+                        }
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
