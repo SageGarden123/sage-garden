@@ -154,6 +154,14 @@ object BackupHelper {
         }
         root.put("tuyaZoneMappings", tuyaArr)
 
+        val rachioArr = JSONArray()
+        getRachioZoneMappings(context).forEach { m ->
+            val o = JSONObject()
+            o.put("zone", m.zone); o.put("deviceId", m.deviceId); o.put("zoneId", m.zoneId)
+            rachioArr.put(o)
+        }
+        root.put("rachioZoneMappings", rachioArr)
+
         val settings = JSONObject()
         settings.put("irrigationSystem", getIrrigationSystem(context).name)
         settings.put("photoStorageMode", getPhotoStorageMode(context))
@@ -177,6 +185,7 @@ object BackupHelper {
         settings.put("overdueRepeatDays", getOverdueRepeatDays(context))
         settings.put("fertiliseRemindersEnabled", getFertiliseRemindersEnabled(context))
         settings.put("pruneRemindersEnabled", getPruneRemindersEnabled(context))
+        settings.put("feedRemindersEnabled", getFeedRemindersEnabled(context))
         settings.put("weatherSkipEnabled", getWeatherSkipEnabled(context))
         settings.put("rainProbabilityThreshold", getRainProbabilityThreshold(context))
         settings.put("rainAmountThresholdMm", getRainAmountThreshold(context).toDouble())
@@ -187,6 +196,17 @@ object BackupHelper {
         settings.put("gardenLat", gardenLatLng?.first ?: JSONObject.NULL)
         settings.put("gardenLng", gardenLatLng?.second ?: JSONObject.NULL)
         settings.put("gardenAddress", getGardenAddress(context))
+        val gardenLocations = getGardenLocations(context)
+        settings.put("gardenLocations", if (gardenLocations != null) JSONArray(gardenLocations) else JSONObject.NULL)
+        settings.put("irrigationLogFolderUri", getIrrigationLogFolderUri(context)?.toString() ?: "")
+        settings.put("irrigationLogDropboxFolderPath", getIrrigationLogDropboxFolderPath(context) ?: "")
+        // Per-zone "last Dropbox folder browsed to" memory for progress photos — dynamically keyed
+        // (one entry per zone name), so enumerated from the raw prefs rather than a fixed getter.
+        val progressPhotoFolders = JSONObject()
+        context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE).all
+            .filterKeys { it.startsWith("progress_photo_dropbox_folder.") }
+            .forEach { (k, v) -> progressPhotoFolders.put(k.removePrefix("progress_photo_dropbox_folder."), v as? String ?: "") }
+        settings.put("progressPhotoDropboxFolders", progressPhotoFolders)
         root.put("settings", settings)
 
         val mapUri = getCustomMapUri(context)
@@ -362,6 +382,13 @@ object BackupHelper {
         }
         setTuyaZoneMappings(context, tuyaMappings)
 
+        val rachioArr = root.optJSONArray("rachioZoneMappings") ?: JSONArray()
+        val rachioMappings = (0 until rachioArr.length()).map { i ->
+            val o = rachioArr.getJSONObject(i)
+            RachioZoneMapping(o.getString("zone"), o.getString("deviceId"), o.getString("zoneId"))
+        }
+        setRachioZoneMappings(context, rachioMappings)
+
         root.optJSONObject("settings")?.let { s ->
             // Restored before Tuya/Rachio credentials (deliberately excluded from backup for
             // security) so the zone-mapping panel just above shows under the right vendor instead
@@ -394,6 +421,7 @@ object BackupHelper {
             setOverdueRepeatDays(context, s.optInt("overdueRepeatDays", 3))
             setFertiliseRemindersEnabled(context, s.optBoolean("fertiliseRemindersEnabled", false))
             setPruneRemindersEnabled(context, s.optBoolean("pruneRemindersEnabled", false))
+            setFeedRemindersEnabled(context, s.optBoolean("feedRemindersEnabled", false))
             setWeatherSkipEnabled(context, s.optBoolean("weatherSkipEnabled", false))
             setRainProbabilityThreshold(context, s.optInt("rainProbabilityThreshold", 60))
             setRainAmountThreshold(context, s.optDouble("rainAmountThresholdMm", 1.0).toFloat())
@@ -404,6 +432,17 @@ object BackupHelper {
                 setGardenLatLng(context, s.optDouble("gardenLat"), s.optDouble("gardenLng"))
             }
             setGardenAddress(context, s.optString("gardenAddress", ""))
+            if (!s.isNull("gardenLocations")) {
+                val arr = s.optJSONArray("gardenLocations") ?: JSONArray()
+                setGardenLocations(context, (0 until arr.length()).map { arr.getString(it) })
+            }
+            s.optString("irrigationLogFolderUri", "").takeIf { it.isNotBlank() }
+                ?.let { setIrrigationLogFolderUri(context, Uri.parse(it)) }
+            s.optString("irrigationLogDropboxFolderPath", "").takeIf { it.isNotBlank() }
+                ?.let { setIrrigationLogDropboxFolderPath(context, it) }
+            s.optJSONObject("progressPhotoDropboxFolders")?.let { obj ->
+                obj.keys().forEach { zone -> setProgressPhotoDropboxFolder(context, zone, obj.getString(zone)) }
+            }
         }
 
         return BackupCounts(
