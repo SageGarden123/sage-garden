@@ -1289,14 +1289,14 @@ fun setDropboxCsvFolderPath(context: Context, path: String?) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     prefs.edit().putString("dropbox_csv_folder_path", path).apply()
 }
-/** The device's own default garden keeps the plain "dans_garden_mapper.csv" (no migration for
- * existing users); any other garden gets a name-derived filename, same reasoning as
- * BackupHelper.defaultBackupFileNameForGarden — otherwise two gardens exporting CSV to the same
- * Dropbox folder would silently overwrite each other's export. */
+/** The device's own default garden keeps "sage_garden_plantdata.csv" ("plantdata" makes clear this
+ * is only the plant CSV, not a full backup); any other garden gets a name-derived filename too,
+ * same reasoning as BackupHelper.defaultBackupFileNameForGarden — otherwise two gardens exporting
+ * CSV to the same Dropbox folder would silently overwrite each other's export. */
 fun csvExportFileNameForGarden(context: Context, gardenId: String): String {
-    if (gardenId.isBlank() || gardenId == getOrCreateInstallId(context)) return "dans_garden_mapper.csv"
+    if (gardenId.isBlank() || gardenId == getOrCreateInstallId(context)) return "sage_garden_plantdata.csv"
     val name = GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == gardenId }?.name ?: "garden"
-    return "dans_garden_mapper_${sanitizeForDropboxFilename(name)}.csv"
+    return "sage_garden_plantdata_${sanitizeForDropboxFilename(name)}.csv"
 }
 fun getLocalBackupFolderUri(context: Context): Uri? {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
@@ -5874,7 +5874,7 @@ val faqItems = listOf(
     ),
     FaqItem(
         "Are there any limits?",
-        "Sage Garden is free — every feature is unlocked for everyone: unlimited plants and log history, watering reminders, the photo log, plant care widget, Dropbox backup, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, and growth photo timelines. The only limits are on the Sage AI assistant (${EntitlementManager.FREE_SAGE_PROMPT_LIMIT} free questions total) and AI plant-photo identification ($PLANTNET_TRIAL_DAILY_LIMIT identifications a day) — both of which call paid AI services behind the scenes. A promo code (Help → Basic/Advanced mode) removes both limits."
+        "Sage Garden is free — every feature is unlocked for everyone: unlimited plants and log history, watering reminders, the photo log, plant care widget, Dropbox backup, weather-aware reminders, Tuya/Rachio smart-irrigation integration, the sun map, companion planting/spacing audit, cost & water usage tracking, and growth photo timelines. The only limits are on the Sage AI assistant (${EntitlementManager.FREE_SAGE_PROMPT_LIMIT} free questions total) and AI plant-photo identification ($PLANTNET_TRIAL_DAILY_LIMIT identifications a day) — both of which call paid AI services behind the scenes."
     )
 )
 
@@ -6537,7 +6537,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                 Column {
                     OutlinedTextField(
                         value = displayName, onValueChange = { displayName = it },
-                        label = { Text("Your name") }, placeholder = { Text("e.g. Dan's phone") },
+                        label = { Text("Your name") }, placeholder = { Text("e.g. My phone") },
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                     Text("Shown to the garden's owner so they know whose request this is.", fontSize = 11.sp, color = Color.Gray)
@@ -7774,7 +7774,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
-            Button(onClick = { exportLauncher.launch("dans_garden_mapper.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV") }
+            Button(onClick = { exportLauncher.launch("sage_garden_plantdata.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV to device") }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
                 var dropboxCsvFolderPath by remember {
@@ -7874,7 +7874,7 @@ fun HelpScreen(
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
                 modifier = Modifier.fillMaxWidth(), enabled = canEditActiveGarden
-            ) { Text("Choose CSV file") }
+            ) { Text("Choose CSV file from device") }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(

@@ -108,7 +108,7 @@ object GardenMembershipStore {
     fun getMemberToken(context: Context, gardenId: String): String? =
         getKnownGardens(context).firstOrNull { it.gardenId == gardenId }?.memberToken
 
-    /** This device's own chosen name (e.g. "Dan's phone"), shown to a garden's owner on a join request and in the members list — otherwise they'd only see an anonymous "A device"/raw id. Remembered locally so it's pre-filled on every future join request without retyping. */
+    /** This device's own chosen name (e.g. "My phone"), shown to a garden's owner on a join request and in the members list — otherwise they'd only see an anonymous "A device"/raw id. Remembered locally so it's pre-filled on every future join request without retyping. */
     fun getDeviceDisplayName(context: Context): String = prefs(context).getString(KEY_DEVICE_DISPLAY_NAME, "") ?: ""
     fun setDeviceDisplayName(context: Context, value: String) {
         prefs(context).edit().putString(KEY_DEVICE_DISPLAY_NAME, value).apply()
