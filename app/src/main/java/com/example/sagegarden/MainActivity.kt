@@ -6260,6 +6260,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     var showManageAccessDialog by remember { mutableStateOf(false) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showDeleteGardenConfirm by remember { mutableStateOf(false) }
+    var showDeleteGardenFinalConfirm by remember { mutableStateOf(false) }
     var deletingGarden by remember { mutableStateOf(false) }
 
     fun refresh() {
@@ -6716,15 +6717,43 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         )
     }
 
+    // Two-step confirmation for a whole-garden delete: a warning dialog first, then a second "are
+    // you sure" dialog that only unlocks once the garden's exact name is typed in — a plain second
+    // tap is too easy to do by muscle memory/reflex for something this irreversible.
     if (showDeleteGardenConfirm) {
         AlertDialog(
-            onDismissRequest = { if (!deletingGarden) showDeleteGardenConfirm = false },
+            onDismissRequest = { showDeleteGardenConfirm = false },
             title = { Text("Delete ${activeGarden?.name ?: "this garden"}?") },
             text = {
                 Text(
                     "This permanently deletes the garden and every member's access to it — including yours. All its plants, care history, and settings on the server are gone. This can't be undone.",
                     fontSize = 13.sp
                 )
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeleteGardenConfirm = false; showDeleteGardenFinalConfirm = true }) {
+                    Text("Continue", color = Color(0xFFB23B3B))
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }) { Text("Cancel") } }
+        )
+    }
+    if (showDeleteGardenFinalConfirm) {
+        val gardenName = activeGarden?.name ?: "this garden"
+        var confirmText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { if (!deletingGarden) { showDeleteGardenFinalConfirm = false; confirmText = "" } },
+            title = { Text("Are you sure?") },
+            text = {
+                Column {
+                    Text("Type \"$gardenName\" below to confirm you want to permanently delete it.", fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = confirmText, onValueChange = { confirmText = it },
+                        label = { Text("Garden name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), enabled = !deletingGarden
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -6741,13 +6770,19 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 else -> snackbarHostState.showSnackbar("Couldn't delete — try again.")
                             }
                             deletingGarden = false
-                            showDeleteGardenConfirm = false
+                            showDeleteGardenFinalConfirm = false
+                            confirmText = ""
                         }
                     },
-                    enabled = !deletingGarden
+                    enabled = !deletingGarden && confirmText == gardenName
                 ) { Text(if (deletingGarden) "Deleting…" else "Delete", color = Color(0xFFB23B3B)) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }, enabled = !deletingGarden) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteGardenFinalConfirm = false; confirmText = "" },
+                    enabled = !deletingGarden
+                ) { Text("Cancel") }
+            }
         )
     }
 }
