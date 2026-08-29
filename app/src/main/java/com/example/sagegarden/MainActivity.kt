@@ -2150,16 +2150,22 @@ val listFieldCatalog = listOf(
     DashboardStatOption("sci", "Scientific name"),
     DashboardStatOption("native", "Native/Exotic"),
     DashboardStatOption("location", "Location"),
+    DashboardStatOption("category", "Category"),
     DashboardStatOption("sun", "Sun"),
     DashboardStatOption("water", "Water"),
     DashboardStatOption("soil", "Soil"),
+    DashboardStatOption("soilPh", "Soil pH"),
     DashboardStatOption("frost", "Frost"),
+    DashboardStatOption("pollinator", "Pollinator-friendly"),
+    DashboardStatOption("source", "Source"),
+    DashboardStatOption("wateringSystem", "Watering system"),
     DashboardStatOption("due", "Watering due")
 )
 val defaultListFieldKeys = listOf("sci", "native")
 
 val listGroupOptions = listOf(
     DashboardStatOption("location", "Location"),
+    DashboardStatOption("category", "Category"),
     DashboardStatOption("sun", "Sun"),
     DashboardStatOption("water", "Water"),
     DashboardStatOption("none", "None")
@@ -2200,10 +2206,15 @@ fun listFieldValue(key: String, plant: PlantEntity): String? = when (key) {
     "sci" -> plant.sci.takeIf { it.isNotBlank() }
     "native" -> plant.native.takeIf { it.isNotBlank() }
     "location" -> plant.location.takeIf { it.isNotBlank() }
+    "category" -> plant.category.takeIf { it.isNotBlank() }
     "sun" -> plant.sun.takeIf { it.isNotBlank() }?.let { "$it sun" }
     "water" -> plant.water.takeIf { it.isNotBlank() }?.let { "$it water" }
     "soil" -> plant.soil.takeIf { it.isNotBlank() }
+    "soilPh" -> plant.soilPh.takeIf { it.isNotBlank() }
     "frost" -> plant.frost.takeIf { it.isNotBlank() }
+    "pollinator" -> plant.pollinator.takeIf { it.isNotBlank() }
+    "source" -> plant.source.takeIf { it.isNotBlank() }
+    "wateringSystem" -> plant.wateringSystem.takeIf { it.isNotBlank() }
     "due" -> computeWateringStatus(plant)?.label
     else -> null
 }
@@ -2862,6 +2873,13 @@ fun MapScreen(
             }
         ) {
             categoryFilteredPlants.forEach { plant ->
+                // Keyed by plant id so each marker's remembered state (MarkerComposable especially
+                // caches its rendered content as a bitmap internally) stays tied to that specific
+                // plant across recompositions — without this, Compose's default positional slot
+                // reuse in a plain forEach could let a marker at a given list position keep an old
+                // plant's cached icon bitmap for a moment after filtering/reordering changed which
+                // plant now occupies that position, showing the wrong category icon.
+                key(plant.id) {
                 if (plant.lat != null && plant.lng != null) {
                     if (plant.category.isNotBlank() && plant.category != "Other") {
                         MarkerComposable(
@@ -2893,6 +2911,7 @@ fun MapScreen(
                             }
                         )
                     }
+                }
                 }
             }
         }
@@ -2928,19 +2947,16 @@ fun MapScreen(
 
             if (usedCategories.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    item {
-                        FilterChip(
-                            selected = mapCategoryFilter == "All", onClick = { mapCategoryFilter = "All" },
-                            label = { Text("All", fontSize = 12.sp) }
-                        )
-                    }
-                    items(usedCategories) { cat ->
-                        FilterChip(
-                            selected = mapCategoryFilter == cat, onClick = { mapCategoryFilter = cat },
-                            label = { Text("${categoryMarkerEmoji(cat)} $cat", fontSize = 12.sp) }
-                        )
-                    }
+                val categoryLabels = remember(usedCategories) {
+                    listOf("All" to "All") + usedCategories.map { cat -> cat to "${categoryMarkerEmoji(cat)} $cat" }
+                }
+                Box(modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp))) {
+                    DropdownField(
+                        label = "Filter by category",
+                        options = categoryLabels.map { it.second },
+                        selected = categoryLabels.firstOrNull { it.first == mapCategoryFilter }?.second ?: "All",
+                        onSelect = { label -> mapCategoryFilter = categoryLabels.firstOrNull { it.second == label }?.first ?: "All" }
+                    )
                 }
             }
 
@@ -3873,17 +3889,31 @@ fun ListScreen(
     val now = remember { System.currentTimeMillis() }
     val collapsedGroups = ListScreenState.collapsedGroups
 
+    // Every text field except notes (free-form, easy to search separately if ever needed), numeric
+    // fields, date fields, and latitude/longitude — those aren't meaningful to match against typed
+    // search text.
     val filtered = plants.filter {
         search.isBlank() ||
                 it.name.contains(search, ignoreCase = true) ||
                 it.sci.contains(search, ignoreCase = true) ||
                 it.location.contains(search, ignoreCase = true) ||
-                it.id.contains(search, ignoreCase = true)
+                it.id.contains(search, ignoreCase = true) ||
+                it.sun.contains(search, ignoreCase = true) ||
+                it.water.contains(search, ignoreCase = true) ||
+                it.soil.contains(search, ignoreCase = true) ||
+                it.soilPh.contains(search, ignoreCase = true) ||
+                it.category.contains(search, ignoreCase = true) ||
+                it.frost.contains(search, ignoreCase = true) ||
+                it.native.contains(search, ignoreCase = true) ||
+                it.pollinator.contains(search, ignoreCase = true) ||
+                it.source.contains(search, ignoreCase = true) ||
+                it.wateringSystem.contains(search, ignoreCase = true)
     }
 
     fun groupKey(p: PlantEntity): String = when (groupBy) {
         "sun" -> p.sun.ifBlank { "Unspecified sun" }
         "water" -> p.water.ifBlank { "Unspecified water" }
+        "category" -> p.category.ifBlank { "Unspecified category" }
         "none" -> ""
         else -> p.location.ifBlank { "Unspecified location" }
     }
@@ -5206,12 +5236,17 @@ fun FormScreen(
 
         if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
-            Text("Overrides the frequency above during summer/winter. Leave blank to use the default year-round.", fontSize = 12.sp, color = Color.Gray)
+            Text("Overrides the frequency above during summer/winter. Leave a season blank to use the default year-round frequency instead.", fontSize = 12.sp, color = Color.Gray)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Entering 0 does NOT mean \"skip watering this season\" — it means water every 0 days, so the plant will constantly show as overdue. To skip a season entirely, leave its field blank.",
+                fontSize = 12.sp, color = Color(0xFFB23B3B)
+            )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = summerWateringFrequency,
                 onValueChange = { summerWateringFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Summer frequency (days)") },
+                label = { Text("Summer frequency (days) — blank = no summer override") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -5219,7 +5254,7 @@ fun FormScreen(
             OutlinedTextField(
                 value = winterWateringFrequency,
                 onValueChange = { winterWateringFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Winter frequency (days)") },
+                label = { Text("Winter frequency (days) — blank = no winter override") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
