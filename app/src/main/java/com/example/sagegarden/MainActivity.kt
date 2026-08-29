@@ -7825,11 +7825,13 @@ fun HelpScreen(
                         scope.launch {
                             checkingExistingCsv = true
                             val defaultName = csvExportFileNameForGarden(context, effectiveGardenId(context))
-                            val existing = try {
-                                val client = getDropboxClient(context)
-                                val path = "$dropboxCsvFolderPath/$defaultName".replace("//", "/")
-                                (client?.files()?.getMetadata(path) as? com.dropbox.core.v2.files.FileMetadata)?.serverModified
-                            } catch (_: Exception) { null }
+                            val existing = withContext(Dispatchers.IO) {
+                                try {
+                                    val client = getDropboxClient(context)
+                                    val path = "$dropboxCsvFolderPath/$defaultName".replace("//", "/")
+                                    (client?.files()?.getMetadata(path) as? com.dropbox.core.v2.files.FileMetadata)?.serverModified
+                                } catch (_: Exception) { null }
+                            }
                             checkingExistingCsv = false
                             if (existing != null) {
                                 existingCsvDate = existing
