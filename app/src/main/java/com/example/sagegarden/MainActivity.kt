@@ -239,7 +239,7 @@ val waterOptions = listOf("Low", "Moderate", "High", "Unknown")
 val soilOptions = listOf(
     "Sandy", "Loamy", "Clay", "Silty", "Peaty", "Chalky", "Rocky/Stony", "Potting Mix", "Other", "Unknown"
 )
-val soilPhOptions = listOf("Acidic", "Neutral", "Alkaline", "Unknown")
+val soilPhOptions = listOf("Acidic", "Acidic–Neutral", "Neutral", "Neutral–Alkaline", "Alkaline", "Acidic–Alkaline", "Unknown")
 val categoryOptions = listOf(
     "Trees", "Shrubs", "Ground Cover", "Climbers/Vines", "Grasses", "Ferns", "Perennials",
     "Annuals", "Bulbs", "Succulents", "Palms/Cycads", "Aquatic", "Herbs", "Other"
