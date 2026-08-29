@@ -1012,21 +1012,34 @@ suspend fun uploadPhotoToDropbox(context: Context, localUri: Uri): String? {
  * the lookup a few times with a short delay before giving up.
  */
 private suspend fun fetchOrCreateSharedLink(client: DbxClientV2, filePath: String): String? {
-    try {
-        return client.sharing().createSharedLinkWithSettings(filePath).url
-    } catch (_: Exception) {
-        repeat(3) { attempt ->
-            val existing = try {
+    // Retries the WHOLE create-then-lookup-fallback sequence, not just the fallback lookup — the
+    // first version only retried the lookup after a single failed create attempt, on the theory
+    // that the create call fails because a link already exists (just briefly not visible to the
+    // lookup yet). Confirmed on-device 2026-08-29 that this isn't the whole story: an upload can
+    // still be reported as failed despite genuinely succeeding, which means the CREATE call itself
+    // can be the one failing transiently (network hiccup, transient server error) — in which case
+    // no link was ever created, so retrying only the lookup finds nothing no matter how many times
+    // it's tried. Retrying the create call too gives it a real second chance to succeed.
+    val delaysMs = longArrayOf(500L, 1000L, 1500L, 2000L)
+    repeat(5) { attempt ->
+        val link = try {
+            client.sharing().createSharedLinkWithSettings(filePath).url
+        } catch (e: Exception) {
+            val fallback = try {
                 client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start()
                     .links.firstOrNull()?.url
             } catch (_: Exception) {
                 null
             }
-            if (existing != null) return existing
-            if (attempt < 2) kotlinx.coroutines.delay(600L)
+            if (fallback == null) {
+                android.util.Log.w("DropboxLink", "fetchOrCreateSharedLink attempt ${attempt + 1}/5 failed for path='$filePath'", e)
+            }
+            fallback
         }
-        return null
+        if (link != null) return link
+        if (attempt < delaysMs.size) kotlinx.coroutines.delay(delaysMs[attempt])
     }
+    return null
 }
 
 /**
@@ -1043,10 +1056,21 @@ suspend fun previewDropboxUploadName(context: Context, plantId: String): String?
         try {
             val client = getDropboxClient(context) ?: return@withContext null
             val folderPath = getDropboxPhotoFolderPath(context) ?: ""
-            val existingNames = client.files().listFolder(folderPath.ifBlank { "" })
-                .entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
-                .toSet()
+            val listing = client.files().listFolder(folderPath.ifBlank { "" })
+            val existingNames = listing.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }.toMutableSet()
+            // listFolder truncates at a page limit and sets hasMore=true if the folder has more
+            // entries than that — without paging through listFolderContinue, a large photo folder
+            // could silently miss files that DO exist, which previously showed as available to reuse.
+            var cursor = listing.cursor
+            var hasMore = listing.hasMore
+            while (hasMore) {
+                val more = client.files().listFolderContinue(cursor)
+                existingNames += more.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
+                cursor = more.cursor
+                hasMore = more.hasMore
+            }
             val bareName = "$plantId.jpg"
+            android.util.Log.d("DropboxUploadName", "folder='$folderPath' entries=${existingNames.size} bareNameExists=${bareName in existingNames}")
             if (bareName !in existingNames) {
                 bareName
             } else {
@@ -1054,7 +1078,8 @@ suspend fun previewDropboxUploadName(context: Context, plantId: String): String?
                 while ("${plantId}_$suffix.jpg" in existingNames) suffix++
                 "${plantId}_$suffix.jpg"
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("DropboxUploadName", "preview failed for $plantId", e)
             null
         }
     }
@@ -8290,21 +8315,20 @@ suspend fun listDropboxEntries(
 
 suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = withContext(Dispatchers.IO) {
     try {
-        val client = getDropboxClient(context) ?: return@withContext null
-        val link = try {
-            client.sharing().createSharedLinkWithSettings(filePath).url
-        } catch (_: Exception) {
-            // withDirectOnly(true): see uploadPhotoToDropboxAsPlantId — without it this picks up an
-            // inherited link from an already-shared parent folder (a "/scl/fo/..." folder link),
-            // which 404s when loaded as if it were a single image. This is the exact path used by
-            // DropboxImagePickerDialog to resolve whatever file the user picks, so it's the one that
-            // actually surfaced this bug: any file living inside a folder the user has broadly
-            // shared came back blank everywhere it's picked from (main plant photo, progress
-            // photos, growth timeline, extra photos).
-            client.sharing().listSharedLinksBuilder().withPath(filePath).withDirectOnly(true).start().links.firstOrNull()?.url
+        val client = getDropboxClient(context) ?: run {
+            android.util.Log.w("DropboxLink", "getDropboxDirectLink: not connected to Dropbox")
+            return@withContext null
         }
+        // Uses the same retrying create-or-lookup as a freshly uploaded photo (fetchOrCreateSharedLink)
+        // — an existing file being picked shouldn't usually hit the same "link not visible yet" lag a
+        // brand-new upload can, but there's no reason this path should be less resilient than that one.
+        val link = fetchOrCreateSharedLink(client, filePath)
+        if (link == null) android.util.Log.w("DropboxLink", "getDropboxDirectLink: no link resolved for path='$filePath'")
         link?.let { toDirectDropboxLink(it) }
-    } catch (_: Exception) { null }
+    } catch (e: Exception) {
+        android.util.Log.w("DropboxLink", "getDropboxDirectLink threw for path='$filePath'", e)
+        null
+    }
 }
 
 @Composable
