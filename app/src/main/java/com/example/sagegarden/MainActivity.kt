@@ -46,6 +46,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -4729,7 +4730,7 @@ fun FormScreen(
 
     val displayId = plantId ?: generatedId
 
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     val dropboxConnected = DropboxAuthState.token != null
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
@@ -5550,6 +5551,20 @@ fun createImageUri(context: Context): Uri {
     }
     return context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
 }
+
+/**
+ * A camera-capture "pending URI" held in plain `remember` is lost if the OS kills the app's process
+ * while the system Camera app is in the foreground (common under memory pressure, especially on
+ * lower-RAM devices) — the camera result still comes back fine (ActivityResultRegistry is designed
+ * to survive process death), but with pendingCameraUri reset to null the success callback silently
+ * no-ops instead of adding the photo, and the visible Activity recreation looks like the app
+ * "restarted". Use this Saver with rememberSaveable everywhere a pending camera URI is held so it
+ * survives process death and the photo actually gets added once the callback fires.
+ */
+val UriSaver = androidx.compose.runtime.saveable.Saver<Uri?, String>(
+    save = { it?.toString() ?: "" },
+    restore = { if (it.isBlank()) null else Uri.parse(it) }
+)
 
 // ============================================================================
 // FAQ SCREEN (accordion - separate page, linked from Help)
