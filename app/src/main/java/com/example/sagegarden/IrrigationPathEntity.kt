@@ -28,4 +28,7 @@ interface IrrigationPathDao {
 
     @Query("DELETE FROM irrigation_paths WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM irrigation_paths WHERE gardenId = :gardenId")
+    suspend fun deleteForGarden(gardenId: String)
 }

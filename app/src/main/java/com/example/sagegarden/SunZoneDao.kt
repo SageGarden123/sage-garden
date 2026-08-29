@@ -19,4 +19,7 @@ interface SunZoneDao {
 
     @Query("DELETE FROM sun_zones WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM sun_zones WHERE gardenId = :gardenId")
+    suspend fun deleteForGarden(gardenId: String)
 }

@@ -19,4 +19,7 @@ interface WaterFlowRateDao {
 
     @Query("DELETE FROM water_flow_rates WHERE gardenId = :gardenId AND zone = :zone AND outlet = :outlet")
     suspend fun deleteByZoneOutlet(gardenId: String, zone: String, outlet: String)
+
+    @Query("DELETE FROM water_flow_rates WHERE gardenId = :gardenId")
+    suspend fun deleteForGarden(gardenId: String)
 }

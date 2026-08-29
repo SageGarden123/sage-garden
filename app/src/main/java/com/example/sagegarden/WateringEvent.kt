@@ -26,4 +26,7 @@ interface WateringEventDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(events: List<WateringEvent>)
+
+    @Query("DELETE FROM watering_events WHERE gardenId = :gardenId")
+    suspend fun deleteForGarden(gardenId: String)
 }

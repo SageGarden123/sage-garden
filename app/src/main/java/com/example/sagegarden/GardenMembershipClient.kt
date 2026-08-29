@@ -389,6 +389,54 @@ object GardenMembershipClient {
         }
     }
 
+    /**
+     * Wipes every local Room row scoped to [gardenId] — plants, care log, sun zones, irrigation
+     * paths, water flow rates, and watering (irrigation-history) events, plus any extra/growth
+     * photos belonging to one of this garden's plants (those two tables aren't gardenId-scoped
+     * themselves, so plant ids are collected first, before the plants table is wiped). Does NOT
+     * touch garden-scoped SharedPreferences settings (custom map, irrigation credentials, etc.) —
+     * those are harmless left orphaned under a gardenId nothing references anymore. Used by
+     * deleteGarden (never by "Reset garden", which deliberately keeps the garden itself intact).
+     */
+    private suspend fun deleteAllLocalDataForGarden(context: Context, gardenId: String) = withContext(Dispatchers.IO) {
+        val db = AppDatabase.getInstance(context)
+        val plantIds = db.plantDao().getAllOnceForGarden(gardenId).map { it.id }
+        plantIds.forEach { id ->
+            db.extraPhotoDao().deleteForPlant(id)
+            db.growthPhotoDao().deleteForPlant(id)
+        }
+        db.plantDao().deleteForGarden(gardenId)
+        db.careLogDao().deleteForGarden(gardenId)
+        db.sunZoneDao().deleteForGarden(gardenId)
+        db.irrigationPathDao().deleteForGarden(gardenId)
+        db.waterFlowRateDao().deleteForGarden(gardenId)
+        db.wateringEventDao().deleteForGarden(gardenId)
+    }
+
+    /**
+     * Owner-only: permanently deletes a garden for every member (server-side data included),
+     * distinct from [PlantViewModel.resetAll]'s "Reset garden" which only wipes local plants and
+     * keeps the garden/sharing setup intact. Also cleans up this device's own local plants/care
+     * log/etc. for the garden and, if it was active, falls back to this device's own default
+     * garden — matching leaveGarden's local cleanup.
+     */
+    suspend fun deleteGarden(context: Context, gardenId: String): GardenMembershipResult<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val ownerDeviceId = getOrCreateInstallId(context)
+            val ownerMemberToken = ensureMemberToken(context, gardenId)
+                ?: return@withContext GardenMembershipResult.Failure("not_a_member")
+            post("deleteGarden", JSONObject().apply {
+                put("ownerDeviceId", ownerDeviceId); put("ownerMemberToken", ownerMemberToken); put("gardenId", gardenId)
+            })
+            deleteAllLocalDataForGarden(context, gardenId)
+            GardenMembershipStore.setKnownGardens(context, GardenMembershipStore.getKnownGardens(context).filterNot { it.gardenId == gardenId })
+            if (effectiveGardenId(context) == gardenId) GardenMembershipStore.setActiveGardenId(context, null)
+            GardenMembershipResult.Success(Unit)
+        } catch (e: Exception) {
+            GardenMembershipResult.Failure(e.message ?: "unknown_error")
+        }
+    }
+
     suspend fun regenerateInviteCode(context: Context, gardenId: String): GardenMembershipResult<String> = withContext(Dispatchers.IO) {
         try {
             val ownerDeviceId = getOrCreateInstallId(context)

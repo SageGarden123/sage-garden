@@ -6158,6 +6158,8 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     var showRenameDialog by remember { mutableStateOf(false) }
     var showManageAccessDialog by remember { mutableStateOf(false) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
+    var showDeleteGardenConfirm by remember { mutableStateOf(false) }
+    var deletingGarden by remember { mutableStateOf(false) }
 
     fun refresh() {
         refreshing = true
@@ -6257,22 +6259,32 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f)) { Text("🌱 Create garden", fontSize = 12.sp) }
+        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🌱 Create garden", fontSize = 12.sp) }
         if (isOwner) {
-            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f)) { Text("🔗 Share", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔗 Share", fontSize = 12.sp) }
         }
-        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f)) { Text("🔑 Have a code?", fontSize = 12.sp) }
+        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🔑 Have a code?", fontSize = 12.sp) }
     }
     if (isOwner) {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f)) { Text("✏️ Rename", fontSize = 12.sp) }
-            OutlinedButton(onClick = { showManageAccessDialog = true }, modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("✏️ Rename", fontSize = 12.sp) }
+            OutlinedButton(onClick = { showManageAccessDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) {
                 Text(
                     if (pendingForActiveGarden.isNotEmpty()) "👥 Manage access (${pendingForActiveGarden.size})" else "👥 Manage access",
                     fontSize = 12.sp
                 )
             }
+        }
+        // The device's own original default garden can't be deleted this way — it's always this
+        // device's fallback identity, not something created/joined that could be given up.
+        if (activeGardenId != installId) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { showDeleteGardenConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+            ) { Text("🗑️ Delete ${activeGarden?.name ?: "this garden"}", fontSize = 12.sp) }
         }
     } else if (activeGardenId != installId) {
         Spacer(Modifier.height(8.dp))
@@ -6600,6 +6612,41 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                 }) { Text("Leave", color = Color(0xFFB23B3B)) }
             },
             dismissButton = { TextButton(onClick = { showLeaveConfirm = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showDeleteGardenConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!deletingGarden) showDeleteGardenConfirm = false },
+            title = { Text("Delete ${activeGarden?.name ?: "this garden"}?") },
+            text = {
+                Text(
+                    "This permanently deletes the garden and every member's access to it — including yours. All its plants, care history, and settings on the server are gone. This can't be undone.",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val deletingId = activeGardenId
+                        deletingGarden = true
+                        scope.launch {
+                            when (GardenMembershipClient.deleteGarden(context, deletingId)) {
+                                is GardenMembershipResult.Success -> {
+                                    knownGardens = GardenMembershipStore.getKnownGardens(context)
+                                    activeGardenId = ActiveGardenState.activeGardenId ?: installId
+                                    snackbarHostState.showSnackbar("Garden deleted")
+                                }
+                                else -> snackbarHostState.showSnackbar("Couldn't delete — try again.")
+                            }
+                            deletingGarden = false
+                            showDeleteGardenConfirm = false
+                        }
+                    },
+                    enabled = !deletingGarden
+                ) { Text(if (deletingGarden) "Deleting…" else "Delete", color = Color(0xFFB23B3B)) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }, enabled = !deletingGarden) { Text("Cancel") } }
         )
     }
 }
