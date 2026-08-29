@@ -13,8 +13,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
     private val dao = AppDatabase.getInstance(application).careLogDao()
     private val plantDao = AppDatabase.getInstance(application).plantDao()
 
-    fun getForPlant(plantId: String): StateFlow<List<CareLogEntity>> =
-        dao.getForPlant(plantId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun getForPlant(plantId: String, gardenId: String): StateFlow<List<CareLogEntity>> =
+        dao.getForPlant(plantId, gardenId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
      * Logs the event AND updates the plant's lastWateredDate/lastFertilisedDate/lastPrunedDate so due-date tracking stays in sync.

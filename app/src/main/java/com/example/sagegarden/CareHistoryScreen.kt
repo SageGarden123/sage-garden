@@ -27,7 +27,8 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     val careViewModel: CareLogViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val entries by remember(plantId) { careViewModel.getForPlant(plantId) }.collectAsState()
+    val gardenId = remember { effectiveGardenId(context) }
+    val entries by remember(plantId) { careViewModel.getForPlant(plantId, gardenId) }.collectAsState()
     var pendingLogType by remember { mutableStateOf<String?>(null) }
     var logDate by remember { mutableStateOf("") }
     val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
