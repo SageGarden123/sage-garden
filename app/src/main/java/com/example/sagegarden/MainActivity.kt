@@ -1539,6 +1539,13 @@ suspend fun importPlantsCsv(context: Context, text: String, plants: List<PlantEn
             wateringSystem = csvFindValue(headers, cells, "Watering System") ?: "",
             lat = csvFindValue(headers, cells, "Latitude")?.toDoubleOrNull(),
             lng = csvFindValue(headers, cells, "Longitude")?.toDoubleOrNull(),
+            // Falls back to whatever's already stored (like the photo fields below) rather than
+            // defaulting to false, so importing a CSV from before these two columns existed doesn't
+            // silently clear them on an existing plant.
+            manualWateringOnly = csvFindValue(headers, cells, "Manual Watering Only")?.equals("Yes", ignoreCase = true)
+                ?: existing?.manualWateringOnly ?: false,
+            isIndoor = csvFindValue(headers, cells, "Indoor Plant")?.equals("Yes", ignoreCase = true)
+                ?: existing?.isIndoor ?: false,
             photoUri = existing?.photoUri,
             photoUris = existing?.photoUris ?: emptyList(),
             photoThumbnailBase64 = existing?.photoThumbnailBase64
@@ -6859,7 +6866,8 @@ fun HelpScreen(
                         val row = listOf(
                             p.id, p.name, p.qty.toString(), p.sci, p.location, p.date, p.source,
                             p.sun, p.soil, p.soilPh, p.category, p.water, p.frost, p.native, p.pollinator, p.notes,
-                            p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem
+                            p.lat?.toString() ?: "", p.lng?.toString() ?: "", p.wateringSystem,
+                            if (p.manualWateringOnly) "Yes" else "No", if (p.isIndoor) "Yes" else "No"
                         ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
                         sb.append(row).append("\n")
                     }
@@ -8761,7 +8769,7 @@ fun DropboxFolderPickerDialog(
 val CSV_HEADERS = listOf(
     "Plant ID", "Plant", "Amount", "Scientific name", "Location", "Date planted", "Source",
     "Sun", "Soil", "Soil pH", "Category", "Water", "Frost", "Native/Exotic", "Pollinator-Friendly", "Notes",
-    "Latitude", "Longitude", "Watering System"
+    "Latitude", "Longitude", "Watering System", "Manual Watering Only", "Indoor Plant"
 )
 
 fun generateNextPlantId(existingPlants: List<PlantEntity>, prefix: String = "P"): String =
