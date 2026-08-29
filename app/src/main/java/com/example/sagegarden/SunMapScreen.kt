@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.example.sagegarden
 
 import android.Manifest
@@ -624,12 +626,15 @@ fun SunMapScreen(onBack: () -> Unit) {
             } else {
                 Text("Zone type", fontSize = 12.sp, color = Color.Gray)
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     sunZoneCategories.forEach { (key, label) ->
                         val selected = selectedCategory == key
                         Box(
                             modifier = Modifier
-                                .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (selected) colorForSunCategory(key) else colorForSunCategory(key).copy(alpha = 0.25f))
                                 .then(
@@ -637,7 +642,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                     else Modifier
                                 )
                                 .clickable { selectedCategory = key }
-                                .padding(vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) { Text(label, fontSize = 10.sp, color = Color.Black, textAlign = TextAlign.Center) }
                     }

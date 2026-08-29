@@ -120,11 +120,11 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                     if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
                     else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding
             ) { Text("📷 Camera", fontSize = 12.sp) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🖼️ Gallery", fontSize = 12.sp) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("☁️ Dropbox", fontSize = 12.sp) }
             }
         }
         }

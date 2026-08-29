@@ -1,6 +1,7 @@
 // ============================================================================
 // Sage Garden — MainActivity.kt
 // ============================================================================
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.example.sagegarden
 
@@ -3966,7 +3967,7 @@ fun ListScreen(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Row {
+            FlowRow {
                 TextButton(onClick = { showListFieldsDialog = true }) { Text("Customise fields shown", fontSize = 12.sp) }
                 if (FeatureVisibility.shouldShow(context, Feature.PROGRESS_PHOTOS)) {
                     TextButton(onClick = { showProgressPhotosPicker = true }) { Text("📷 Progress photos", fontSize = 12.sp) }
@@ -7195,12 +7196,14 @@ fun HelpScreen(
                                 testResult = result.fold({ "✅ Found $it image(s) in this folder" }, { "❌ ${it.message}" })
                             }
                         },
-                        modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking
+                        modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking,
+                        contentPadding = CompactButtonPadding
                     ) { Text(if (testing) "Testing…" else "Test connection") }
 
                     Button(
                         onClick = { setDropboxPhotoFolderPath(context, dropboxPath); viewModel.runDropboxAutoLink(context, dropboxPath) },
-                        modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking
+                        modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking,
+                        contentPadding = CompactButtonPadding
                     ) { Text(if (DropboxLinkState.linking) "Linking…" else "Auto-link now") }
                 }
 
@@ -7258,7 +7261,8 @@ fun HelpScreen(
                             containerColor = if (irrigationSystem == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                             contentColor = if (irrigationSystem == value) Color.White else Color.Black
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        contentPadding = CompactButtonPadding
                     ) { Text(label, fontSize = 12.sp) }
                 }
             }
@@ -8148,7 +8152,10 @@ fun HelpScreen(
         }
 
         ExpandableSection(title = "Contact & feedback") {
-            Text("Found a bug, or have an idea for the app? We'd love to hear from you.", fontSize = 12.sp, color = Color.Gray)
+            Text(
+                "Found a bug, or have an idea for the app? We'd love to hear from you at gardenwizardry685@gmail.com.",
+                fontSize = 12.sp, color = Color.Gray
+            )
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = {
@@ -8163,7 +8170,7 @@ fun HelpScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Email gardenwizardry685@gmail.com") }
+            ) { Text("📧 Email us") }
             Spacer(Modifier.height(10.dp))
             val installId = remember { getOrCreateInstallId(context) }
             Text(
