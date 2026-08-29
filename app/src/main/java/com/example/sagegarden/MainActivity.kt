@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -1968,6 +1969,7 @@ fun StatCard(
 
 val dashboardChartGroupOptions = listOf(
     DashboardStatOption("location", "Location"),
+    DashboardStatOption("category", "Category"),
     DashboardStatOption("sun", "Sun Needs"),
     DashboardStatOption("water", "Water Needs"),
     DashboardStatOption("native", "Native/Exotic Status")
@@ -2422,6 +2424,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         "sun" -> { p -> p.sun.ifBlank { "Unspecified" } }
         "water" -> { p -> p.water.ifBlank { "Unspecified" } }
         "native" -> { p -> p.native.ifBlank { "Unspecified" } }
+        "category" -> { p -> p.category.ifBlank { "Unspecified" } }
         else -> { p -> p.location.ifBlank { "Unspecified" } }
     }
     val counts = remember(plants, groupBy) {
@@ -2495,6 +2498,17 @@ fun MapScreen(
 ) {
     val context = LocalContext.current
     val plants by viewModel.filteredPlants.collectAsState()
+    // Categories are opt-in (most gardens never set one), so this quick filter — separate from the
+    // Dashboard's full filter dialog, which isn't reachable from the map — only shows once at least
+    // one plant actually has a category, and only offers the categories actually in use.
+    val allPlantsUnfiltered by viewModel.plants.collectAsState()
+    val usedCategories = remember(allPlantsUnfiltered) {
+        categoryOptions.filter { cat -> allPlantsUnfiltered.any { it.category == cat } }
+    }
+    var mapCategoryFilter by remember { mutableStateOf("All") }
+    val categoryFilteredPlants = remember(plants, mapCategoryFilter) {
+        if (mapCategoryFilter == "All") plants else plants.filter { it.category == mapCategoryFilter }
+    }
     val gardenLatLng = remember { getGardenLatLng(context) }
     val savedCamera = remember { getMapCameraPosition(context) }
     val cameraPositionState = rememberCameraPositionState {
@@ -2697,7 +2711,7 @@ fun MapScreen(
                 }
             }
         ) {
-            plants.forEach { plant ->
+            categoryFilteredPlants.forEach { plant ->
                 if (plant.lat != null && plant.lng != null) {
                     if (plant.category.isNotBlank() && plant.category != "Other") {
                         MarkerComposable(
@@ -2761,6 +2775,24 @@ fun MapScreen(
                     .fillMaxWidth()
                     .background(Color.White, RoundedCornerShape(10.dp))
             )
+
+            if (usedCategories.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item {
+                        FilterChip(
+                            selected = mapCategoryFilter == "All", onClick = { mapCategoryFilter = "All" },
+                            label = { Text("All", fontSize = 12.sp) }
+                        )
+                    }
+                    items(usedCategories) { cat ->
+                        FilterChip(
+                            selected = mapCategoryFilter == cat, onClick = { mapCategoryFilter = cat },
+                            label = { Text("${categoryMarkerEmoji(cat)} $cat", fontSize = 12.sp) }
+                        )
+                    }
+                }
+            }
 
             if (predictions.isNotEmpty() || geocoderPredictions.isNotEmpty()) {
                 Card(
