@@ -3126,34 +3126,39 @@ fun MapTabScreen(
             }
         }
         if (hasCustomMap || (canManageMap && FeatureVisibility.shouldShow(context, Feature.SUN_MAP))) {
-            Row(
-                Modifier
+            // FlowRow (not a plain Row) so that at large accessibility font sizes, a button that no
+            // longer fits wraps onto a new line instead of overflowing/squeezing unpredictably —
+            // none of these buttons had a weight() or width constraint before, so at max text size
+            // this row could blow out into unusable layouts.
+            FlowRow(
+                modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
                     .zIndex(2f)
                     .padding(10.dp),
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (hasCustomMap) {
                     Button(
                         onClick = { showingCustom = false },
+                        contentPadding = CompactButtonPadding,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (!showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                             contentColor = if (!showingCustom) Color.White else Color.Black
                         )
                     ) { Text("Real Map", fontSize = 12.sp) }
-                    Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = { showingCustom = true },
+                        contentPadding = CompactButtonPadding,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                             contentColor = if (showingCustom) Color.White else Color.Black
                         )
                     ) { Text("My Drawing", fontSize = 12.sp) }
-                    Spacer(Modifier.width(8.dp))
                 }
                 if (canManageMap && FeatureVisibility.shouldShow(context, Feature.SUN_MAP)) {
-                    OutlinedButton(onClick = onOpenSunMap) { Text("☀️ Sun map", fontSize = 12.sp) }
+                    OutlinedButton(onClick = onOpenSunMap, contentPadding = CompactButtonPadding) { Text("☀️ Sun map", fontSize = 12.sp) }
                 }
             }
         }
