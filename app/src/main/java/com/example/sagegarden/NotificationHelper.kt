@@ -62,6 +62,13 @@ object NotificationHelper {
         postCareNotification(context, notificationId = 1004, title = title, body = groupedDueBody(atRiskPlants), type = "frost")
     }
 
+    fun showProgressPhotoReminder(context: Context, dueZones: List<String>) {
+        if (dueZones.isEmpty()) return
+        val title = if (dueZones.size == 1) "Time for a progress photo of ${dueZones[0]}" else "${dueZones.size} zones are due a progress photo"
+        val body = dueZones.take(5).joinToString(", ") + (if (dueZones.size > 5) " and ${dueZones.size - 5} more" else "")
+        postCareNotification(context, notificationId = 1006, title = title, body = body, type = "progress_photo")
+    }
+
     /** Once a single location has more than this many plants due at once (a whole irrigation zone coming due together, most commonly), name the location instead of every plant in it. */
     private const val LOCATION_GROUP_THRESHOLD = 10
 

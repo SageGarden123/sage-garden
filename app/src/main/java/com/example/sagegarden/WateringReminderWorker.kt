@@ -25,7 +25,9 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
         val allDuePrune = mutableListOf<PlantEntity>()
         val allDueFeed = mutableListOf<PlantEntity>()
         val allFrostAtRisk = mutableListOf<PlantEntity>()
+        val allDueProgressPhotoZones = mutableListOf<String>()
         var totalRainWarningMm: Double? = null
+        val locationPhotoDao = AppDatabase.getInstance(applicationContext).locationPhotoDao()
 
         for (gardenId in allKnownGardenIds(applicationContext)) {
             if (!getNotificationsEnabledFor(applicationContext, gardenId)) continue
@@ -79,6 +81,11 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
                     allFrostAtRisk.addAll(frostTenderOutdoorPlants(plants))
                 }
             }
+
+            if (getProgressPhotoRemindersEnabledFor(applicationContext, gardenId)) {
+                val photos = locationPhotoDao.getAllOnceForGarden(gardenId)
+                allDueProgressPhotoZones.addAll(dueProgressPhotoZones(plants, photos, now))
+            }
         }
 
         if (allDueWatering.isNotEmpty()) NotificationHelper.showWateringReminder(applicationContext, allDueWatering, totalRainWarningMm)
@@ -86,6 +93,7 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
         if (allDuePrune.isNotEmpty()) NotificationHelper.showPruneReminder(applicationContext, allDuePrune)
         if (allDueFeed.isNotEmpty()) NotificationHelper.showFeedReminder(applicationContext, allDueFeed)
         if (allFrostAtRisk.isNotEmpty()) NotificationHelper.showFrostWarning(applicationContext, allFrostAtRisk)
+        if (allDueProgressPhotoZones.isNotEmpty()) NotificationHelper.showProgressPhotoReminder(applicationContext, allDueProgressPhotoZones)
 
         refreshWateringWidgets(applicationContext)
         return Result.success()

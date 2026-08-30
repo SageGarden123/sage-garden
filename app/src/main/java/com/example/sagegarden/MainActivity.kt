@@ -659,6 +659,16 @@ fun getFeedRemindersEnabled(context: Context): Boolean = gardenScopedBoolean(con
 fun setFeedRemindersEnabled(context: Context, value: Boolean) = setGardenScopedBoolean(context, "feed_reminders_enabled", value)
 fun getFeedRemindersEnabledFor(context: Context, gardenId: String): Boolean =
     gardenScopedBoolean(context, "feed_reminders_enabled", false, gardenIdOverride = gardenId)
+fun getProgressPhotoRemindersEnabled(context: Context): Boolean = gardenScopedBoolean(context, "progress_photo_reminders_enabled", false)
+fun setProgressPhotoRemindersEnabled(context: Context, value: Boolean) = setGardenScopedBoolean(context, "progress_photo_reminders_enabled", value)
+fun getProgressPhotoRemindersEnabledFor(context: Context, gardenId: String): Boolean =
+    gardenScopedBoolean(context, "progress_photo_reminders_enabled", false, gardenIdOverride = gardenId)
+
+/** How often a zone should get a fresh progress photo before it's flagged as due — fixed at 3
+ * months (approximated as 90 days, consistent with every other day-based frequency in this app)
+ * rather than a per-garden setting, since there's no obvious reason different gardens would want
+ * a different cadence for this the way they legitimately do for watering. */
+const val PROGRESS_PHOTO_REMINDER_DAYS = 90L
 
 fun getNotificationHour(context: Context): Int = gardenScopedInt(context, "notification_hour", 8)
 fun getNotificationMinute(context: Context): Int = gardenScopedInt(context, "notification_minute", 0)
@@ -2069,7 +2079,11 @@ fun GardenMapperApp() {
                 arguments = listOf(navArgument("type") { type = NavType.StringType })
             ) { backStackEntry ->
                 val notifType = backStackEntry.arguments?.getString("type") ?: "watering"
-                NotificationDetailsScreen(type = notifType, onBack = { navController.popBackStack() })
+                NotificationDetailsScreen(
+                    type = notifType,
+                    onBack = { navController.popBackStack() },
+                    onOpenZone = { location -> navController.navigate("location_photos/${Uri.encode(location)}") }
+                )
             }
             composable("growth/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
@@ -4752,6 +4766,18 @@ fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTi
 fun frostTenderOutdoorPlants(plants: List<PlantEntity>): List<PlantEntity> =
     plants.filter { (it.frost == "Tender" || it.frost == "Half-hardy") && !it.isIndoor }
 
+/** Every zone (plant location) that's gone [PROGRESS_PHOTO_REMINDER_DAYS] or more since its last
+ * progress photo, or never had one at all — [photos] should already be scoped to the same garden
+ * as [plants] (see LocationPhotoDao.getAllOnceForGarden). */
+fun dueProgressPhotoZones(plants: List<PlantEntity>, photos: List<LocationPhotoEntity>, now: Long): List<String> {
+    val zones = plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+    val lastPhotoByZone = photos.groupBy { it.location }.mapValues { (_, entries) -> entries.maxOf { it.takenAt } }
+    return zones.filter { zone ->
+        val last = lastPhotoByZone[zone]
+        last == null || (now - last) >= PROGRESS_PHOTO_REMINDER_DAYS * 86_400_000L
+    }.sorted()
+}
+
 fun getFrostWarningsEnabled(context: Context): Boolean = gardenScopedBoolean(context, "frost_warnings_enabled", true)
 fun setFrostWarningsEnabled(context: Context, value: Boolean) = setGardenScopedBoolean(context, "frost_warnings_enabled", value)
 fun getFrostWarningsEnabledFor(context: Context, gardenId: String): Boolean =
@@ -7115,6 +7141,7 @@ fun HelpScreen(
                 var fertiliseReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFertiliseRemindersEnabled(context)) }
                 var pruneReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getPruneRemindersEnabled(context)) }
                 var feedReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFeedRemindersEnabled(context)) }
+                var progressPhotoReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getProgressPhotoRemindersEnabled(context)) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Include fertilising reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = fertiliseReminders, onCheckedChange = { fertiliseReminders = it; setFertiliseRemindersEnabled(context, it) })
@@ -7126,6 +7153,10 @@ fun HelpScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Include feeding reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = feedReminders, onCheckedChange = { feedReminders = it; setFeedRemindersEnabled(context, it) })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Remind me to add progress photos (every 3 months per zone)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = progressPhotoReminders, onCheckedChange = { progressPhotoReminders = it; setProgressPhotoRemindersEnabled(context, it) })
                 }
 
                 Spacer(Modifier.height(10.dp))
