@@ -32,7 +32,8 @@ object GardenSyncClient {
 
     private fun plantToJson(p: Plant): JSONObject = JSONObject().apply {
         put("id", p.id); put("name", p.name); put("sci", p.sci); put("location", p.location)
-        put("sun", p.sun); put("water", p.water); put("soil", p.soil); put("frost", p.frost)
+        put("category", p.category)
+        put("sun", p.sun); put("water", p.water); put("soil", p.soil); put("soilPh", p.soilPh); put("frost", p.frost)
         put("native", p.native); put("pollinator", p.pollinator); put("source", p.source)
         put("date", p.date); put("qty", p.qty); put("notes", p.notes)
         put("wateringSystem", p.wateringSystem)
@@ -76,9 +77,11 @@ object GardenSyncClient {
         pruneFrequencyDays = if (o.isNull("pruneFrequencyDays")) null else o.optInt("pruneFrequencyDays"),
         lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
         feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays"),
+        category = o.optString("category", ""),
         sun = o.optString("sun", ""),
         water = o.optString("water", ""),
         soil = o.optString("soil", ""),
+        soilPh = o.optString("soilPh", ""),
         source = o.optString("source", ""),
         date = o.optString("date", ""),
         wateringSystem = o.optString("wateringSystem", ""),

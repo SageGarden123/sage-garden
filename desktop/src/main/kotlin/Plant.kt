@@ -27,10 +27,11 @@ data class Plant(
     var pruneFrequencyDays: Int? = null,
     var lastFedDate: Long? = null,
     var feedFrequencyDays: Int? = null,
-    // Not edited by this app, but preserved so exporting from here never drops what the phone app cares about.
+    var category: String = "",
     var sun: String = "",
     var water: String = "",
     var soil: String = "",
+    var soilPh: String = "",
     var source: String = "",
     var date: String = "",
     var wateringSystem: String = "",
@@ -56,6 +57,25 @@ data class CareLogEntry(
     val date: Long,
     val notes: String = "",
     val updatedAt: Long = 0L
+)
+
+// Mirrors the Android app's dropdown option lists (MainActivity.kt) exactly, so a value picked
+// here round-trips as one Android already recognises.
+val categoryOptions = listOf(
+    "Trees", "Shrubs", "Ground Cover", "Climbers/Vines", "Grasses", "Ferns", "Perennials",
+    "Annuals", "Bulbs", "Succulents", "Palms/Cycads", "Aquatic", "Herbs", "Other"
+)
+val sunOptions = listOf("Full", "Full-Partial", "Partial", "Partial-Shade", "Shade", "Unknown")
+val waterOptions = listOf("Low", "Moderate", "High", "Unknown")
+val soilOptions = listOf(
+    "Sandy", "Loamy", "Clay", "Silty", "Peaty", "Chalky", "Rocky/Stony", "Potting Mix", "Other", "Unknown"
+)
+val soilPhOptions = listOf("Acidic", "Acidic–Neutral", "Neutral", "Neutral–Alkaline", "Alkaline", "Acidic–Alkaline", "Unknown")
+val frostOptions = listOf("Hardy", "Half-hardy", "Tender", "Tender (indoor only)", "Unknown")
+val nativeOptions = listOf("Native (Aus)", "Exotic")
+val pollinatorOptions = listOf(
+    "Yes - bees", "Yes - butterflies", "Yes - bees & butterflies",
+    "Yes - birds", "No", "Other"
 )
 
 data class SyncTombstone(val id: String, val deletedAt: Long)

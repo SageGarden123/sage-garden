@@ -91,9 +91,11 @@ class GardenStore(private val file: File) {
                 pruneFrequencyDays = o.optIntOrNull("pruneFrequencyDays"),
                 lastFedDate = o.optLongOrNull("lastFedDate"),
                 feedFrequencyDays = o.optIntOrNull("feedFrequencyDays"),
+                category = o.optString("category", ""),
                 sun = o.optString("sun", ""),
                 water = o.optString("water", ""),
                 soil = o.optString("soil", ""),
+                soilPh = o.optString("soilPh", ""),
                 source = o.optString("source", ""),
                 date = o.optString("date", ""),
                 wateringSystem = o.optString("wateringSystem", ""),
@@ -117,7 +119,8 @@ class GardenStore(private val file: File) {
         list.forEach { p ->
             val o = JSONObject()
             o.put("id", p.id); o.put("name", p.name); o.put("sci", p.sci); o.put("location", p.location)
-            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("frost", p.frost)
+            o.put("category", p.category)
+            o.put("sun", p.sun); o.put("water", p.water); o.put("soil", p.soil); o.put("soilPh", p.soilPh); o.put("frost", p.frost)
             o.put("native", p.native); o.put("pollinator", p.pollinator); o.put("source", p.source)
             o.put("date", p.date); o.put("qty", p.qty); o.put("notes", p.notes)
             o.put("wateringSystem", p.wateringSystem)

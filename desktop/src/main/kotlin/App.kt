@@ -268,7 +268,8 @@ fun App() {
                                 existing = existing,
                                 onSave = { appState.upsertPlant(it); screen = Screen.PlantList },
                                 onDelete = existing?.let { { appState.deletePlant(it.id); screen = Screen.PlantList } },
-                                onCancel = { screen = Screen.PlantList }
+                                onCancel = { screen = Screen.PlantList },
+                                onViewHistory = existing?.let { { screen = Screen.CareHistory(it.id) } }
                             )
                         }
                         is Screen.CareHistory -> {

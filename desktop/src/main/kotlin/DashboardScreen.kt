@@ -47,6 +47,7 @@ val dashboardStatCatalog = listOf(
 
 private val chartGroupOptions = listOf(
     DashboardStatOption("location", "Location"),
+    DashboardStatOption("category", "Category"),
     DashboardStatOption("sun", "Sun Needs"),
     DashboardStatOption("water", "Water Needs"),
     DashboardStatOption("native", "Native/Exotic")
@@ -171,6 +172,7 @@ private fun StatTile(label: String, value: String, selected: Boolean, onClick: (
 @Composable
 private fun DashboardBarChart(plants: List<Plant>, groupBy: String) {
     val keyFn: (Plant) -> String = when (groupBy) {
+        "category" -> { p -> p.category.ifBlank { "Unspecified" } }
         "sun" -> { p -> p.sun.ifBlank { "Unspecified" } }
         "water" -> { p -> p.water.ifBlank { "Unspecified" } }
         "native" -> { p -> p.native.ifBlank { "Unspecified" } }
