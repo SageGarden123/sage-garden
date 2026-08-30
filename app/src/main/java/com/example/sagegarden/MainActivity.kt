@@ -8455,6 +8455,33 @@ fun HelpScreen(
                 }
             )
             Spacer(Modifier.height(10.dp))
+
+            var showRecoverInstallId by remember { mutableStateOf(false) }
+            TextButton(onClick = { showRecoverInstallId = !showRecoverInstallId }) {
+                Text(if (showRecoverInstallId) "▾ Recover after reinstall" else "▸ Recover after reinstall", fontSize = 12.sp)
+            }
+            if (showRecoverInstallId) {
+                var recoverInstallIdText by remember { mutableStateOf("") }
+                Text(
+                    "Reinstalling always generates a brand-new Install ID, with no way to recover the old one automatically. If you restore an old backup after reinstalling, every plant stays tagged with the OLD Install ID and won't show up anywhere — not lost, just orphaned. Paste that old ID here (it's the \"gardenId\" field on any plant in the old backup's JSON, or whatever you copied from this same field before uninstalling) to fix it. Requires restarting the app afterwards.",
+                    fontSize = 11.sp, color = Color.Gray
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = recoverInstallIdText, onValueChange = { recoverInstallIdText = it },
+                    label = { Text("Old Install ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        setInstallId(context, recoverInstallIdText.trim())
+                        scope.launch { snackbarHostState.showSnackbar("Saved — close and reopen the app for this to take effect") }
+                    },
+                    enabled = recoverInstallIdText.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save and use this Install ID") }
+            }
+            Spacer(Modifier.height(10.dp))
             var syncing by remember { mutableStateOf(false) }
             var lastSyncedAt by remember { mutableStateOf(GardenSyncStore.getLastSyncedAt(context)) }
             if (lastSyncedAt > 0) {
