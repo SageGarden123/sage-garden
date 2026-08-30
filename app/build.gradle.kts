@@ -74,7 +74,6 @@ android {
 
 dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation(libs.androidx.compose.ui.geometry)
     implementation(kotlin("stdlib"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
