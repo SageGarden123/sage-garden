@@ -182,3 +182,8 @@ private fun JSONObject.optDoubleOrNull(key: String): Double? = if (isNull(key) |
 /** Default save location for this app's own data — a Sage Garden phone backup can also be opened directly via "Open backup file...". */
 fun defaultGardenFile(): File =
     File(System.getProperty("user.home"), "SageGardenDesktop/garden_data.json")
+
+/** Where GardenAppState's automatic weekday-rotating backups live — separate from the main garden
+ * file so a corrupted/bad save of the latter never touches these. */
+fun autoBackupDir(): File =
+    File(System.getProperty("user.home"), "SageGardenDesktop/auto_backups").apply { mkdirs() }

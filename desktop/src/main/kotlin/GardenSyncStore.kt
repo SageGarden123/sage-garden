@@ -36,4 +36,12 @@ object GardenSyncSettings {
         json.put("lastSyncedAt", millis)
         write(json)
     }
+
+    fun getLastAutoBackupAt(): Long = read().optLong("lastAutoBackupAt", 0L)
+
+    fun setLastAutoBackupAt(millis: Long) {
+        val json = read()
+        json.put("lastAutoBackupAt", millis)
+        write(json)
+    }
 }

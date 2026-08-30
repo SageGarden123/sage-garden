@@ -87,6 +87,52 @@ class GardenAppState(private var file: File) {
     var lastSyncedAt by mutableStateOf(GardenSyncSettings.getLastSyncedAt())
         private set
 
+    init {
+        runAutoBackupIfDue()
+    }
+
+    /** A silent safety net beneath "Save as..." — no setup needed, runs at most once a day, and
+     * rotates through 7 weekday-named files rather than growing forever (mirrors the same scheme
+     * on the Android side's AutoBackupScheduler). Skips entirely if there's nothing loaded yet, so
+     * a brand-new/empty file never overwrites a real snapshot from a previous day. */
+    private fun runAutoBackupIfDue() {
+        if (plants.isEmpty()) return
+        val last = GardenSyncSettings.getLastAutoBackupAt()
+        if (System.currentTimeMillis() - last < 20 * 60 * 60 * 1000L) return
+        runCatching {
+            val weekday = java.text.SimpleDateFormat("EEEE", java.util.Locale.US).format(java.util.Date())
+            val backupFile = File(autoBackupDir(), "$weekday.json")
+            val snapshot = GardenStore(backupFile)
+            snapshot.plants.clear(); snapshot.plants.addAll(plants)
+            snapshot.careLog.clear(); snapshot.careLog.addAll(careLog)
+            snapshot.setPlantTombstones(plantTombstones)
+            snapshot.setCareLogTombstones(careLogTombstones)
+            snapshot.save()
+        }
+        GardenSyncSettings.setLastAutoBackupAt(System.currentTimeMillis())
+    }
+
+    /** Every automatic backup slot present, newest first — up to 7 (one per weekday), for a restore picker. */
+    fun listAutoBackups(): List<Pair<String, Long>> =
+        autoBackupDir().listFiles()
+            ?.filter { it.name.endsWith(".json") }
+            ?.map { it.name.removeSuffix(".json") to it.lastModified() }
+            ?.sortedByDescending { it.second }
+            ?: emptyList()
+
+    /** Restores the automatic backup slot named [weekday] (from [listAutoBackups]) as the current
+     * garden state, and saves it to the main file immediately. */
+    fun restoreAutoBackup(weekday: String) {
+        val backupFile = File(autoBackupDir(), "$weekday.json")
+        if (!backupFile.exists()) return
+        val restored = GardenStore(backupFile).also { it.load() }
+        plants.clear(); plants.addAll(restored.plants)
+        careLog.clear(); careLog.addAll(restored.careLog)
+        plantTombstones = restored.plantTombstones.toMutableList()
+        careLogTombstones = restored.careLogTombstones.toMutableList()
+        persist()
+    }
+
     private fun persist() {
         val fresh = GardenStore(file)
         fresh.load()
@@ -191,6 +237,7 @@ fun App() {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showContactDialog by remember { mutableStateOf(false) }
+    var showAutoBackupDialog by remember { mutableStateOf(false) }
 
     SageGardenTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -243,6 +290,7 @@ fun App() {
                         }
                     },
                     onContact = { showContactDialog = true },
+                    onRestoreAutoBackup = { showAutoBackupDialog = true },
                     onSupport = {
                         val opened = openInDesktop { desktop -> desktop.browse(URI(SUPPORT_LINK_URL)) }
                         if (!opened) scope.launch { snackbarHostState.showSnackbar("Couldn't open the link — visit $SUPPORT_LINK_URL") }
@@ -316,6 +364,47 @@ fun App() {
                     confirmButton = { TextButton(onClick = { showContactDialog = false }) { Text("Close") } }
                 )
             }
+
+            if (showAutoBackupDialog) {
+                var selectedWeekday by remember { mutableStateOf<String?>(null) }
+                val available = remember { appState.listAutoBackups() }
+                val sdf = remember { SimpleDateFormat("EEEE, dd MMM yyyy, h:mm a", Locale.getDefault()) }
+                AlertDialog(
+                    onDismissRequest = { showAutoBackupDialog = false },
+                    title = { Text("Restore from automatic backup") },
+                    text = {
+                        Column {
+                            if (selectedWeekday == null) {
+                                if (available.isEmpty()) {
+                                    Text("None yet — the first one is created a day after you first open the app with data loaded.", fontSize = 13.sp)
+                                } else {
+                                    Text("Runs silently once a day as a safety net — pick a snapshot to restore.", fontSize = 12.sp, color = Color.Gray)
+                                    Spacer(Modifier.height(10.dp))
+                                    available.forEach { (weekday, modifiedAt) ->
+                                        Text(
+                                            sdf.format(Date(modifiedAt)),
+                                            fontSize = 13.sp,
+                                            modifier = Modifier.fillMaxWidth().clickable { selectedWeekday = weekday }.padding(vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text("This replaces every plant and care-log entry currently shown with what's in this snapshot, then saves immediately. This can't be undone.", fontSize = 13.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        if (selectedWeekday != null) {
+                            TextButton(onClick = {
+                                appState.restoreAutoBackup(selectedWeekday!!)
+                                showAutoBackupDialog = false
+                                scope.launch { snackbarHostState.showSnackbar("Restored from automatic backup") }
+                            }) { Text("Restore") }
+                        }
+                    },
+                    dismissButton = { TextButton(onClick = { showAutoBackupDialog = false }) { Text("Cancel") } }
+                )
+            }
         }
     }
 }
@@ -333,7 +422,8 @@ private fun Sidebar(
     syncing: Boolean,
     onSyncNow: () -> Unit,
     onContact: () -> Unit,
-    onSupport: () -> Unit
+    onSupport: () -> Unit,
+    onRestoreAutoBackup: () -> Unit
 ) {
     Column(
         Modifier.width(240.dp).fillMaxHeight().background(SageGreenDark).padding(16.dp)
@@ -347,6 +437,7 @@ private fun Sidebar(
             Spacer(Modifier.height(24.dp))
             SidebarItem("📂 Open backup file…", false, onOpenFile)
             SidebarItem("💾 Save as…", false, onSaveAs)
+            SidebarItem("🕑 Restore automatic backup…", false, onRestoreAutoBackup)
 
             Spacer(Modifier.height(36.dp))
             Text("Sync with phone", color = Color.White, fontSize = 13.sp)
