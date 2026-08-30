@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1647,6 +1648,13 @@ suspend fun fetchIrrigationCsvFromDropbox(context: Context): String? = withConte
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Explicit rather than relying on the OS default: targeting SDK 35 means Android 15+
+        // already forces edge-to-edge regardless, but a device on an older Android version (or
+        // certain OEM skins) falls back to the traditional letterboxed layout instead — which is
+        // exactly the kind of "some phones show more top whitespace than others" inconsistency this
+        // removes, since Scaffold/TopAppBar below already inset for the status bar correctly either
+        // way once this is turned on consistently everywhere.
+        enableEdgeToEdge()
         if (!Places.isInitialized()) {
             Places.initializeWithNewPlacesApiEnabled(applicationContext, BuildConfig.MAPS_API_KEY)
             DropboxAuthState.checkAndRefresh(applicationContext)
