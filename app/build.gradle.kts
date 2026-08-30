@@ -27,8 +27,8 @@ android {
         applicationId = "com.sagegarden.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "1.5.3"
+        versionCode = 30
+        versionName = "1.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PLANTNET_API_KEY", "\"${localProperties.getProperty("PLANTNET_API_KEY", "")}\"")
         buildConfigField("String", "DROPBOX_APP_KEY", "\"${localProperties.getProperty("DROPBOX_APP_KEY", "")}\"")
