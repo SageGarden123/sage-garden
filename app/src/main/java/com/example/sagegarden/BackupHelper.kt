@@ -693,6 +693,79 @@ object BackupHelper {
         }
     }
 
+    // ========================================================================
+    // AUTOMATIC BACKUP SAFETY NET (see AutoBackupScheduler)
+    // ========================================================================
+    // Both halves rotate through 7 weekday-named slots (Monday.json, Tuesday.json, ...) rather than
+    // an ever-growing pile or a single overwritten file — re-running on the same weekday next week
+    // simply replaces that slot, so there's no separate retention/cleanup logic to get wrong, and a
+    // problem that isn't noticed for a few days still has a same-week day to roll back to.
+    private val autoBackupWeekdayFormat = SimpleDateFormat("EEEE", Locale.US)
+    private fun autoBackupWeekday(): String = autoBackupWeekdayFormat.format(Date())
+
+    /** Uses the exact same "garden_mapper_backup..." naming scheme as manual Dropbox backups, so an
+     * auto-backup file just shows up for free in the existing "choose which backup to restore"
+     * Dropbox picker (listAvailableBackups) — no separate Dropbox restore UI needed for these. */
+    fun dropboxAutoBackupFileName(context: Context, gardenId: String): String =
+        defaultBackupFileNameForGarden(context, gardenId).removeSuffix(".json") + "_auto_${autoBackupWeekday()}.json"
+
+    private fun localAutoBackupDir(context: Context, gardenId: String): File =
+        File(context.filesDir, "auto_backups/${gardenId.replace("/", "_")}").apply { mkdirs() }
+
+    /** The always-available half of the safety net — no Dropbox connection or folder picker needed,
+     * since it writes straight to this app's own private storage. Deliberately skips the custom map
+     * image (a large binary asset, and far less likely to be what a real data-loss incident costs
+     * you) to keep this fast enough to run silently on every app open. */
+    suspend fun createLocalAutoBackup(
+        context: Context,
+        gardenId: String,
+        plants: List<PlantEntity>,
+        paths: List<IrrigationPathEntity>,
+        events: List<WateringEvent>
+    ): BackupResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = buildBackupPayload(context, plants, paths, events)
+            File(localAutoBackupDir(context, gardenId), "${autoBackupWeekday()}.json").writeText(payload.root.toString())
+            BackupResult(true, "Auto-backup complete — ${payload.counts.summary()}")
+        } catch (e: Exception) {
+            BackupResult(false, e.message ?: "Unknown error")
+        }
+    }
+
+    data class LocalAutoBackupInfo(val weekday: String, val modifiedAt: Date)
+
+    /** Every local auto-backup slot present for [gardenId], newest first — up to 7 (one per weekday), for a restore picker. */
+    fun listLocalAutoBackups(context: Context, gardenId: String): List<LocalAutoBackupInfo> =
+        localAutoBackupDir(context, gardenId).listFiles()
+            ?.filter { it.name.endsWith(".json") }
+            ?.map { LocalAutoBackupInfo(it.name.removeSuffix(".json"), Date(it.lastModified())) }
+            ?.sortedByDescending { it.modifiedAt }
+            ?: emptyList()
+
+    /** Restores the local auto-backup slot named [weekday] for [gardenId] (from [listLocalAutoBackups]). See [restoreBackup] for [forceFresh]. */
+    suspend fun restoreLocalAutoBackup(
+        context: Context,
+        viewModel: PlantViewModel,
+        pathViewModel: IrrigationPathViewModel,
+        wateringViewModel: WateringZoneViewModel,
+        gardenId: String,
+        weekday: String,
+        forceFresh: Boolean = false
+    ): RestoreResult = withContext(Dispatchers.IO) {
+        try {
+            val file = File(localAutoBackupDir(context, gardenId), "$weekday.json")
+            if (!file.exists()) return@withContext RestoreResult(false, "That auto-backup no longer exists")
+            val root = JSONObject(file.readText())
+            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
+            if (forceFresh) {
+                GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
+            }
+            RestoreResult(true, "Restore complete — ${counts.summary()}")
+        } catch (e: Exception) {
+            RestoreResult(false, e.message ?: "Unknown error")
+        }
+    }
+
     private fun guessImageExtension(context: Context, uri: Uri): String {
         val type = context.contentResolver.getType(uri) ?: return "jpg"
         return when {

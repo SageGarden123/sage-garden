@@ -1803,6 +1803,11 @@ fun GardenMapperApp() {
             context.applicationContext as Application
         )
     )
+    val pathViewModel: IrrigationPathViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
+            context.applicationContext as Application
+        )
+    )
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -1824,6 +1829,18 @@ fun GardenMapperApp() {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
         // MainActivity.onCreate(), before this composable's first composition — see the comment there.
         EntitlementManager.sync(context)
+    }
+
+    // A silent safety net beneath the manual "Export to device"/Dropbox backup buttons — no-ops
+    // unless it's genuinely been a day since the last run for whichever garden is active. The short
+    // delay gives Room's first query a moment to land so this doesn't run against an empty plants
+    // list before real data has loaded.
+    LaunchedEffect(ActiveGardenState.activeGardenId) {
+        delay(3_000L)
+        AutoBackupScheduler.runIfDue(
+            context, effectiveGardenId(context),
+            viewModel.plants.value, pathViewModel.paths.value, wateringViewModel.events.value
+        )
     }
 
     // Auto-syncs plant/care-log data so neither side of a shared garden needs to remember to tap
@@ -8239,6 +8256,101 @@ fun HelpScreen(
                         }) { Text("Restore") }
                     },
                     dismissButton = { TextButton(onClick = { showLocalRestoreConfirm = false }) { Text("Cancel") } }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+
+            Text("Automatic backups (this device)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Runs silently once a day, no setup needed — keeps up to 7 rolling daily snapshots on this device (plus Dropbox too, if it's connected above), as a safety net under the manual backups above.",
+                fontSize = 12.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+
+            var showAutoBackupPicker by remember { mutableStateOf(false) }
+            var selectedAutoBackupWeekday by remember { mutableStateOf<String?>(null) }
+            var showAutoRestoreConfirm by remember { mutableStateOf(false) }
+            var autoBackupWorking by remember { mutableStateOf(false) }
+            var autoBackupResultText by remember { mutableStateOf<String?>(null) }
+            val availableAutoBackups = remember(ActiveGardenState.activeGardenId) {
+                BackupHelper.listLocalAutoBackups(context, effectiveGardenId(context))
+            }
+
+            OutlinedButton(
+                onClick = { showAutoBackupPicker = true },
+                modifier = Modifier.fillMaxWidth(), enabled = availableAutoBackups.isNotEmpty() && canEditActiveGarden && !autoBackupWorking
+            ) { Text(if (autoBackupWorking) "Restoring…" else "Restore from automatic backup") }
+            if (availableAutoBackups.isEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text("None yet — the first one is created the next time you open the app.", fontSize = 11.sp, color = Color.Gray)
+            }
+
+            if (showAutoBackupPicker) {
+                val sdf = remember { SimpleDateFormat("EEEE, dd MMM yyyy, h:mm a", Locale.getDefault()) }
+                AlertDialog(
+                    onDismissRequest = { showAutoBackupPicker = false },
+                    title = { Text("Choose an automatic backup to restore") },
+                    text = {
+                        Column {
+                            availableAutoBackups.forEach { info ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable {
+                                            showAutoBackupPicker = false
+                                            selectedAutoBackupWeekday = info.weekday
+                                            showAutoRestoreConfirm = true
+                                        }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Text(sdf.format(info.modifiedAt), fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { showAutoBackupPicker = false }) { Text("Cancel") } }
+                )
+            }
+
+            autoBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
+
+            if (showAutoRestoreConfirm) {
+                var forceFreshAutoRestore by remember { mutableStateOf(false) }
+                AlertDialog(
+                    onDismissRequest = { showAutoRestoreConfirm = false },
+                    title = { Text("Restore this automatic backup?") },
+                    text = {
+                        Column {
+                            Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, and care history from this on-device snapshot. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { forceFreshAutoRestore = !forceFreshAutoRestore }
+                            ) {
+                                Checkbox(checked = forceFreshAutoRestore, onCheckedChange = { forceFreshAutoRestore = it })
+                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showAutoRestoreConfirm = false
+                            val weekday = selectedAutoBackupWeekday
+                            if (weekday != null) {
+                                scope.launch {
+                                    autoBackupWorking = true; autoBackupResultText = null
+                                    val result = BackupHelper.restoreLocalAutoBackup(
+                                        context, viewModel, pathViewModel, wateringViewModel,
+                                        effectiveGardenId(context), weekday, forceFreshAutoRestore
+                                    )
+                                    autoBackupWorking = false; autoBackupResultText = result.message
+                                }
+                            }
+                        }) { Text("Restore") }
+                    },
+                    dismissButton = { TextButton(onClick = { showAutoRestoreConfirm = false }) { Text("Cancel") } }
                 )
             }
 
