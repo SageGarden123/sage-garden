@@ -1548,7 +1548,24 @@ suspend fun importPlantsCsv(context: Context, text: String, plants: List<PlantEn
                 ?: existing?.isIndoor ?: false,
             photoUri = existing?.photoUri,
             photoUris = existing?.photoUris ?: emptyList(),
-            photoThumbnailBase64 = existing?.photoThumbnailBase64
+            photoThumbnailBase64 = existing?.photoThumbnailBase64,
+            // CSV is deliberately a lighter species/location catalog — it never carries these
+            // fields, so an import must preserve them from the existing record rather than the
+            // PlantEntity constructor's defaults, or every plant in the file loses its watering
+            // schedule, seasonal overrides, and map position the moment it's re-imported.
+            gardenId = existing?.gardenId ?: "",
+            mapX = existing?.mapX,
+            mapY = existing?.mapY,
+            lastWateredDate = existing?.lastWateredDate,
+            wateringFrequencyDays = existing?.wateringFrequencyDays,
+            summerWateringFrequencyDays = existing?.summerWateringFrequencyDays,
+            winterWateringFrequencyDays = existing?.winterWateringFrequencyDays,
+            lastFertilisedDate = existing?.lastFertilisedDate,
+            fertiliseFrequencyDays = existing?.fertiliseFrequencyDays,
+            lastPrunedDate = existing?.lastPrunedDate,
+            pruneFrequencyDays = existing?.pruneFrequencyDays,
+            lastFedDate = existing?.lastFedDate,
+            feedFrequencyDays = existing?.feedFrequencyDays
         )
         viewModel.save(plant)
         workingPlants.removeAll { it.id == resolvedId }
@@ -1632,11 +1649,10 @@ class MainActivity : ComponentActivity() {
         // singletons' default values before an effect had a chance to sync them.
         SageEnabledState.enabled = FeatureVisibility.isSageChatEnabled(applicationContext)
         AdvancedModeState.enabled = FeatureVisibility.isAdvancedModeEnabled(applicationContext)
-        HemisphereState.value = getHemisphere(applicationContext)
-        ActiveGardenState.activeGardenId = GardenMembershipStore.getActiveGardenId(applicationContext)
-        GardenAddressState.address = getGardenAddress(applicationContext)
-        GardenAddressState.latLng = getGardenLatLng(applicationContext)
-        GardenAddressState.locations = getGardenLocations(applicationContext)
+        // Always cold-start on this device's own default garden (null), never whatever garden was
+        // last active — otherwise leaving the app open on someone else's shared garden and closing
+        // it means the next launch silently stays in their garden until you notice and switch back.
+        GardenMembershipStore.setActiveGardenId(applicationContext, null)
         EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
