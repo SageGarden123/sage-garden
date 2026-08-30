@@ -360,6 +360,20 @@ private fun migrateCredential(context: Context, key: String): String? {
 
 data class TuyaZoneMapping(val zone: String, val deviceId: String, val outlet: String)
 
+/**
+ * Live, Compose-observable mirror of the persisted Tuya zone mapping — same rationale as
+ * ActiveGardenState/GardenAddressState (see GardenMembershipClient.kt): the Help screen's zone
+ * editor captures a one-shot snapshot via `remember(ActiveGardenState.activeGardenId)`, which never
+ * re-reads prefs unless the active garden itself changes. A restore (Dropbox/local/auto-backup)
+ * writes fresh zone mappings straight to prefs without switching gardens, so without this the
+ * editor kept showing whatever it last had — even though the restore itself worked correctly —
+ * until the user force-restarted the app. Refreshed by setTuyaZoneMappings, whether that's called
+ * from the editor's own Save button or from a restore.
+ */
+object TuyaZoneMappingState {
+    var mappings by mutableStateOf<List<TuyaZoneMapping>>(emptyList())
+}
+
 fun getTuyaZoneMappings(context: Context): List<TuyaZoneMapping> {
     val raw = gardenScopedString(context, "tuya_device_mapping", "")
     return raw.split("|").filter { it.contains("=") }.mapNotNull { entry ->
@@ -376,6 +390,12 @@ fun getTuyaZoneMappings(context: Context): List<TuyaZoneMapping> {
 fun setTuyaZoneMappings(context: Context, mappings: List<TuyaZoneMapping>) {
     val raw = mappings.joinToString("|") { "${it.zone}=${it.deviceId}:${it.outlet}" }
     setGardenScopedString(context, "tuya_device_mapping", raw)
+    // Deliberately NOT refreshing TuyaZoneMappingState here — this function is also called by the
+    // zone editor's own Save/Fetch-local-key actions, and refreshing from here would reset the
+    // editor's in-progress row list from whatever was just saved (which filters out any row still
+    // mid-edit with a blank field), discarding it. TuyaZoneMappingState should only change for
+    // updates that happen OUTSIDE this screen — a restore, or switching gardens — see the explicit
+    // refresh calls at those call sites instead.
 }
 
 /** Each user connects their own Tuya Cloud project — nothing is shared between installs. migrateCredential is a one-time, garden-independent hop from the old general prefs file into credentialPrefs; gardenScopedString's own legacy-key fallback then takes it from there per garden. */
@@ -6878,8 +6898,8 @@ fun HelpScreen(
     val focusWeatherSection = PendingHelpFocusState.focusWeatherSection
     LaunchedEffect(Unit) { PendingHelpFocusState.focusWeatherSection = false }
 
-    val zoneRows = remember(ActiveGardenState.activeGardenId) {
-        val initial = getTuyaZoneMappings(context).map { Triple(it.zone, it.deviceId, it.outlet) }
+    val zoneRows = remember(ActiveGardenState.activeGardenId, TuyaZoneMappingState.mappings) {
+        val initial = TuyaZoneMappingState.mappings.map { Triple(it.zone, it.deviceId, it.outlet) }
         mutableStateListOf(*(if (initial.isEmpty()) listOf(Triple("", "", "1")) else initial).toTypedArray())
     }
     val rachioZoneRows = remember(ActiveGardenState.activeGardenId) {

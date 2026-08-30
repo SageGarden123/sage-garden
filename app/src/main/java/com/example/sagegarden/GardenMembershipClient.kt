@@ -58,6 +58,7 @@ object GardenMembershipStore {
         GardenAddressState.address = getGardenAddress(context)
         GardenAddressState.latLng = getGardenLatLng(context)
         GardenAddressState.locations = getGardenLocations(context)
+        TuyaZoneMappingState.mappings = getTuyaZoneMappings(context)
     }
 
     fun getKnownGardens(context: Context): List<KnownGarden> {

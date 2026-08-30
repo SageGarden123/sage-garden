@@ -397,6 +397,11 @@ object BackupHelper {
             TuyaZoneMapping(o.getString("zone"), o.getString("deviceId"), o.optString("outlet", "1"))
         }
         setTuyaZoneMappings(context, tuyaMappings)
+        // Explicit refresh here (not inside setTuyaZoneMappings itself) since a restore is a
+        // genuine external change the zone editor should pick up immediately — unlike the editor's
+        // own Save/Fetch-local-key actions, which also call setTuyaZoneMappings but shouldn't reset
+        // the editor's in-progress rows from what they just saved.
+        TuyaZoneMappingState.mappings = tuyaMappings
 
         val rachioArr = root.optJSONArray("rachioZoneMappings") ?: JSONArray()
         val rachioMappings = (0 until rachioArr.length()).map { i ->
