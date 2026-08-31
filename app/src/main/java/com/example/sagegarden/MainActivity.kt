@@ -1847,10 +1847,13 @@ fun SplashScreen(onFinished: () -> Unit) {
             )
         }
 
-        // Bottom-right credit, also on a frosted panel for legibility
+        // Bottom-right credit, also on a frosted panel for legibility. Needs navigationBarsPadding()
+        // now that enableEdgeToEdge() draws content behind the system nav bar/gesture handle —
+        // without it this sat underneath the on-screen Android buttons instead of above them.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
                 .padding(16.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.White.copy(alpha = 0.80f))
