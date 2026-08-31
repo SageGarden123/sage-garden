@@ -2932,94 +2932,7 @@ fun MapScreen(
             }
         }
     }
-    var searchQuery by remember { mutableStateOf("") }
-
-    val placesClient = remember { Places.createClient(context) }
-    var predictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
-    var geocoderPredictions by remember { mutableStateOf<List<android.location.Address>>(emptyList()) }
     var tooltipPlant by remember { mutableStateOf<PlantEntity?>(null) }
-    // A session token bundles every autocomplete keystroke plus the final place-details fetch into
-    // one billed "session" instead of separate per-request charges — a new token starts each time a
-    // fresh search begins (see onPredictionClick, which rotates it once a place is picked).
-    var sessionToken by remember { mutableStateOf(AutocompleteSessionToken.newInstance()) }
-
-    LaunchedEffect(searchQuery) {
-        if (searchQuery.length > 2) {
-            delay(300) // Debounce typing
-
-            // 1. Try Places SDK (requires Places API enabled in Google Cloud Console)
-            val request = FindAutocompletePredictionsRequest.builder()
-                .setQuery(searchQuery)
-                .setSessionToken(sessionToken)
-                .build()
-            placesClient.findAutocompletePredictions(request)
-                .addOnSuccessListener { response: FindAutocompletePredictionsResponse ->
-                    predictions = response.autocompletePredictions
-                    geocoderPredictions = emptyList()
-                }
-                .addOnFailureListener {
-                    predictions = emptyList()
-                    // 2. Fallback to Geocoder (free, no API enablement required)
-                    scope.launch {
-                        val results = withContext(Dispatchers.IO) {
-                            try {
-                                @Suppress("DEPRECATION")
-                                Geocoder(context, Locale.getDefault()).getFromLocationName(searchQuery, 5)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                        geocoderPredictions = results ?: emptyList()
-                    }
-                }
-        } else {
-            predictions = emptyList()
-            geocoderPredictions = emptyList()
-        }
-    }
-
-    fun onAddressClick(address: android.location.Address) {
-        searchQuery = address.getAddressLine(0) ?: ""
-        geocoderPredictions = emptyList()
-        cameraPositionState.position = CameraPosition.fromLatLngZoom(
-            LatLng(address.latitude, address.longitude), 18f
-        )
-    }
-
-    fun onPredictionClick(prediction: AutocompletePrediction) {
-        val fullText = prediction.getFullText(null).toString()
-        searchQuery = fullText
-        predictions = emptyList()
-        // LAT_LNG was replaced by LOCATION in Places SDK 5.0+
-        val placeFields = listOf(Place.Field.LOCATION)
-        val request = FetchPlaceRequest.builder(prediction.placeId, placeFields).setSessionToken(sessionToken).build()
-        placesClient.fetchPlace(request)
-            .addOnSuccessListener { response: FetchPlaceResponse ->
-                val latLng = response.place.location
-                if (latLng != null) {
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(latLng, 18f)
-                }
-            }
-        sessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
-    }
-
-    fun runAddressSearch() {
-        if (searchQuery.isBlank()) return
-        scope.launch {
-            val results = withContext(Dispatchers.IO) {
-                try {
-                    @Suppress("DEPRECATION")
-                    Geocoder(context, Locale.getDefault()).getFromLocationName(searchQuery, 1)
-                } catch (_: Exception) {
-                    null
-                }
-            }
-            if (!results.isNullOrEmpty()) {
-                val loc = results[0]
-                cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(loc.latitude, loc.longitude), 18f)
-            }
-        }
-    }
 
     // Only the true "nothing to show a map from" case should get the placeholder instead of the
     // real map — a garden with no address but at least one plant that already has coordinates
@@ -3136,28 +3049,15 @@ fun MapScreen(
             }
         }
 
-        // Address search bar and predictions list
+        // Category filter dropdown (address search removed — the garden address is now set once
+        // in Help, so a per-screen search bar here was redundant).
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(12.dp)
                 .fillMaxWidth()
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search for an address…") },
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(onClick = { runAddressSearch() }) { Text("🔍") }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(10.dp))
-            )
-
             if (usedCategories.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
                 val categoryLabels = remember(usedCategories) {
                     listOf("All" to "All") + usedCategories.map { cat -> cat to "${categoryMarkerEmoji(cat)} $cat" }
                 }
@@ -3179,45 +3079,6 @@ fun MapScreen(
                                 text = { Text(label, fontSize = 13.sp) },
                                 onClick = { mapCategoryFilter = key; categoryMenuExpanded = false }
                             )
-                        }
-                    }
-                }
-            }
-
-            if (predictions.isNotEmpty() || geocoderPredictions.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White)
-                    ) {
-                        items(predictions) { prediction ->
-                            Text(
-                                text = prediction.getFullText(null).toString(),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPredictionClick(prediction) }
-                                    .padding(12.dp),
-                                fontSize = 14.sp
-                            )
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                        }
-                        items(geocoderPredictions) { address ->
-                            Text(
-                                text = address.getAddressLine(0) ?: "Unknown address",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onAddressClick(address) }
-                                    .padding(12.dp),
-                                fontSize = 14.sp
-                            )
-                            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                         }
                     }
                 }
