@@ -6207,6 +6207,18 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                 }
             }
         }
+
+        if (gardenCoords != null) {
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = {
+                    val coords = gardenCoords!!
+                    setMapCameraPosition(context, coords.first, coords.second, 20f)
+                    scope.launch { snackbarHostState.showSnackbar("Map position reset — reopen the Map tab to see it") }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("📍 Reset map position") }
+        }
     }
 }
 
