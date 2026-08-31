@@ -4900,6 +4900,7 @@ fun FormScreen(
     var isIndoor by remember { mutableStateOf(false) }
     var showBulkWaterPrompt by remember { mutableStateOf(false) }
     var pendingSavedPlant by remember { mutableStateOf<PlantEntity?>(null) }
+    var bulkWaterOnlySystem by remember { mutableStateOf(true) }
 
     fun buildPlant(): PlantEntity {
         val finalPollinator = if (pollinatorChoice == "Other") pollinatorOther else pollinatorChoice
@@ -5580,6 +5581,7 @@ fun FormScreen(
                     }
 
                     if (plant.lastWateredDate != null && location.isNotBlank() && lastWateredDate != originalLastWateredDate) {
+                        bulkWaterOnlySystem = plant.wateringSystem.isNotBlank()
                         showBulkWaterPrompt = true
                     } else {
                         checkPlacementPrompts(plant)
@@ -5746,31 +5748,53 @@ fun FormScreen(
     }
     if (showBulkWaterPrompt) {
         val plant = pendingSavedPlant
+        val systemName = plant?.wateringSystem?.takeIf { it.isNotBlank() }
         AlertDialog(
             onDismissRequest = {
                 showBulkWaterPrompt = false
                 plant?.let { checkPlacementPrompts(it) }
             },
             title = { Text("Apply to whole location?") },
-            text = { Text("Set \"last watered\" to $lastWateredDate for every plant in \"$location\"?") },
+            text = {
+                Column {
+                    Text(
+                        if (systemName != null && bulkWaterOnlySystem)
+                            "Set \"last watered\" to $lastWateredDate for every plant on \"$systemName\" in \"$location\"?"
+                        else
+                            "Set \"last watered\" to $lastWateredDate for every plant in \"$location\"?"
+                    )
+                    if (systemName != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                if (bulkWaterOnlySystem) "Only plants on \"$systemName\"" else "All plants in \"$location\"",
+                                fontSize = 13.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(checked = bulkWaterOnlySystem, onCheckedChange = { bulkWaterOnlySystem = it })
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showBulkWaterPrompt = false
                     val dateMillis = plant?.lastWateredDate
                     if (dateMillis != null) {
                         scope.launch {
-                            allPlants.filter { it.location == location }.forEach { p ->
-                                if (p.id != plant.id) {
-                                    viewModel.saveSync(p.copy(lastWateredDate = dateMillis))
-                                    careLogViewModel.logCareSync(p.id, "watering", dateMillis)
-                                }
+                            allPlants.filter { p ->
+                                p.location == location && p.id != plant.id &&
+                                    (systemName == null || !bulkWaterOnlySystem || p.wateringSystem == systemName)
+                            }.forEach { p ->
+                                viewModel.saveSync(p.copy(lastWateredDate = dateMillis))
+                                careLogViewModel.logCareSync(p.id, "watering", dateMillis)
                             }
                             checkPlacementPrompts(plant)
                         }
                     } else {
                         plant?.let { checkPlacementPrompts(it) }
                     }
-                }) { Text("Yes, apply to all") }
+                }) { Text("Yes, apply") }
             },
             dismissButton = {
                 TextButton(onClick = {
