@@ -263,6 +263,27 @@ fun categoryMarkerEmoji(category: String): String = when (category) {
     "Herbs" -> "🌱"
     else -> "📍"
 }
+
+/** Category → dot colour for the custom (uploaded-drawing) map, which uses plain colour-coded
+ * dots instead of the real map's emoji markers — a drawing's own colours/background can't be
+ * predicted, so an emoji icon can disappear against it in a way it never does on the real map's
+ * consistent satellite/hybrid tile background. */
+fun categoryMarkerColor(category: String): Color = when (category) {
+    "Trees" -> Color(0xFF2E7D32)
+    "Shrubs" -> Color(0xFF558B2F)
+    "Ground Cover" -> Color(0xFF9E9D24)
+    "Climbers/Vines" -> Color(0xFF00897B)
+    "Grasses" -> Color(0xFFF9A825)
+    "Ferns" -> Color(0xFF00695C)
+    "Perennials" -> Color(0xFFD81B60)
+    "Annuals" -> Color(0xFFFB8C00)
+    "Bulbs" -> Color(0xFF8E24AA)
+    "Succulents" -> Color(0xFF00ACC1)
+    "Palms/Cycads" -> Color(0xFF6D4C41)
+    "Aquatic" -> Color(0xFF1E88E5)
+    "Herbs" -> Color(0xFF43A047)
+    else -> Color(0xFFFF7A45)
+}
 val frostOptions = listOf("Hardy", "Half-hardy", "Tender", "Tender (indoor only)", "Unknown")
 val nativeOptions = listOf("Native (Aus)", "Exotic")
 val pollinatorOptions = listOf(
@@ -3404,9 +3425,7 @@ fun CustomMapScreen(
     // target growing along with it. Deliberately precise rather than forgiving: a near-miss tap is
     // treated as "place a new plant here", which is what makes dense plantings placeable at all.
     fun plantMarkerRadiusPx(plant: PlantEntity): Float {
-        val hasCategoryIcon = plant.category.isNotBlank() && plant.category != "Other"
-        val diameterDp = if (hasCategoryIcon) 14.dp else 5.dp
-        return with(density) { (diameterDp / 2).toPx() }
+        return with(density) { (9.dp / 2).toPx() }
     }
 
     Box(
@@ -3641,16 +3660,15 @@ fun CustomMapScreen(
                     val xDp = with(density) { (plant.mapX * containerSize.width).toFloat().toDp() }
                     val yDp = with(density) { (plant.mapY * containerSize.height).toFloat().toDp() }
                     val isPendingTarget = attachingDripSegment != null && pendingDripTargets.contains(plant.id)
-                    val hasCategoryIcon = plant.category.isNotBlank() && plant.category != "Other"
-                    val markerSize = if (hasCategoryIcon) 14.dp else 5.dp
-                    val markerColor = Color(0xFFFF7A45)
+                    val markerSize = 9.dp
+                    val markerColor = categoryMarkerColor(plant.category)
                     Box(
                         modifier = Modifier
                             .offset(x = xDp - markerSize / 2, y = yDp - markerSize / 2)
                             .size(markerSize)
                             .clip(RoundedCornerShape(50))
-                            .background(if (hasCategoryIcon) Color.White else markerColor)
-                            .then(if (isPendingTarget) Modifier.border(1.dp, Color.White, RoundedCornerShape(50)) else Modifier)
+                            .background(markerColor)
+                            .border(if (isPendingTarget) 1.5.dp else 0.75.dp, Color.White, RoundedCornerShape(50))
                             .then(
                                 // Only intercepts taps while picking drip-segment targets. Plain
                                 // plant lookup/placement taps are handled by the parent's fixed-radius
@@ -3662,11 +3680,8 @@ fun CustomMapScreen(
                                         else pendingDripTargets.add(plant.id)
                                     }
                                 } else Modifier
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (hasCategoryIcon) Text(categoryMarkerEmoji(plant.category), fontSize = 8.sp)
-                    }
+                            )
+                    )
                 }
             }
 
