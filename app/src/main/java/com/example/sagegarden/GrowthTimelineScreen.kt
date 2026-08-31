@@ -147,17 +147,27 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                     }
                     val localUriScheme = Uri.parse(photo.uri).scheme
                     if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
+                        var previewName by remember(photo.id) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(photo.id) {
+                            previewGrowthPhotoDropboxUploadName(context, plantId)?.let { previewName = it.removeSuffix(".jpg") }
+                        }
                         TextButton(
                             onClick = {
                                 uploadingPhotoId = photo.id; uploadFailedId = null
                                 scope.launch {
-                                    val link = uploadPhotoToDropboxAsPlantId(context, Uri.parse(photo.uri), plantId)
+                                    val link = uploadPhotoToDropboxAsGrowthPhoto(context, Uri.parse(photo.uri), plantId)
                                     uploadingPhotoId = null
                                     if (link != null) growthViewModel.updateUri(photo, link) else uploadFailedId = photo.id
                                 }
                             },
                             enabled = uploadingPhotoId != photo.id
-                        ) { Text(if (uploadingPhotoId == photo.id) "Uploading…" else "☁️ Upload to Dropbox", fontSize = 11.sp) }
+                        ) {
+                            Text(
+                                if (uploadingPhotoId == photo.id) "Uploading…"
+                                else "☁️ Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                fontSize = 11.sp
+                            )
+                        }
                         if (uploadFailedId == photo.id) {
                             Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
                         }

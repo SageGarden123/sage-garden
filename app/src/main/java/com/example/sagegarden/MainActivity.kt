@@ -1082,24 +1082,31 @@ private suspend fun fetchOrCreateSharedLink(client: DbxClientV2, filePath: Strin
  * Dropbox isn't reachable (folder listing failed) — callers should fall back to showing the bare
  * plant ID in that case, same as before this preview existed.
  */
+/**
+ * Lists every filename directly inside [folderPath], paging through `listFolderContinue` so a
+ * large photo folder doesn't silently miss files past the first page (which previously showed as
+ * available to reuse when they weren't).
+ */
+private suspend fun listDropboxFileNames(client: DbxClientV2, folderPath: String): Set<String> {
+    val listing = client.files().listFolder(folderPath.ifBlank { "" })
+    val existingNames = listing.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }.toMutableSet()
+    var cursor = listing.cursor
+    var hasMore = listing.hasMore
+    while (hasMore) {
+        val more = client.files().listFolderContinue(cursor)
+        existingNames += more.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
+        cursor = more.cursor
+        hasMore = more.hasMore
+    }
+    return existingNames
+}
+
 suspend fun previewDropboxUploadName(context: Context, plantId: String): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext null
             val folderPath = getDropboxPhotoFolderPath(context) ?: ""
-            val listing = client.files().listFolder(folderPath.ifBlank { "" })
-            val existingNames = listing.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }.toMutableSet()
-            // listFolder truncates at a page limit and sets hasMore=true if the folder has more
-            // entries than that — without paging through listFolderContinue, a large photo folder
-            // could silently miss files that DO exist, which previously showed as available to reuse.
-            var cursor = listing.cursor
-            var hasMore = listing.hasMore
-            while (hasMore) {
-                val more = client.files().listFolderContinue(cursor)
-                existingNames += more.entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
-                cursor = more.cursor
-                hasMore = more.hasMore
-            }
+            val existingNames = listDropboxFileNames(client, folderPath)
             val bareName = "$plantId.jpg"
             android.util.Log.d("DropboxUploadName", "folder='$folderPath' entries=${existingNames.size} bareNameExists=${bareName in existingNames}")
             if (bareName !in existingNames) {
@@ -1140,6 +1147,81 @@ suspend fun uploadPhotoToDropboxAsPlantId(context: Context, localUri: Uri, plant
     }
 }
 
+/**
+ * Extra Photos share a plant's ID as their Dropbox filename base but need their own counter,
+ * distinct from the main plant photo's ([previewDropboxUploadName]) — the "_E" tag disambiguates
+ * "P0001_E1.jpg" (an extra photo) from "P0001_1.jpg" (a replaced main photo) in Dropbox itself.
+ */
+suspend fun previewExtraPhotoDropboxUploadName(context: Context, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val existingNames = listDropboxFileNames(client, folderPath)
+            var suffix = 1
+            while ("${plantId}_E$suffix.jpg" in existingNames) suffix++
+            "${plantId}_E$suffix.jpg"
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** Uploads a local extra photo to the configured Dropbox photo folder under the name
+ * [previewExtraPhotoDropboxUploadName] computes for [plantId]. Mirrors [uploadPhotoToDropboxAsPlantId]. */
+suspend fun uploadPhotoToDropboxAsExtraPhoto(context: Context, localUri: Uri, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val targetName = previewExtraPhotoDropboxUploadName(context, plantId) ?: return@withContext null
+
+            val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
+            val filePath = "$folderPath/$targetName".replace("//", "/")
+            client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
+            fetchOrCreateSharedLink(client, filePath)?.let { toDirectDropboxLink(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** Growth timeline photos, tagged "_G" for the same reason Extra Photos are tagged "_E" —
+ * see [previewExtraPhotoDropboxUploadName]. */
+suspend fun previewGrowthPhotoDropboxUploadName(context: Context, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val existingNames = listDropboxFileNames(client, folderPath)
+            var suffix = 1
+            while ("${plantId}_G$suffix.jpg" in existingNames) suffix++
+            "${plantId}_G$suffix.jpg"
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** Uploads a local growth-timeline photo to the configured Dropbox photo folder under the name
+ * [previewGrowthPhotoDropboxUploadName] computes for [plantId]. Mirrors [uploadPhotoToDropboxAsPlantId]. */
+suspend fun uploadPhotoToDropboxAsGrowthPhoto(context: Context, localUri: Uri, plantId: String): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val client = getDropboxClient(context) ?: return@withContext null
+            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
+            val targetName = previewGrowthPhotoDropboxUploadName(context, plantId) ?: return@withContext null
+
+            val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
+            val filePath = "$folderPath/$targetName".replace("//", "/")
+            client.files().uploadBuilder(filePath).uploadAndFinish(bytes.inputStream())
+            fetchOrCreateSharedLink(client, filePath)?.let { toDirectDropboxLink(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
 fun sanitizeForDropboxFilename(raw: String): String =
     raw.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "zone" }
 
@@ -1148,6 +1230,8 @@ fun sanitizeForDropboxFilename(raw: String): String =
  * [previewDropboxUploadName] — so they use "progress_<zone>_<N>.jpg" instead, always suffixed
  * starting at _1 (unlike the plant-photo convention's bare name for the first upload, since
  * "progress_frontyard.jpg" alone wouldn't obviously read as belonging to this app/feature).
+ * Deliberately left with a plain numeric suffix (no letter tag) — unlike Extra/Growth photos,
+ * these don't share a naming pool with anything else, so there's nothing to disambiguate from.
  */
 suspend fun previewProgressPhotoDropboxUploadName(context: Context, location: String): String? {
     return withContext(Dispatchers.IO) {
@@ -1155,9 +1239,7 @@ suspend fun previewProgressPhotoDropboxUploadName(context: Context, location: St
             val client = getDropboxClient(context) ?: return@withContext null
             val folderPath = getDropboxPhotoFolderPath(context) ?: ""
             val baseName = "progress_${sanitizeForDropboxFilename(location)}"
-            val existingNames = client.files().listFolder(folderPath.ifBlank { "" })
-                .entries.mapNotNull { (it as? com.dropbox.core.v2.files.FileMetadata)?.name }
-                .toSet()
+            val existingNames = listDropboxFileNames(client, folderPath)
             var suffix = 1
             while ("${baseName}_$suffix.jpg" in existingNames) suffix++
             "${baseName}_$suffix.jpg"
@@ -5912,17 +5994,27 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
                         }
                         val localUriScheme = Uri.parse(photo.uri).scheme
                         if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
+                            var previewName by remember(photo.id) { mutableStateOf<String?>(null) }
+                            LaunchedEffect(photo.id) {
+                                previewExtraPhotoDropboxUploadName(context, plantId)?.let { previewName = it.removeSuffix(".jpg") }
+                            }
                             TextButton(
                                 onClick = {
                                     uploadingPhotoId = photo.id; uploadFailedId = null
                                     scope.launch {
-                                        val link = uploadPhotoToDropboxAsPlantId(context, Uri.parse(photo.uri), plantId)
+                                        val link = uploadPhotoToDropboxAsExtraPhoto(context, Uri.parse(photo.uri), plantId)
                                         uploadingPhotoId = null
                                         if (link != null) extraPhotoViewModel.updateUri(photo, link) else uploadFailedId = photo.id
                                     }
                                 },
                                 enabled = uploadingPhotoId != photo.id
-                            ) { Text(if (uploadingPhotoId == photo.id) "Uploading…" else "☁️ Upload to Dropbox", fontSize = 11.sp) }
+                            ) {
+                                Text(
+                                    if (uploadingPhotoId == photo.id) "Uploading…"
+                                    else "☁️ Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                    fontSize = 11.sp
+                                )
+                            }
                             if (uploadFailedId == photo.id) {
                                 Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
                             }

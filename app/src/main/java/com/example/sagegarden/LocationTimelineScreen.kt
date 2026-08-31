@@ -159,6 +159,10 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                     }
                     val localUriScheme = Uri.parse(photo.uri).scheme
                     if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
+                        var previewName by remember(photo.id) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(photo.id) {
+                            previewProgressPhotoDropboxUploadName(context, location)?.let { previewName = it.removeSuffix(".jpg") }
+                        }
                         TextButton(
                             onClick = {
                                 uploadingPhotoId = photo.id; uploadFailedId = null
@@ -169,7 +173,13 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                                 }
                             },
                             enabled = uploadingPhotoId != photo.id
-                        ) { Text(if (uploadingPhotoId == photo.id) "Uploading…" else "☁️ Upload to Dropbox", fontSize = 11.sp) }
+                        ) {
+                            Text(
+                                if (uploadingPhotoId == photo.id) "Uploading…"
+                                else "☁️ Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                fontSize = 11.sp
+                            )
+                        }
                         if (uploadFailedId == photo.id) {
                             Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
                         }
