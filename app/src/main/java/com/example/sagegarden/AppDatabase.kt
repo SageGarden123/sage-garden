@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class], version = 27, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class, ManualZoneScheduleEntity::class], version = 28, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -21,6 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sageChatDao(): SageChatDao
     abstract fun extraPhotoDao(): ExtraPhotoDao
     abstract fun locationPhotoDao(): LocationPhotoDao
+    abstract fun manualZoneScheduleDao(): ManualZoneScheduleDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -31,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context))
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context), MIGRATION_27_28)
                     .build().also { INSTANCE = it }
             }
         }
@@ -298,5 +299,25 @@ fun migration26To27(context: Context) = object : Migration(26, 27) {
 
         db.execSQL("ALTER TABLE location_photos ADD COLUMN gardenId TEXT NOT NULL DEFAULT ''")
         db.execSQL("UPDATE location_photos SET gardenId = ?", arrayOf(installId))
+    }
+}
+
+val MIGRATION_27_28 = object : Migration(27, 28) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `manual_zone_schedules` (
+                `id` TEXT NOT NULL,
+                `zone` TEXT NOT NULL,
+                `gardenId` TEXT NOT NULL DEFAULT '',
+                `daysOfWeek` TEXT NOT NULL,
+                `durationMinutes` INTEGER NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_zone_schedules_zone` ON `manual_zone_schedules` (`zone`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_zone_schedules_gardenId` ON `manual_zone_schedules` (`gardenId`)")
     }
 }

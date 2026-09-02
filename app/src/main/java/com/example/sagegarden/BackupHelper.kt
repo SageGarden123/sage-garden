@@ -136,6 +136,15 @@ object BackupHelper {
         }
         root.put("locationPhotos", locationPhotosArr)
 
+        val manualSchedulesArr = JSONArray()
+        db.manualZoneScheduleDao().getAllOnceForGarden(backupGardenId).forEach { m ->
+            val o = JSONObject()
+            o.put("id", m.id); o.put("zone", m.zone); o.put("gardenId", m.gardenId)
+            o.put("daysOfWeek", m.daysOfWeek); o.put("durationMinutes", m.durationMinutes); o.put("createdAt", m.createdAt)
+            manualSchedulesArr.put(o)
+        }
+        root.put("manualZoneSchedules", manualSchedulesArr)
+
         val careLogArr = JSONArray()
         db.careLogDao().getAllOnce().forEach { c ->
             val o = JSONObject()
@@ -363,6 +372,19 @@ object BackupHelper {
                     id = o.getString("id"), location = o.getString("location"), uri = o.getString("uri"),
                     label = o.optString("label", ""), takenAt = o.optLong("takenAt", System.currentTimeMillis()),
                     gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                )
+            )
+        }
+
+        val manualSchedulesArr = root.optJSONArray("manualZoneSchedules") ?: JSONArray()
+        for (i in 0 until manualSchedulesArr.length()) {
+            val o = manualSchedulesArr.getJSONObject(i)
+            db.manualZoneScheduleDao().upsert(
+                ManualZoneScheduleEntity(
+                    id = o.getString("id"), zone = o.getString("zone"),
+                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) },
+                    daysOfWeek = o.getString("daysOfWeek"), durationMinutes = o.getInt("durationMinutes"),
+                    createdAt = o.optLong("createdAt", System.currentTimeMillis())
                 )
             )
         }

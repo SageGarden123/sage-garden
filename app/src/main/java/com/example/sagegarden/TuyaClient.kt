@@ -136,63 +136,6 @@ object TuyaClient {
         return (0 until result.length()).map { result.getJSONObject(it).getString("code") }
     }
 
-    /** One configured on/off timer, read from Tuya's own scheduler — display-only, this app never
-     * writes to it. [daysOfWeek] uses 1=Monday..7=Sunday (ISO order, matching Tuya's "loops" string). */
-    data class DeviceTimer(
-        val timerId: String, val aliasName: String, val outlet: String,
-        val time: String, val daysOfWeek: Set<Int>, val enabled: Boolean
-    )
-
-    /**
-     * Read-only view of what's currently configured in Tuya's own scheduler for a device — purely
-     * for the user's reference in-app (e.g. "is my drip zone already set to run Tue/Thu mornings?"),
-     * never written back to Tuya. Covers both outlets on the device; callers filter by outlet
-     * themselves (see [DeviceTimer.outlet]).
-     */
-    suspend fun getDeviceTimers(context: Context, deviceId: String): List<DeviceTimer> {
-        val (clientId, clientSecret) = requireCredentials(context)
-        val token = getToken(context, clientId, clientSecret)
-        val data = signedGet("/v1.0/devices/$deviceId/timers", token, clientId, clientSecret)
-        if (!data.optBoolean("success")) {
-            throw RuntimeException(data.optString("msg", "Schedule lookup failed (check the Device ID)"))
-        }
-        val timers = mutableListOf<DeviceTimer>()
-        val categories = data.optJSONArray("result") ?: JSONArray()
-        for (c in 0 until categories.length()) {
-            val groups = categories.getJSONObject(c).optJSONArray("groups") ?: JSONArray()
-            for (g in 0 until groups.length()) {
-                val groupTimers = groups.getJSONObject(g).optJSONArray("timers") ?: JSONArray()
-                for (t in 0 until groupTimers.length()) {
-                    val timer = groupTimers.getJSONObject(t)
-                    // status: 0 = disabled, 1 = enabled, 2 = deleted — deleted timers are skipped
-                    // entirely rather than shown as "disabled", since they're not really configured.
-                    val status = timer.optInt("status", 0)
-                    if (status == 2) continue
-                    val functions = timer.optJSONArray("functions") ?: JSONArray()
-                    var outlet: String? = null
-                    for (f in 0 until functions.length()) {
-                        val code = functions.getJSONObject(f).optString("code")
-                        if (code.startsWith("switch")) { outlet = outletNumber(code); break }
-                    }
-                    if (outlet == null) continue
-                    val loops = timer.optString("loops", "0000000")
-                    val days = loops.mapIndexedNotNull { idx, ch -> if (ch == '1') idx + 1 else null }.toSet()
-                    timers.add(
-                        DeviceTimer(
-                            timerId = timer.optString("timer_id"),
-                            aliasName = timer.optString("alias_name"),
-                            outlet = outlet,
-                            time = timer.optString("time"),
-                            daysOfWeek = days,
-                            enabled = status == 1
-                        )
-                    )
-                }
-            }
-        }
-        return timers
-    }
-
     suspend fun getDpLogs(context: Context, deviceId: String, codes: List<String>, startMs: Long, endMs: Long): List<DpLogEntry> {
         val (clientId, clientSecret) = requireCredentials(context)
         val token = getToken(context, clientId, clientSecret)

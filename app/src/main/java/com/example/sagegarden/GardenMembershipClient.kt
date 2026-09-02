@@ -410,6 +410,7 @@ object GardenMembershipClient {
         db.extraPhotoDao().deleteForGarden(gardenId)
         db.growthPhotoDao().deleteForGarden(gardenId)
         db.locationPhotoDao().deleteForGarden(gardenId)
+        db.manualZoneScheduleDao().deleteForGarden(gardenId)
     }
 
     /**

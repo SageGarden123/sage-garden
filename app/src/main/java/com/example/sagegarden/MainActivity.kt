@@ -56,6 +56,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.lerp
@@ -139,6 +141,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 import java.util.TimeZone
 
 // ============================================================================
@@ -4309,12 +4312,108 @@ fun ListScreen(
 // irrigation_log.csv in the user's chosen photo storage location since Tuya
 // only retains ~7 days of logs at any given moment.
 
-/** [days] uses 1=Monday..7=Sunday, matching [TuyaClient.DeviceTimer.daysOfWeek]. */
+/** [days] uses 1=Monday..7=Sunday, matching the format manual schedule entries are stored in. */
 fun formatTuyaTimerDays(days: Set<Int>): String {
     if (days.isEmpty()) return "One-time (no repeat days set)"
     if (days.size == 7) return "Daily"
     val labels = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
     return days.sorted().mapNotNull { labels[it] }.joinToString(", ")
+}
+
+/** 7-char '0'/'1' string, Monday..Sunday — same format Tuya's own "loops" field uses, so a manual
+ * entry and a fetched Tuya timer can share [formatTuyaTimerDays] for display. */
+fun daysToLoopString(days: Set<Int>): String = (1..7).joinToString("") { if (it in days) "1" else "0" }
+fun loopStringToDays(loops: String): Set<Int> = loops.mapIndexedNotNull { idx, c -> if (c == '1') idx + 1 else null }.toSet()
+
+fun formatDurationMinutes(totalMinutes: Int): String {
+    val h = totalMinutes / 60
+    val m = totalMinutes % 60
+    return when {
+        h == 0 -> "$m min"
+        m == 0 -> "${h}h"
+        else -> "${h}h ${m}m"
+    }
+}
+
+/** Compact multi-select day-of-week row (1=Monday..7=Sunday) — tap a day to toggle it. */
+@Composable
+fun DayOfWeekPicker(selectedDays: Set<Int>, onToggleDay: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val labels = listOf(1 to "Mo", 2 to "Tu", 3 to "We", 4 to "Th", 5 to "Fr", 6 to "Sa", 7 to "Su")
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        labels.forEach { (day, label) ->
+            val selected = day in selectedDays
+            Box(
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(50))
+                    .background(if (selected) Color(0xFF3A5A40) else Color(0xFFE3DDCF))
+                    .clickable { onToggleDay(day) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(label, fontSize = 11.sp, color = if (selected) Color.White else Color(0xFF3A5A40), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/**
+ * A single scrolling "wheel" of numbers that snaps to whichever value sits in the centre row —
+ * the building block for [DurationWheelPicker] below, styled after iOS's Timer duration picker.
+ * Untested on a real device (no way to verify scroll/snap feel or performance here) — worth a
+ * close look on first use.
+ */
+@Composable
+fun NumberWheel(range: IntRange, selected: Int, onSelectedChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val itemHeight = 40.dp
+    val visibleItems = 5 // odd, so exactly one row sits dead-centre
+    val padItems = visibleItems / 2
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (selected - range.first).coerceIn(0, range.last - range.first))
+    val flingBehavior = rememberSnapFlingBehavior(listState)
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress) {
+            val info = listState.layoutInfo
+            val viewportCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2
+            val centered = info.visibleItemsInfo.minByOrNull { kotlin.math.abs((it.offset + it.size / 2) - viewportCenter) }
+            centered?.let { item ->
+                val value = (range.first + item.index - padItems).coerceIn(range.first, range.last)
+                if (value != selected) onSelectedChange(value)
+            }
+        }
+    }
+
+    Box(modifier = modifier.height(itemHeight * visibleItems), contentAlignment = Alignment.Center) {
+        LazyColumn(state = listState, flingBehavior = flingBehavior, modifier = Modifier.fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+            items(padItems) { Spacer(Modifier.height(itemHeight)) }
+            items(range.last - range.first + 1) { i ->
+                val value = range.first + i
+                Box(Modifier.height(itemHeight).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "%02d".format(value),
+                        fontSize = if (value == selected) 20.sp else 16.sp,
+                        color = if (value == selected) Color(0xFF233821) else Color.Gray,
+                        fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+            items(padItems) { Spacer(Modifier.height(itemHeight)) }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(itemHeight).align(Alignment.Center)
+                .background(Color(0x1A3A5A40), RoundedCornerShape(6.dp))
+        )
+    }
+}
+
+/** Hour/minute duration picker, two [NumberWheel]s side by side (0-5h, 0-59m). */
+@Composable
+fun DurationWheelPicker(totalMinutes: Int, onTotalMinutesChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        NumberWheel(range = 0..5, selected = hours, onSelectedChange = { onTotalMinutesChange(it * 60 + minutes) }, modifier = Modifier.width(56.dp))
+        Text("hr", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(horizontal = 8.dp))
+        NumberWheel(range = 0..59, selected = minutes, onSelectedChange = { onTotalMinutesChange(hours * 60 + it) }, modifier = Modifier.width(56.dp))
+        Text("min", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -4561,69 +4660,75 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
         }
         Spacer(Modifier.height(16.dp))
 
-        if (FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION) &&
-            getIrrigationSystem(context) != IrrigationSystem.RACHIO &&
-            TuyaZoneMappingState.mappings.isNotEmpty()
-        ) {
-        ExpandableSection(title = "Tuya schedule (reference only)") {
-            var timersByDevice by remember { mutableStateOf<Map<String, List<TuyaClient.DeviceTimer>>>(emptyMap()) }
-            var loading by remember { mutableStateOf(false) }
-            var error by remember { mutableStateOf<String?>(null) }
-
+        if (TuyaZoneMappingState.mappings.isNotEmpty()) {
+        ExpandableSection(title = "My watering schedule (manual reference)", initiallyExpanded = true) {
             Text(
-                "Shows what's currently set up in Tuya's own scheduler for each zone — for your reference only. Doesn't affect your actual Tuya automations, and this app can't change them from here.",
+                "Your own record of what days/times each zone runs — entered by hand, purely for your reference. Doesn't read from or write to Tuya.",
                 fontSize = 11.sp, color = Color.Gray
             )
             Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = {
-                    loading = true; error = null
-                    scope.launch {
-                        val deviceIds = TuyaZoneMappingState.mappings.map { it.deviceId }.distinct()
-                        try {
-                            timersByDevice = deviceIds.associateWith { TuyaClient.getDeviceTimers(context, it) }
-                        } catch (e: Exception) {
-                            error = e.message ?: "Couldn't fetch the schedule — check your Tuya connection in Help."
-                        }
-                        loading = false
+            val scheduleGardenId = remember { effectiveGardenId(context) }
+            val scheduleViewModel: ManualZoneScheduleViewModel = viewModel(
+                factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+            )
+            var addingForZone by remember { mutableStateOf<String?>(null) }
+
+            TuyaZoneMappingState.mappings.forEachIndexed { index, mapping ->
+                val entries by remember(mapping.zone) { scheduleViewModel.getForZone(mapping.zone, scheduleGardenId) }.collectAsState()
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(mapping.zone, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { addingForZone = mapping.zone }) { Text("+ Add", fontSize = 12.sp) }
                     }
-                },
-                enabled = !loading
-            ) { Text(if (loading) "Fetching…" else "Fetch current schedule") }
-
-            if (error != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(error!!, fontSize = 12.sp, color = Color(0xFFB23B3B))
-            }
-
-            if (timersByDevice.isNotEmpty()) {
-                Spacer(Modifier.height(14.dp))
-                TuyaZoneMappingState.mappings.forEach { mapping ->
-                    val zoneTimers = timersByDevice[mapping.deviceId]?.filter { it.outlet == mapping.outlet } ?: emptyList()
-                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        Text(mapping.zone, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        if (zoneTimers.isEmpty()) {
-                            Text("No timers configured on Tuya for this outlet.", fontSize = 11.sp, color = Color.Gray)
-                        } else {
-                            zoneTimers.forEach { timer ->
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            timer.aliasName.ifBlank { "Timer" } + " — ${timer.time}",
-                                            fontSize = 12.sp
-                                        )
-                                        Text(formatTuyaTimerDays(timer.daysOfWeek), fontSize = 11.sp, color = Color.Gray)
-                                    }
-                                    Text(
-                                        if (timer.enabled) "On" else "Off",
-                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                        color = if (timer.enabled) Color(0xFF3A5A40) else Color.Gray
-                                    )
+                    if (entries.isEmpty()) {
+                        Text("No schedule entered yet.", fontSize = 11.sp, color = Color.Gray)
+                    } else {
+                        entries.forEach { entry ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(formatTuyaTimerDays(loopStringToDays(entry.daysOfWeek)), fontSize = 12.sp)
+                                    Text(formatDurationMinutes(entry.durationMinutes), fontSize = 11.sp, color = Color.Gray)
                                 }
+                                TextButton(onClick = { scheduleViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
                             }
                         }
                     }
                 }
+                if (index < TuyaZoneMappingState.mappings.lastIndex) HorizontalDivider()
+            }
+
+            if (addingForZone != null) {
+                val zone = addingForZone!!
+                var selectedDays by remember { mutableStateOf(setOf<Int>()) }
+                var totalMinutes by remember { mutableStateOf(15) }
+                AlertDialog(
+                    onDismissRequest = { addingForZone = null },
+                    title = { Text("Add schedule for \"$zone\"") },
+                    text = {
+                        Column {
+                            Text("Days", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Spacer(Modifier.height(6.dp))
+                            DayOfWeekPicker(
+                                selectedDays = selectedDays,
+                                onToggleDay = { day -> selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day }
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text("Duration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Spacer(Modifier.height(6.dp))
+                            DurationWheelPicker(totalMinutes = totalMinutes, onTotalMinutesChange = { totalMinutes = it }, modifier = Modifier.fillMaxWidth())
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                scheduleViewModel.add(zone, scheduleGardenId, daysToLoopString(selectedDays), totalMinutes)
+                                addingForZone = null
+                            },
+                            enabled = selectedDays.isNotEmpty() && totalMinutes > 0
+                        ) { Text("Save") }
+                    },
+                    dismissButton = { TextButton(onClick = { addingForZone = null }) { Text("Cancel") } }
+                )
             }
         }
         Spacer(Modifier.height(16.dp))
