@@ -3982,6 +3982,10 @@ fun ListScreen(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
     val plantIdsWithPhotos by growthViewModel.plantIdsWithPhotos.collectAsState()
+    val extraPhotoViewModel: ExtraPhotoViewModel = viewModel(
+        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+    )
+    val plantIdsWithExtraPhotos by extraPhotoViewModel.plantIdsWithPhotos.collectAsState()
     val plants by viewModel.filteredPlants.collectAsState()
     var search by ListScreenState.searchState
     var locationChangePlantId by remember { mutableStateOf<String?>(null) }
@@ -4143,6 +4147,10 @@ fun ListScreen(
                                             if (plantIdsWithPhotos.contains(plant.id)) {
                                                 Spacer(Modifier.width(6.dp))
                                                 Text("📸", fontSize = 12.sp)
+                                            }
+                                            if (plantIdsWithExtraPhotos.contains(plant.id)) {
+                                                Spacer(Modifier.width(6.dp))
+                                                Text("📷", fontSize = 12.sp)
                                             }
                                         }
                                         val subtitle = fieldKeys.mapNotNull { listFieldValue(it, plant) }.joinToString(" · ")

@@ -14,6 +14,9 @@ interface ExtraPhotoDao {
     @Query("SELECT * FROM extra_photos WHERE plantId = :plantId AND gardenId = :gardenId ORDER BY addedAt ASC")
     fun getForPlant(plantId: String, gardenId: String): Flow<List<ExtraPhotoEntity>>
 
+    @Query("SELECT DISTINCT plantId FROM extra_photos WHERE gardenId = :gardenId")
+    fun getAllPlantIdsWithPhotos(gardenId: String): Flow<List<String>>
+
     @Query("SELECT * FROM extra_photos")
     suspend fun getAllOnce(): List<ExtraPhotoEntity>
 

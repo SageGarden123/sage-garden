@@ -1,15 +1,25 @@
 package com.example.sagegarden
 
 import android.app.Application
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ExtraPhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).extraPhotoDao()
+
+    val plantIdsWithPhotos: StateFlow<Set<String>> = snapshotFlow { effectiveGardenId(application) }
+        .flatMapLatest { gardenId -> dao.getAllPlantIdsWithPhotos(gardenId) }
+        .map { it.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     fun getForPlant(plantId: String, gardenId: String): StateFlow<List<ExtraPhotoEntity>> =
         dao.getForPlant(plantId, gardenId)
