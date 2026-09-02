@@ -2178,7 +2178,13 @@ fun GardenMapperApp() {
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 MapTabScreen(
                     viewModel = viewModel, onMarkerClick = { },
-                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("list") { popUpTo("map") } },
+                    // Returns to a *fresh* form_edit instance (not just popping back) so it reloads
+                    // the plant from the DB — the form's own in-memory lat/lng state doesn't know
+                    // about the location placement just wrote directly to the DB. This also routes
+                    // the user back through the form's own "Save plant" button (and its blank-name
+                    // check) instead of dropping them on the list, where a plant saved mid-placement
+                    // with no name yet could otherwise go unnoticed.
+                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo("map") } },
                     startOnCustom = false
                 )
             }
@@ -2186,7 +2192,7 @@ fun GardenMapperApp() {
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 MapTabScreen(
                     viewModel = viewModel, onMarkerClick = { },
-                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("list") { popUpTo("map") } },
+                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo("map") } },
                     startOnCustom = true
                 )
             }
