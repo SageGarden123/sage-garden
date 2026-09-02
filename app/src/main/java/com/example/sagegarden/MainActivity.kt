@@ -4309,10 +4309,19 @@ fun ListScreen(
 // irrigation_log.csv in the user's chosen photo storage location since Tuya
 // only retains ~7 days of logs at any given moment.
 
+/** [days] uses 1=Monday..7=Sunday, matching [TuyaClient.DeviceTimer.daysOfWeek]. */
+fun formatTuyaTimerDays(days: Set<Int>): String {
+    if (days.isEmpty()) return "One-time (no repeat days set)"
+    if (days.size == 7) return "Daily"
+    val labels = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
+    return days.sorted().mapNotNull { labels[it] }.joinToString(", ")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEntity>, onPlantClick: (String) -> Unit = {}) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var zoneFilter by remember { mutableStateOf("All") }
     var dateFilter by remember { mutableStateOf("") }
     val locale = LocalConfiguration.current.locales[0]
@@ -4551,6 +4560,74 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
         }
         }
         Spacer(Modifier.height(16.dp))
+
+        if (FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION) &&
+            getIrrigationSystem(context) != IrrigationSystem.RACHIO &&
+            TuyaZoneMappingState.mappings.isNotEmpty()
+        ) {
+        ExpandableSection(title = "Tuya schedule (reference only)") {
+            var timersByDevice by remember { mutableStateOf<Map<String, List<TuyaClient.DeviceTimer>>>(emptyMap()) }
+            var loading by remember { mutableStateOf(false) }
+            var error by remember { mutableStateOf<String?>(null) }
+
+            Text(
+                "Shows what's currently set up in Tuya's own scheduler for each zone — for your reference only. Doesn't affect your actual Tuya automations, and this app can't change them from here.",
+                fontSize = 11.sp, color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    loading = true; error = null
+                    scope.launch {
+                        val deviceIds = TuyaZoneMappingState.mappings.map { it.deviceId }.distinct()
+                        try {
+                            timersByDevice = deviceIds.associateWith { TuyaClient.getDeviceTimers(context, it) }
+                        } catch (e: Exception) {
+                            error = e.message ?: "Couldn't fetch the schedule — check your Tuya connection in Help."
+                        }
+                        loading = false
+                    }
+                },
+                enabled = !loading
+            ) { Text(if (loading) "Fetching…" else "Fetch current schedule") }
+
+            if (error != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(error!!, fontSize = 12.sp, color = Color(0xFFB23B3B))
+            }
+
+            if (timersByDevice.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                TuyaZoneMappingState.mappings.forEach { mapping ->
+                    val zoneTimers = timersByDevice[mapping.deviceId]?.filter { it.outlet == mapping.outlet } ?: emptyList()
+                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Text(mapping.zone, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        if (zoneTimers.isEmpty()) {
+                            Text("No timers configured on Tuya for this outlet.", fontSize = 11.sp, color = Color.Gray)
+                        } else {
+                            zoneTimers.forEach { timer ->
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            timer.aliasName.ifBlank { "Timer" } + " — ${timer.time}",
+                                            fontSize = 12.sp
+                                        )
+                                        Text(formatTuyaTimerDays(timer.daysOfWeek), fontSize = 11.sp, color = Color.Gray)
+                                    }
+                                    Text(
+                                        if (timer.enabled) "On" else "Off",
+                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                        color = if (timer.enabled) Color(0xFF3A5A40) else Color.Gray
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        }
 
         if (FeatureVisibility.shouldShow(context, Feature.WATERING_HISTORY)) {
         ExpandableSection(title = "Watering history (${filtered.size})") {
