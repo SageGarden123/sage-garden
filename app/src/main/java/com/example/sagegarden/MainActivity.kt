@@ -5525,6 +5525,11 @@ fun FormScreen(
         OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(20.dp))
 
+        if (displayId.isNotBlank() && FeatureVisibility.shouldShow(context, Feature.EXTRA_PHOTOS)) {
+            ExtraPhotosSection(plantId = displayId, canEdit = canEdit)
+            Spacer(Modifier.height(20.dp))
+        }
+
         if (canEdit) {
         Button(
             onClick = {
@@ -5567,10 +5572,6 @@ fun FormScreen(
             OutlinedButton(onClick = { onOpenGrowthTimeline(plantId) }, modifier = Modifier.fillMaxWidth()) {
                 Text("🌱 View growth timeline")
             }
-        }
-        if (displayId.isNotBlank() && FeatureVisibility.shouldShow(context, Feature.EXTRA_PHOTOS)) {
-            Spacer(Modifier.height(8.dp))
-            ExtraPhotosSection(plantId = displayId, canEdit = canEdit)
         }
         if (plantId != null && canEdit) {
             Spacer(Modifier.height(8.dp))
@@ -5840,17 +5841,19 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
         Spacer(Modifier.height(10.dp))
         if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val extraPhotoButtonPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
             Button(
                 onClick = {
                     val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                     if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
                     else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 },
+                contentPadding = extraPhotoButtonPadding,
                 modifier = Modifier.weight(1f)
-            ) { Text("📷 Camera", fontSize = 12.sp) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp) }
+            ) { Text("📷 Camera", fontSize = 12.sp, maxLines = 1) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp, maxLines = 1) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp, maxLines = 1) }
             }
         }
         }
