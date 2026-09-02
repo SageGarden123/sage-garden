@@ -75,6 +75,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -102,7 +103,6 @@ import com.dropbox.core.v2.DbxClientV2
 import com.dropbox.core.v2.files.WriteMode
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -2918,6 +2918,15 @@ fun MapScreen(
         }
     }
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    // Plant markers are plain Compose overlays positioned via the map's live projection, not native
+    // GoogleMap Marker/MarkerComposable objects — see the overlay loop below for why: Google's own
+    // marker tap region turned out to have some SDK-enforced minimum well beyond the marker's actual
+    // rendered size (confirmed by testing — even a 22dp icon at max zoom was triggering from taps
+    // clearly outside it), which no icon-size change can shrink. A plain Compose Box's clickable
+    // bounds are exactly its own size, giving pixel-precise control instead.
+    val realMapMarkerDiameter = 22.dp
+    val realMapMarkerRadiusPx = with(density) { (realMapMarkerDiameter / 2).roundToPx() }
     // Persists the camera's resting position whenever the user finishes panning/zooming, so the
     // map opens back to where they left it instead of resetting to the garden address every time.
     // isMoving starts false at composition, so this LaunchedEffect's very first firing is an
@@ -3009,6 +3018,10 @@ fun MapScreen(
                 // point, FormScreen's "Place on real-world map" button, is hidden for read-only), so
                 // this check mainly guards the plain "tap empty space to add a new plant" path.
                 if (hasWriteAccessToActiveGarden(context)) {
+                    // Plant markers are no longer native GoogleMap Marker/MarkerComposable objects
+                    // (see the overlay loop below), so a tap only ever reaches here if it missed every
+                    // marker's own small Compose-owned hit box — always place/move a plant, never a
+                    // marker-proximity check.
                     if (placementModeForPlantId != null) {
                         scope.launch {
                             val plant = viewModel.getById(placementModeForPlantId)
@@ -3022,47 +3035,41 @@ fun MapScreen(
                     }
                 }
             }
-        ) {
-            categoryFilteredPlants.forEach { plant ->
-                // Keyed by plant id so each marker's remembered state (MarkerComposable especially
-                // caches its rendered content as a bitmap internally) stays tied to that specific
-                // plant across recompositions — without this, Compose's default positional slot
-                // reuse in a plain forEach could let a marker at a given list position keep an old
-                // plant's cached icon bitmap for a moment after filtering/reordering changed which
-                // plant now occupies that position, showing the wrong category icon.
-                key(plant.id) {
+        )
+
+        // Custom marker overlay — plain Compose elements positioned via the map's live projection,
+        // each clickable only within its own exact realMapMarkerDiameter bounds. Recomposes with
+        // cameraPositionState.position (read inside this loop), so markers track pan/zoom/rotate.
+        // Sitting outside GoogleMap's own content means these are the ONLY clickable area anywhere
+        // near a plant — everywhere else (including right next to a marker) falls through untouched
+        // to the native map underneath, reaching onMapClick above like normal empty-space taps.
+        categoryFilteredPlants.forEach { plant ->
+            key(plant.id) {
                 if (plant.lat != null && plant.lng != null) {
-                    if (plant.category.isNotBlank() && plant.category != "Other") {
-                        MarkerComposable(
-                            state = MarkerState(position = LatLng(plant.lat, plant.lng)),
-                            title = plant.name,
-                            snippet = plant.sci,
-                            onClick = { tooltipPlant = plant; true }
+                    @Suppress("UNUSED_VARIABLE")
+                    val recomposeOnCameraMove = cameraPositionState.position
+                    val point = cameraPositionState.projection?.toScreenLocation(LatLng(plant.lat, plant.lng))
+                    if (point != null) {
+                        val hasCategory = plant.category.isNotBlank() && plant.category != "Other"
+                        Box(
+                            modifier = Modifier
+                                .offset { IntOffset(point.x - realMapMarkerRadiusPx, point.y - realMapMarkerRadiusPx) }
+                                .size(realMapMarkerDiameter)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (hasCategory) Color.White
+                                    else if (plant.native.startsWith("Native")) Color(0xFF3A5A40)
+                                    else Color(0xFFFF7A45)
+                                )
+                                .border(1.5.dp, Color(0xFF3A5A40), RoundedCornerShape(50))
+                                .pointerInput(plant.id) { detectTapGestures { tooltipPlant = plant } },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(50))
-                                    .background(Color.White).border(1.5.dp, Color(0xFF3A5A40), RoundedCornerShape(50)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(categoryMarkerEmoji(plant.category), fontSize = 15.sp)
+                            if (hasCategory) {
+                                Text(categoryMarkerEmoji(plant.category), fontSize = 11.sp)
                             }
                         }
-                    } else {
-                        Marker(
-                            state = MarkerState(position = LatLng(plant.lat, plant.lng)),
-                            title = plant.name,
-                            snippet = plant.sci,
-                            icon = BitmapDescriptorFactory.defaultMarker(
-                                if (plant.native.startsWith("Native")) BitmapDescriptorFactory.HUE_GREEN
-                                else BitmapDescriptorFactory.HUE_ORANGE
-                            ),
-                            onClick = {
-                                tooltipPlant = plant
-                                true
-                            }
-                        )
                     }
-                }
                 }
             }
         }
