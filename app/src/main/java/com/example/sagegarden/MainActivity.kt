@@ -4044,7 +4044,7 @@ fun ListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             OutlinedTextField(
                 value = search, onValueChange = { search = it },
-                label = { Text("Search plants, locations, or by Plant ID") }, modifier = Modifier.fillMaxWidth()
+                label = { Text("Search plant data") }, modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -5354,10 +5354,10 @@ fun FormScreen(
 
         if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
-            Text("Overrides the frequency above during summer/winter. Leave a season blank to use the default year-round frequency instead.", fontSize = 12.sp, color = Color.Gray)
+            Text("Overrides the frequency above during summer/winter. Leave a season blank to fall back to the frequency above for that season — not to skip it.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Entering 0 does NOT mean \"skip watering this season\" — it means water every 0 days, so the plant will constantly show as overdue. To skip a season entirely, leave its field blank.",
+                "There's no dedicated \"skip this season\" option. Entering 0 does NOT skip watering — it means water every 0 days, so the plant will constantly show as overdue. Leaving the field blank doesn't skip it either — it just uses the frequency above. To effectively skip a season, enter a large number of days here (e.g. 365) so it won't come due again until the season is over.",
                 fontSize = 12.sp, color = Color(0xFFB23B3B)
             )
             Spacer(Modifier.height(10.dp))
@@ -5956,7 +5956,7 @@ val faqItems = listOf(
     ),
     FaqItem(
         "How do I find a plant I've already added?",
-        "Use the List tab — plants are grouped alphabetically by garden location, and the search bar filters by plant name, scientific name, or location."
+        "Use the List tab — plants are grouped alphabetically by garden location, and the search bar matches against most short text fields: plant name, scientific name, location, Plant ID, sun, water, soil, soil pH, category, frost tolerance, native/exotic, pollinator-friendly, source, and watering system. It doesn't search Notes (free-form text) or numeric/date fields like latitude/longitude."
     ),
     FaqItem(
         "How do I back up or move my data to another device?",
