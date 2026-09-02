@@ -26,7 +26,7 @@ android {
         // is why this looked like a generic "already in use" collision even with random suffixes.
         applicationId = "com.sagegarden.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 32
         versionName = "1.6.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
