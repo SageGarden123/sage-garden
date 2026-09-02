@@ -6747,7 +6747,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
 
     if (showJoinDialog) {
         var code by remember { mutableStateOf("") }
-        var wantsWrite by remember { mutableStateOf(true) }
+        var wantsWrite by remember { mutableStateOf(false) }
         var displayName by remember { mutableStateOf(GardenMembershipStore.getDeviceDisplayName(context)) }
         AlertDialog(
             onDismissRequest = { showJoinDialog = false },
