@@ -4869,7 +4869,8 @@ fun FormScreen(
     var isIndoor by remember { mutableStateOf(false) }
     var showBulkWaterPrompt by remember { mutableStateOf(false) }
     var pendingSavedPlant by remember { mutableStateOf<PlantEntity?>(null) }
-    var bulkWaterOnlySystem by remember { mutableStateOf(true) }
+    var bulkApplyToZone by remember { mutableStateOf(false) }
+    var bulkApplyToSystem by remember { mutableStateOf(false) }
 
     fun buildPlant(): PlantEntity {
         val finalPollinator = if (pollinatorChoice == "Other") pollinatorOther else pollinatorChoice
@@ -5555,7 +5556,8 @@ fun FormScreen(
                     }
 
                     if (plant.lastWateredDate != null && location.isNotBlank() && lastWateredDate != originalLastWateredDate) {
-                        bulkWaterOnlySystem = plant.wateringSystem.isNotBlank()
+                        bulkApplyToZone = false
+                        bulkApplyToSystem = false
                         showBulkWaterPrompt = true
                     } else {
                         checkPlacementPrompts(plant)
@@ -5724,25 +5726,33 @@ fun FormScreen(
                 showBulkWaterPrompt = false
                 plant?.let { checkPlacementPrompts(it) }
             },
-            title = { Text("Apply to whole location?") },
+            title = { Text("Apply this watering to other plants?") },
             text = {
                 Column {
-                    Text(
-                        if (systemName != null && bulkWaterOnlySystem)
-                            "Set \"last watered\" to $lastWateredDate for every plant on \"$systemName\" in \"$location\"?"
-                        else
-                            "Set \"last watered\" to $lastWateredDate for every plant in \"$location\"?"
-                    )
+                    Text("Set \"last watered\" to $lastWateredDate for \"${plant?.name}\" — also apply it to other plants?")
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Also apply to all plants in \"$location\"",
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(checked = bulkApplyToZone, onCheckedChange = { bulkApplyToZone = it })
+                    }
                     if (systemName != null) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                if (bulkWaterOnlySystem) "Only plants on \"$systemName\"" else "All plants in \"$location\"",
+                                "Also apply to all plants on \"$systemName\" (any zone)",
                                 fontSize = 13.sp,
                                 modifier = Modifier.weight(1f)
                             )
-                            Switch(checked = bulkWaterOnlySystem, onCheckedChange = { bulkWaterOnlySystem = it })
+                            Switch(checked = bulkApplyToSystem, onCheckedChange = { bulkApplyToSystem = it })
                         }
+                    }
+                    if (!bulkApplyToZone && !bulkApplyToSystem) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 11.sp, color = Color.Gray)
                     }
                 }
             },
@@ -5750,11 +5760,12 @@ fun FormScreen(
                 TextButton(onClick = {
                     showBulkWaterPrompt = false
                     val dateMillis = plant?.lastWateredDate
-                    if (dateMillis != null) {
+                    if (dateMillis != null && (bulkApplyToZone || bulkApplyToSystem)) {
                         scope.launch {
                             allPlants.filter { p ->
-                                p.location == location && p.id != plant.id &&
-                                    (systemName == null || !bulkWaterOnlySystem || p.wateringSystem == systemName)
+                                p.id != plant.id &&
+                                    ((bulkApplyToZone && p.location == location) ||
+                                        (bulkApplyToSystem && systemName != null && p.wateringSystem == systemName))
                             }.forEach { p ->
                                 viewModel.saveSync(p.copy(lastWateredDate = dateMillis))
                                 careLogViewModel.logCareSync(p.id, "watering", dateMillis)
