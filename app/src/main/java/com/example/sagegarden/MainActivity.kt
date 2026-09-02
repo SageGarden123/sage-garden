@@ -5920,6 +5920,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     val scope = rememberCoroutineScope()
     var uploadingPhotoId by remember { mutableStateOf<String?>(null) }
     var uploadFailedId by remember { mutableStateOf<String?>(null) }
+    var previewUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingCameraUri != null) extraPhotoViewModel.addPhoto(plantId, pendingCameraUri.toString())
@@ -5968,7 +5969,9 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(
                                 model = Uri.parse(photo.uri), contentDescription = null,
-                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop
+                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
+                                    .clickable { previewUri = Uri.parse(photo.uri) },
+                                contentScale = ContentScale.Crop
                             )
                             Spacer(Modifier.width(10.dp))
                             OutlinedTextField(
@@ -6019,6 +6022,25 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     if (showDropboxPicker) {
         DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
             onImageSelected = { link, _ -> extraPhotoViewModel.addPhoto(plantId, link) })
+    }
+
+    if (previewUri != null) {
+        var photoLoadFailed by remember(previewUri) { mutableStateOf(false) }
+        Dialog(onDismissRequest = { previewUri = null }) {
+            Box(modifier = Modifier.fillMaxWidth().height(400.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+                if (photoLoadFailed) {
+                    Text(
+                        "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
+                        color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
+                    )
+                } else {
+                    AsyncImage(
+                        model = previewUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+                        onError = { photoLoadFailed = true }
+                    )
+                }
+            }
+        }
     }
 }
 
