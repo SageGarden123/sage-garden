@@ -5504,20 +5504,20 @@ fun FormScreen(
             fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp)
         )
         }
-        if (plantId != null && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
+        if (displayId.isNotBlank() && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
             val hasReal = lat.toDoubleOrNull() != null && lng.toDoubleOrNull() != null
             val hasCustom = mapX != null && mapY != null
             val customMapExists = remember { getCustomMapUri(context) != null }
             if (customMapExists) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$plantId") } },
+                    onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$displayId") } },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (hasCustom) "📍 Change location on custom map" else "📍 Place on custom map") }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$plantId") } },
+                onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$displayId") } },
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (hasReal) "📍 Change location on real-world map" else "📍 Place on real-world map") }
         }
