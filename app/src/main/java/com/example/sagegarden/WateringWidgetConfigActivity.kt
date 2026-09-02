@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -111,7 +113,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
         Text("Plants requiring care", fontSize = 12.sp, color = Color.Gray)
         Spacer(Modifier.height(16.dp))
