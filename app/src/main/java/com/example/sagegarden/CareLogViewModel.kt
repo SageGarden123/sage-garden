@@ -35,6 +35,12 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
         }
         plantDao.upsert(updated.copy(updatedAt = now))
         if (type == "watering") refreshWateringWidgets(getApplication())
+        // See PlantViewModel.syncIfNotActiveGarden — a care log entered against a plant opened via a
+        // widget/notification deep link can belong to a garden other than whichever one is active,
+        // which the periodic/on-resume auto-sync loop never pushes on its own.
+        if (plant.gardenId != effectiveGardenId(getApplication())) {
+            viewModelScope.launch { GardenSyncClient.sync(getApplication(), getOrCreateInstallId(getApplication()), plant.gardenId) }
+        }
     }
 
     /** Fire-and-forget wrapper for simple single-call sites (e.g. the dedicated "Log watering/fertilising/pruning" buttons). */
@@ -46,5 +52,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
         val gardenId = dao.getById(id)?.gardenId ?: effectiveGardenId(getApplication())
         GardenSyncStore.recordCareLogDeleted(getApplication(), gardenId, id)
         dao.deleteById(id)
+        if (gardenId != effectiveGardenId(getApplication())) {
+            GardenSyncClient.sync(getApplication(), getOrCreateInstallId(getApplication()), gardenId)
+        }
     }
 }

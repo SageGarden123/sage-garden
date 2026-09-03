@@ -32,7 +32,11 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
         dao.getForPlant(plantId, gardenId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addPhoto(plantId: String, uri: String, label: String = "", takenAtOverride: Long? = null) {
+    /** [gardenId] defaults to the active garden — the common case — but callers showing a plant that
+     * belongs to a different garden (e.g. FormScreen's growth timeline opened via a widget/notification
+     * deep link) must pass that plant's own gardenId explicitly, or the photo would be silently
+     * stamped as belonging to the wrong garden. */
+    fun addPhoto(plantId: String, uri: String, label: String = "", takenAtOverride: Long? = null, gardenId: String = effectiveGardenId(getApplication())) {
         viewModelScope.launch {
             val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(
@@ -40,7 +44,7 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
                     id = "GP-${System.currentTimeMillis()}",
                     plantId = plantId, uri = uri,
                     takenAt = takenAt, label = label,
-                    gardenId = effectiveGardenId(getApplication())
+                    gardenId = gardenId
                 )
             )
         }

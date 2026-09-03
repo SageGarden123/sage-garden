@@ -191,6 +191,19 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
      */
     suspend fun getAllPlantsOnDevice(): List<PlantEntity> = dao.getAllOnce()
 
+    /** Fires a background push for [gardenId] when it isn't the currently active garden — MainActivity's
+     * periodic/on-resume auto-sync loop only ever pushes whichever garden is ACTIVE in the UI, so a
+     * plant/care-log edit made against a different garden (e.g. opened via a widget/notification deep
+     * link, which never switches the active garden) would otherwise sit correctly-scoped in local Room
+     * forever without ever reaching the server. Not awaited by the caller — a normal save against the
+     * already-active garden (the overwhelmingly common case, already covered by that loop) shouldn't
+     * pick up an extra network round trip on every "Save plant" tap. */
+    private fun syncIfNotActiveGarden(context: Context, gardenId: String) {
+        if (gardenId != effectiveGardenId(context)) {
+            viewModelScope.launch { GardenSyncClient.sync(context, getOrCreateInstallId(context), gardenId) }
+        }
+    }
+
     /** Suspends until the write (and widget refresh) complete — for callers that need to sequence further work after the save actually lands. */
     suspend fun saveSync(plant: PlantEntity) {
         // A brand-new plant (built fresh by FormScreen, never carrying a garden id forward) is
@@ -199,12 +212,14 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         val stamped = if (plant.gardenId.isBlank()) plant.copy(gardenId = effectiveGardenId(getApplication())) else plant
         dao.upsert(stamped.copy(updatedAt = System.currentTimeMillis()))
         refreshWateringWidgets(getApplication())
+        syncIfNotActiveGarden(getApplication(), stamped.gardenId)
     }
     fun save(plant: PlantEntity) = viewModelScope.launch { saveSync(plant) }
     fun delete(id: String) = viewModelScope.launch {
         val gardenId = dao.getById(id)?.gardenId ?: effectiveGardenId(getApplication())
         GardenSyncStore.recordPlantDeleted(getApplication(), gardenId, id)
         dao.deleteById(id)
+        syncIfNotActiveGarden(getApplication(), gardenId)
     }
     fun resetAll() = viewModelScope.launch {
         val gardenId = effectiveGardenId(getApplication())
@@ -5272,9 +5287,19 @@ fun FormScreen(
 
     // A view-only member of a shared garden can still open this form to look at a plant, but
     // shouldn't be able to change anything — the server already discards their writes (see
-    // hasWriteAccessToActiveGarden), but leaving the fields editable and a Save button visible
-    // would make it look like their edits took effect when they're silently dropped on next sync.
-    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
+    // hasWriteAccessToGarden), but leaving the fields editable and a Save button visible would
+    // make it look like their edits took effect when they're silently dropped on next sync.
+    // Checked against the PLANT'S OWN garden (via the `gardenId` state populated above once
+    // `existing` loads), not whichever garden is currently active — a plant opened via a widget/
+    // notification deep link can belong to a garden other than the active one (MainActivity always
+    // cold-starts back on this device's own default garden), and checking the active garden's
+    // permission there answered the wrong question: an owner's own garden is always writable, so
+    // editing a *view-only* shared plant this way looked fully editable and "saved" successfully
+    // even though the write would be silently discarded server-side. A brand-new plant (plantId ==
+    // null) has no owning garden yet, so it still defers to the active garden it'll be stamped with.
+    val canEdit = remember(ActiveGardenState.activeGardenId, gardenId) {
+        if (plantId == null) hasWriteAccessToActiveGarden(context) else hasWriteAccessToGarden(context, gardenId)
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp)
@@ -5722,7 +5747,7 @@ fun FormScreen(
         Spacer(Modifier.height(20.dp))
 
         if (displayId.isNotBlank() && FeatureVisibility.shouldShow(context, Feature.EXTRA_PHOTOS)) {
-            ExtraPhotosSection(plantId = displayId, canEdit = canEdit)
+            ExtraPhotosSection(plantId = displayId, canEdit = canEdit, gardenId = gardenId.ifBlank { effectiveGardenId(context) })
             Spacer(Modifier.height(20.dp))
         }
 
@@ -6013,13 +6038,12 @@ fun FormScreen(
 // ============================================================================
 
 @Composable
-fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
+fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: String = effectiveGardenId(LocalContext.current)) {
     val context = LocalContext.current
     val extraPhotoViewModel: ExtraPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val gardenId = remember { effectiveGardenId(context) }
-    val photos by remember(plantId) { extraPhotoViewModel.getForPlant(plantId, gardenId) }.collectAsState()
+    val photos by remember(plantId, gardenId) { extraPhotoViewModel.getForPlant(plantId, gardenId) }.collectAsState()
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -6028,7 +6052,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     var previewUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success && pendingCameraUri != null) extraPhotoViewModel.addPhoto(plantId, pendingCameraUri.toString())
+        if (success && pendingCameraUri != null) extraPhotoViewModel.addPhoto(plantId, pendingCameraUri.toString(), gardenId = gardenId)
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
@@ -6036,7 +6060,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-            extraPhotoViewModel.addPhoto(plantId, uri.toString())
+            extraPhotoViewModel.addPhoto(plantId, uri.toString(), gardenId = gardenId)
         }
     }
 
@@ -6126,7 +6150,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true) {
 
     if (showDropboxPicker) {
         DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
-            onImageSelected = { link, _ -> extraPhotoViewModel.addPhoto(plantId, link) })
+            onImageSelected = { link, _ -> extraPhotoViewModel.addPhoto(plantId, link, gardenId = gardenId) })
     }
 
     if (previewUri != null) {

@@ -176,17 +176,23 @@ fun isOwnerOfGarden(context: Context, gardenId: String): Boolean {
 }
 
 /**
- * Whether this device may edit the active garden's data — false for a member the owner granted
- * view-only access. The server already discards a read-only member's pushed plant/care-log changes
- * (see syncGarden.ts), but until now nothing stopped the UI from letting them fill out and "save"
- * the edit form anyway, only to have it silently discarded on the next sync — this is what the edit
- * form (FormScreen) gates its Save/Delete buttons and field editability on.
+ * Whether this device may edit [gardenId]'s data — false for a member the owner granted view-only
+ * access. The server already discards a read-only member's pushed plant/care-log changes (see
+ * syncGarden.ts), but until now nothing stopped the UI from letting them fill out and "save" the
+ * edit form anyway, only to have it silently discarded on the next sync — this is what the edit
+ * form (FormScreen) gates its Save/Delete buttons and field editability on. Takes an explicit
+ * gardenId (rather than always reading the active one) because FormScreen can be opened via a
+ * widget/notification deep link for a plant belonging to a garden other than whichever one happens
+ * to be active in the UI — checking the active garden's permission there would answer the wrong
+ * question entirely (see hasWriteAccessToActiveGarden below).
  */
-fun hasWriteAccessToActiveGarden(context: Context): Boolean {
-    val activeId = effectiveGardenId(context)
-    if (activeId == getOrCreateInstallId(context)) return true
-    return GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == activeId }?.permission != "read"
+fun hasWriteAccessToGarden(context: Context, gardenId: String): Boolean {
+    if (gardenId == getOrCreateInstallId(context)) return true
+    return GardenMembershipStore.getKnownGardens(context).firstOrNull { it.gardenId == gardenId }?.permission != "read"
 }
+
+/** [hasWriteAccessToGarden] for whichever garden is currently active in the UI — the common case for screens that only ever show the active garden's own data. */
+fun hasWriteAccessToActiveGarden(context: Context): Boolean = hasWriteAccessToGarden(context, effectiveGardenId(context))
 
 /**
  * Every garden this device has access to (its own default garden, plus every garden it's created or

@@ -25,14 +25,18 @@ class ExtraPhotoViewModel(application: Application) : AndroidViewModel(applicati
         dao.getForPlant(plantId, gardenId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addPhoto(plantId: String, uri: String, label: String = "") {
+    /** [gardenId] defaults to the active garden — the common case — but callers showing a plant that
+     * belongs to a different garden (e.g. FormScreen opened via a widget/notification deep link) must
+     * pass that plant's own gardenId explicitly, or the photo would be silently stamped as belonging
+     * to the wrong garden. */
+    fun addPhoto(plantId: String, uri: String, label: String = "", gardenId: String = effectiveGardenId(getApplication())) {
         viewModelScope.launch {
             dao.upsert(
                 ExtraPhotoEntity(
                     id = "EP-${System.currentTimeMillis()}",
                     plantId = plantId, uri = uri, label = label,
                     addedAt = System.currentTimeMillis(),
-                    gardenId = effectiveGardenId(getApplication())
+                    gardenId = gardenId
                 )
             )
         }

@@ -23,12 +23,18 @@ import java.util.Locale
 @Composable
 fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val careViewModel: CareLogViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val gardenId = remember { effectiveGardenId(context) }
-    val entries by remember(plantId) { careViewModel.getForPlant(plantId, gardenId) }.collectAsState()
+    // Resolved from the plant's own record, not effectiveGardenId(context) — see the identical
+    // comment in GrowthTimelineScreen. This screen can be reached (via FormScreen's "View care
+    // history") for a plant belonging to a garden other than whichever one is active in the UI.
+    var gardenId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(plantId) {
+        gardenId = AppDatabase.getInstance(context).plantDao().getById(plantId)?.gardenId ?: effectiveGardenId(context)
+    }
+    val canEdit = remember(ActiveGardenState.activeGardenId, gardenId) { gardenId?.let { hasWriteAccessToGarden(context, it) } ?: false }
+    val entries by remember(plantId, gardenId) { careViewModel.getForPlant(plantId, gardenId ?: "") }.collectAsState()
     var pendingLogType by remember { mutableStateOf<String?>(null) }
     var logDate by remember { mutableStateOf("") }
     val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }

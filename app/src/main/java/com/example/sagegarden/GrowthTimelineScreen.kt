@@ -73,12 +73,20 @@ fun GrowthPhotoSlider(photos: List<GrowthPhotoEntity>, modifier: Modifier = Modi
 @Composable
 fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
     val growthViewModel: GrowthPhotoViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
-    val gardenId = remember { effectiveGardenId(context) }
-    val photos by remember(plantId) { growthViewModel.getForPlant(plantId, gardenId) }.collectAsState()
+    // Resolved from the plant's own record, not effectiveGardenId(context) — this screen can be
+    // reached (via FormScreen's "View growth timeline") for a plant belonging to a garden other than
+    // whichever one is active in the UI, e.g. opened from a widget/notification deep link. Using the
+    // active garden's id here would query/write growth photos under the WRONG gardenId, silently
+    // showing none of the plant's real photos and mis-scoping anything newly added.
+    var gardenId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(plantId) {
+        gardenId = AppDatabase.getInstance(context).plantDao().getById(plantId)?.gardenId ?: effectiveGardenId(context)
+    }
+    val canEdit = remember(ActiveGardenState.activeGardenId, gardenId) { gardenId?.let { hasWriteAccessToGarden(context, it) } ?: false }
+    val photos by remember(plantId, gardenId) { growthViewModel.getForPlant(plantId, gardenId ?: "") }.collectAsState()
     val sorted = remember(photos) { photos.sortedBy { it.takenAt } }
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
@@ -87,7 +95,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     var uploadFailedId by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success && pendingCameraUri != null) growthViewModel.addPhoto(plantId, pendingCameraUri.toString())
+        if (success && pendingCameraUri != null) gardenId?.let { growthViewModel.addPhoto(plantId, pendingCameraUri.toString(), gardenId = it) }
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
@@ -95,7 +103,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-            growthViewModel.addPhoto(plantId, uri.toString())
+            gardenId?.let { growthViewModel.addPhoto(plantId, uri.toString(), gardenId = it) }
         }
     }
 
@@ -180,6 +188,6 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
 
     if (showDropboxPicker) {
         DropboxImagePickerDialog(context, onDismiss = { showDropboxPicker = false },
-            onImageSelected = { link, clientModified -> growthViewModel.addPhoto(plantId, link, takenAtOverride = clientModified) })
+            onImageSelected = { link, clientModified -> gardenId?.let { growthViewModel.addPhoto(plantId, link, takenAtOverride = clientModified, gardenId = it) } })
     }
 }
