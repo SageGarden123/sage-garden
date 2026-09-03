@@ -17,6 +17,11 @@ import androidx.work.WorkerParameters
  */
 class WateringReminderWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
+        // Refreshes every known garden's local data first — MainActivity's foreground auto-sync
+        // loop only keeps the ACTIVE garden fresh, so without this a garden you're a member of but
+        // haven't opened recently would be checked against stale (or entirely empty) local plants.
+        GardenSyncClient.syncAllKnownGardens(applicationContext)
+
         val plantDao = AppDatabase.getInstance(applicationContext).plantDao()
         val now = System.currentTimeMillis()
 

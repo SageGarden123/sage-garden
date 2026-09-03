@@ -255,4 +255,19 @@ object GardenSyncClient {
             GardenSyncResult.NetworkError
         }
     }
+
+    /**
+     * Syncs every garden this device has access to, not just whichever one is active in the UI.
+     * MainActivity's own auto-sync loop only keeps the ACTIVE garden's local Room data fresh (see
+     * its comment) — a garden you're a member of but haven't had open recently otherwise never gets
+     * its plants pulled down at all, so background work that checks every known garden (the
+     * watering-reminder worker, the home-screen widget's scheduled/manual refresh) would silently
+     * see stale or entirely empty local data for it. Failures are per-garden and swallowed (sync()
+     * itself never throws) so one flaky network call or revoked membership doesn't stop the rest
+     * from refreshing.
+     */
+    suspend fun syncAllKnownGardens(context: Context) {
+        val deviceId = getOrCreateInstallId(context)
+        allKnownGardenIds(context).forEach { gardenId -> sync(context, deviceId, gardenId) }
+    }
 }

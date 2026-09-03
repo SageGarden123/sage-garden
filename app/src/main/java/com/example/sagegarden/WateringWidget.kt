@@ -207,6 +207,10 @@ class WateringWidgetRefreshWorker(context: Context, params: WorkerParameters) : 
         val appWidgetId = inputData.getInt("appWidgetId", -1)
         if (appWidgetId == -1) return Result.success()
         try {
+            // Same reasoning as WateringReminderWorker: pull fresh data for every known garden
+            // before recomputing what's due, since the foreground auto-sync loop only keeps
+            // whichever garden is currently active in the UI up to date.
+            GardenSyncClient.syncAllKnownGardens(applicationContext)
             val glanceId = GlanceAppWidgetManager(applicationContext).getGlanceIdBy(appWidgetId)
             bumpRefreshTrigger(applicationContext, glanceId)
             WateringWidget().update(applicationContext, glanceId)
@@ -310,6 +314,7 @@ class WateringWidget : GlanceAppWidget() {
 /** Wired to the widget's own refresh button — recomputes [WateringWidget]'s content for just this instance immediately, rather than waiting for the next scheduled alarm. */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        GardenSyncClient.syncAllKnownGardens(context)
         bumpRefreshTrigger(context, glanceId)
         WateringWidget().update(context, glanceId)
     }
