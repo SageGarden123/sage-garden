@@ -106,7 +106,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.2.0")
 
 // Google Maps
-    implementation("com.google.maps.android:maps-compose:4.3.3")
+    implementation("com.google.maps.android:maps-compose:8.5.0")
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation(libs.places)
 
