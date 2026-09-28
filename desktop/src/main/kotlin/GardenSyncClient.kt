@@ -12,7 +12,9 @@ sealed class GardenSyncResult {
         val plantTombstones: List<SyncTombstone>,
         val careLog: List<CareLogEntry>,
         val careLogTombstones: List<SyncTombstone>,
-        val memberToken: String?
+        val memberToken: String?,
+        val meta: GardenMeta,
+        val signalRev: Long?
     ) : GardenSyncResult()
     data object NotAuthorized : GardenSyncResult()
     data object NetworkError : GardenSyncResult()
@@ -169,7 +171,14 @@ object GardenSyncClient {
 
             GardenSyncResult.Success(
                 mergedPlants, mergedPlantTombstones, mergedCareLog, mergedCareLogTombstones,
-                json.optString("memberToken", "").ifBlank { null }
+                json.optString("memberToken", "").ifBlank { null },
+                GardenMeta(
+                    address = json.optString("gardenAddress", ""),
+                    lat = if (json.isNull("gardenLat")) null else json.optDouble("gardenLat"),
+                    lng = if (json.isNull("gardenLng")) null else json.optDouble("gardenLng"),
+                    zones = json.optJSONArray("gardenLocations")?.let { a -> (0 until a.length()).map { a.getString(it) } }
+                ),
+                if (json.has("signalRev")) json.optLong("signalRev") else null
             )
         } catch (_: Exception) {
             GardenSyncResult.NetworkError

@@ -1,3 +1,4 @@
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
@@ -43,7 +44,7 @@ import androidx.compose.ui.unit.sp
 fun PlantThumbnail(photoUri: String?, photoThumbnailBase64: String? = null, size: androidx.compose.ui.unit.Dp = 40.dp, onClick: (() -> Unit)? = null) {
     val bitmap = rememberPlantPhoto(photoUri, photoThumbnailBase64)
     Box(
-        modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE3DDCF))
+        modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
             .let { if (bitmap != null && onClick != null) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center
     ) {

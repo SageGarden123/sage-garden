@@ -57,7 +57,7 @@ fun CareHistoryScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("${careTypeIcon(entry.type)} ${careTypeLabel(entry.type)} — ${sdf.format(Date(entry.date))}", fontSize = 13.sp)
+                            Text("${careTypeLabel(entry.type)} — ${sdf.format(Date(entry.date))}", fontSize = 13.sp)
                             TextButton(onClick = { onDeleteEntry(entry.id) }) { Text("Delete") }
                         }
                     }

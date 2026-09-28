@@ -80,10 +80,29 @@ val pollinatorOptions = listOf(
 
 data class SyncTombstone(val id: String, val deletedAt: Long)
 
+/** A garden's shared details from the phone (only the owner's phone sets them). Latitude < 0 means Southern Hemisphere. */
+data class GardenMeta(val address: String = "", val lat: Double? = null, val lng: Double? = null, val zones: List<String>? = null) {
+    val southernHemisphere: Boolean get() = (lat ?: -1.0) < 0
+}
+
 data class WateringStatus(val nextDueMillis: Long?, val label: String)
 
-fun computeWateringStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis()): WateringStatus? {
-    val freq = plant.wateringFrequencyDays ?: return null
+/** Same seasons as the phone: Dec–Feb summer / Jun–Aug winter in the south, flipped in the north; blank overrides fall back to the normal frequency. */
+fun effectiveWateringFrequencyDays(plant: Plant, nowMillis: Long, southernHemisphere: Boolean): Int? {
+    val month = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }.get(java.util.Calendar.MONTH)
+    val decJanFeb = month in listOf(java.util.Calendar.DECEMBER, java.util.Calendar.JANUARY, java.util.Calendar.FEBRUARY)
+    val junJulAug = month in listOf(java.util.Calendar.JUNE, java.util.Calendar.JULY, java.util.Calendar.AUGUST)
+    val summer = if (southernHemisphere) decJanFeb else junJulAug
+    val winter = if (southernHemisphere) junJulAug else decJanFeb
+    return when {
+        summer -> plant.summerWateringFrequencyDays ?: plant.wateringFrequencyDays
+        winter -> plant.winterWateringFrequencyDays ?: plant.wateringFrequencyDays
+        else -> plant.wateringFrequencyDays
+    }
+}
+
+fun computeWateringStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis(), southernHemisphere: Boolean = true): WateringStatus? {
+    val freq = effectiveWateringFrequencyDays(plant, nowMillis, southernHemisphere) ?: return null
     val last = plant.lastWateredDate ?: return WateringStatus(null, "Never watered — water now")
     val nextDue = last + freq * 86_400_000L
     val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()

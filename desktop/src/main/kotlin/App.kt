@@ -1,42 +1,22 @@
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
@@ -53,56 +33,99 @@ import javax.swing.filechooser.FileNameExtensionFilter
 /** Same page as the Android app's Help → Support Sage Garden link — keep these in sync if it ever changes. */
 const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/sagegarden"
 
-/** Runs [action] via java.awt.Desktop (mail client / default browser) if the current platform supports it. Returns false on any failure so the caller can show a fallback message, matching the Android app's pattern for the same links. */
-private fun openInDesktop(action: (Desktop) -> Unit): Boolean {
-    return try {
-        if (!Desktop.isDesktopSupported()) return false
-        action(Desktop.getDesktop())
-        true
-    } catch (_: Exception) {
-        false
-    }
-}
+/** Runs [action] via java.awt.Desktop (mail client / default browser) if the current platform supports it. Returns false on any failure so the caller can show a fallback message. */
+private fun openInDesktop(action: (Desktop) -> Unit): Boolean = try {
+    if (!Desktop.isDesktopSupported()) false else { action(Desktop.getDesktop()); true }
+} catch (_: Exception) { false }
 
 sealed class Screen {
     data object Dashboard : Screen()
     data object PlantList : Screen()
     data class PlantEdit(val plantId: String?) : Screen()
     data class CareHistory(val plantId: String) : Screen()
-    data object Audit : Screen()
+    data object GardenCheck : Screen()
+    data object Reports : Screen()
 }
 
-/** Holds the loaded garden data as Compose state and persists every mutation immediately — a
- * single local user on a single machine has no need for debounced/batched writes. */
-class GardenAppState(private var file: File) {
-    private val store = GardenStore(file).also { it.load() }
+/** Local data file for a synced garden — one per garden, so switching gardens never mixes their plants. */
+private fun gardenFile(gardenId: String): File =
+    File(System.getProperty("user.home"), "SageGardenDesktop/gardens/${gardenId.replace(Regex("[^A-Za-z0-9_-]"), "_")}.json")
+
+/**
+ * Holds the open garden as Compose state and persists every mutation immediately. The desktop can
+ * belong to several gardens (the linked phone's own garden plus any shared garden it has joined
+ * with an invite code); each has its own local file and member token.
+ */
+class GardenAppState {
+    val ownDeviceId = GardenSyncSettings.getOwnDeviceId()
+    var linkedDeviceId by mutableStateOf(GardenSyncSettings.getLinkedDeviceId() ?: "")
+        private set
+    var activeGardenId by mutableStateOf(GardenSyncSettings.getActiveGardenId() ?: linkedDeviceId.ifBlank { null })
+        private set
+    var knownGardens by mutableStateOf<List<KnownGarden>>(emptyList())
+        private set
+    var pendingRequests by mutableStateOf<List<PendingRequest>>(emptyList())
+        private set
+    var lastSyncedAt by mutableStateOf(GardenSyncSettings.getLastSyncedAt())
+        private set
+    var meta by mutableStateOf(GardenMeta())
+        private set
+    var plan by mutableStateOf<GardenPlan?>(null)
+        private set
+    /** Set by any local edit; the live-update loop pushes it within a few seconds. */
+    @Volatile var hasLocalChanges = false
+
+    private var file: File = currentFile()
+    private var store = GardenStore(file).also { it.load() }
     val plants = mutableStateListOf<Plant>().also { it.addAll(store.plants) }
     val careLog = mutableStateListOf<CareLogEntry>().also { it.addAll(store.careLog) }
     private var plantTombstones = store.plantTombstones.toMutableList()
     private var careLogTombstones = store.careLogTombstones.toMutableList()
     var filePath by mutableStateOf(file.absolutePath)
         private set
-    var linkedDeviceId by mutableStateOf(GardenSyncSettings.getLinkedDeviceId() ?: "")
-        private set
-    var lastSyncedAt by mutableStateOf(GardenSyncSettings.getLastSyncedAt())
-        private set
+
+    val activeGardenName: String
+        get() = knownGardens.firstOrNull { it.gardenId == activeGardenId }?.name
+            ?: activeGardenId?.let { GardenSyncSettings.getGardenName(it) } ?: "My Garden"
+
+    val canEdit: Boolean
+        get() = knownGardens.firstOrNull { it.gardenId == activeGardenId }?.permission != "read"
 
     init {
+        meta = store.meta
+        plan = activeGardenId?.let { GardenPlanCache.load(it) }
         runAutoBackupIfDue()
     }
 
-    /** A silent safety net beneath "Save as..." — no setup needed, runs at most once a day, and
-     * rotates through 7 weekday-named files rather than growing forever (mirrors the same scheme
-     * on the Android side's AutoBackupScheduler). Skips entirely if there's nothing loaded yet, so
-     * a brand-new/empty file never overwrites a real snapshot from a previous day. */
+    private fun currentFile(): File {
+        val id = activeGardenId ?: return defaultGardenFile()
+        val f = gardenFile(id)
+        // Earlier versions kept the linked phone's garden in garden_data.json — carry it over once.
+        if (!f.exists() && id == linkedDeviceId && defaultGardenFile().exists()) {
+            f.parentFile?.mkdirs(); defaultGardenFile().copyTo(f)
+        }
+        return f
+    }
+
+    private fun loadFrom(newFile: File) {
+        file = newFile
+        store = GardenStore(newFile).also { it.load() }
+        plants.clear(); plants.addAll(store.plants)
+        careLog.clear(); careLog.addAll(store.careLog)
+        plantTombstones = store.plantTombstones.toMutableList()
+        careLogTombstones = store.careLogTombstones.toMutableList()
+        meta = store.meta
+        filePath = newFile.absolutePath
+    }
+
+    /** A silent daily safety net, rotating through 7 weekday-named files (same scheme as the phone). */
     private fun runAutoBackupIfDue() {
         if (plants.isEmpty()) return
         val last = GardenSyncSettings.getLastAutoBackupAt()
         if (System.currentTimeMillis() - last < 20 * 60 * 60 * 1000L) return
         runCatching {
-            val weekday = java.text.SimpleDateFormat("EEEE", java.util.Locale.US).format(java.util.Date())
-            val backupFile = File(autoBackupDir(), "$weekday.json")
-            val snapshot = GardenStore(backupFile)
+            val weekday = SimpleDateFormat("EEEE", Locale.US).format(Date())
+            val snapshot = GardenStore(File(autoBackupDir(), "$weekday.json"))
             snapshot.plants.clear(); snapshot.plants.addAll(plants)
             snapshot.careLog.clear(); snapshot.careLog.addAll(careLog)
             snapshot.setPlantTombstones(plantTombstones)
@@ -112,16 +135,10 @@ class GardenAppState(private var file: File) {
         GardenSyncSettings.setLastAutoBackupAt(System.currentTimeMillis())
     }
 
-    /** Every automatic backup slot present, newest first — up to 7 (one per weekday), for a restore picker. */
     fun listAutoBackups(): List<Pair<String, Long>> =
-        autoBackupDir().listFiles()
-            ?.filter { it.name.endsWith(".json") }
-            ?.map { it.name.removeSuffix(".json") to it.lastModified() }
-            ?.sortedByDescending { it.second }
-            ?: emptyList()
+        autoBackupDir().listFiles()?.filter { it.name.endsWith(".json") }
+            ?.map { it.name.removeSuffix(".json") to it.lastModified() }?.sortedByDescending { it.second } ?: emptyList()
 
-    /** Restores the automatic backup slot named [weekday] (from [listAutoBackups]) as the current
-     * garden state, and saves it to the main file immediately. */
     fun restoreAutoBackup(weekday: String) {
         val backupFile = File(autoBackupDir(), "$weekday.json")
         if (!backupFile.exists()) return
@@ -130,18 +147,18 @@ class GardenAppState(private var file: File) {
         careLog.clear(); careLog.addAll(restored.careLog)
         plantTombstones = restored.plantTombstones.toMutableList()
         careLogTombstones = restored.careLogTombstones.toMutableList()
-        persist()
+        persist(); hasLocalChanges = true
     }
 
     private fun persist() {
         val fresh = GardenStore(file)
         fresh.load()
-        // Re-apply current in-memory lists onto whatever else was in the file (preserves any
-        // fields this app doesn't understand, e.g. sun-map/irrigation data from a phone backup).
+        // Re-apply in-memory state onto whatever else is in the file (keeps fields this app doesn't use).
         fresh.plants.clear(); fresh.plants.addAll(plants)
         fresh.careLog.clear(); fresh.careLog.addAll(careLog)
         fresh.setPlantTombstones(plantTombstones)
         fresh.setCareLogTombstones(careLogTombstones)
+        fresh.meta = meta
         fresh.save()
     }
 
@@ -149,14 +166,14 @@ class GardenAppState(private var file: File) {
         val stamped = plant.copy(updatedAt = System.currentTimeMillis())
         val idx = plants.indexOfFirst { it.id == stamped.id }
         if (idx >= 0) plants[idx] = stamped else plants.add(stamped)
-        persist()
+        persist(); hasLocalChanges = true
     }
 
     fun deletePlant(plantId: String) {
         plants.removeAll { it.id == plantId }
         careLog.removeAll { it.plantId == plantId }
         recordTombstone(plantTombstones, plantId)
-        persist()
+        persist(); hasLocalChanges = true
     }
 
     fun logCare(plantId: String, type: String, date: Long) {
@@ -172,31 +189,23 @@ class GardenAppState(private var file: File) {
                 else -> p.copy(lastPrunedDate = date)
             }.copy(updatedAt = now)
         }
-        persist()
+        persist(); hasLocalChanges = true
     }
 
     fun deleteCareLogEntry(entryId: String) {
         careLog.removeAll { it.id == entryId }
         recordTombstone(careLogTombstones, entryId)
-        persist()
+        persist(); hasLocalChanges = true
     }
 
     private fun recordTombstone(list: MutableList<SyncTombstone>, id: String) {
-        val now = System.currentTimeMillis()
         val existingAt = list.firstOrNull { it.id == id }?.deletedAt ?: 0L
         list.removeAll { it.id == id }
-        list.add(SyncTombstone(id, maxOf(existingAt, now)))
+        list.add(SyncTombstone(id, maxOf(existingAt, System.currentTimeMillis())))
     }
 
-    fun openFile(newFile: File) {
-        file = newFile
-        val loaded = GardenStore(newFile).also { it.load() }
-        plants.clear(); plants.addAll(loaded.plants)
-        careLog.clear(); careLog.addAll(loaded.careLog)
-        plantTombstones = loaded.plantTombstones.toMutableList()
-        careLogTombstones = loaded.careLogTombstones.toMutableList()
-        filePath = newFile.absolutePath
-    }
+    /** Opens any phone backup file for viewing and editing (it syncs into the open garden like any other edit). */
+    fun openFile(newFile: File) = loadFrom(newFile)
 
     fun saveAs(newFile: File) {
         file = newFile
@@ -205,57 +214,160 @@ class GardenAppState(private var file: File) {
     }
 
     fun updateLinkedDeviceId(id: String) {
-        linkedDeviceId = id
-        GardenSyncSettings.setLinkedDeviceId(id)
+        linkedDeviceId = id.trim()
+        GardenSyncSettings.setLinkedDeviceId(linkedDeviceId)
+        if (activeGardenId == null && linkedDeviceId.isNotBlank()) switchGarden(linkedDeviceId)
     }
 
-    /**
-     * Blocking network call — callers must invoke this off the UI thread (see App()'s "Sync now"
-     * handler). The server response is already the full authoritative state for both collections
-     * (see syncGarden.ts), so applying it is a plain replace, not a merge — this client does no
-     * merge logic of its own.
-     */
+    fun switchGarden(gardenId: String) {
+        if (gardenId == activeGardenId) return
+        activeGardenId = gardenId
+        GardenSyncSettings.setActiveGardenId(gardenId)
+        loadFrom(currentFile())
+        plan = GardenPlanCache.load(gardenId)
+    }
+
+    // ---- Network (call off the UI thread) -------------------------------------------------------
+
+    fun refreshGardens(): CloudResult<Unit> = when (val r = Cloud.listMyGardens(ownDeviceId)) {
+        is CloudResult.Ok -> {
+            knownGardens = r.value.first
+            pendingRequests = r.value.second
+            GardenSyncSettings.setGardenNames(r.value.first.associate { it.gardenId to it.name })
+            r.value.first.forEach { g -> if (g.memberToken.isNotBlank()) GardenSyncSettings.setMemberToken(g.gardenId, g.memberToken) }
+            if (activeGardenId == null) r.value.first.firstOrNull()?.let { switchGarden(it.gardenId) }
+            CloudResult.Ok(Unit)
+        }
+        is CloudResult.NotAuthorized -> r
+        is CloudResult.Failed -> r
+    }
+
+    fun joinGarden(inviteCode: String, permission: String): CloudResult<String> {
+        val r = Cloud.requestJoinGarden(ownDeviceId, inviteCode, permission)
+        refreshGardens()
+        return r
+    }
+
     fun syncNow(): GardenSyncResult {
+        val gardenId = activeGardenId ?: return GardenSyncResult.ServerError
+        hasLocalChanges = false
         val result = GardenSyncClient.sync(
-            GardenSyncSettings.getOwnDeviceId(), linkedDeviceId.trim(), GardenSyncSettings.getMemberToken(),
+            ownDeviceId, gardenId, GardenSyncSettings.getMemberToken(gardenId),
             plants.toList(), careLog.toList(), plantTombstones, careLogTombstones
         )
-        if (result is GardenSyncResult.NotAuthorized) GardenSyncSettings.setMemberToken(null)
-        if (result is GardenSyncResult.Success) {
-            result.memberToken?.let { GardenSyncSettings.setMemberToken(it) }
+        if (result is GardenSyncResult.NotAuthorized) GardenSyncSettings.setMemberToken(gardenId, null)
+        if (result is GardenSyncResult.Success && gardenId == activeGardenId) {
+            result.memberToken?.let { GardenSyncSettings.setMemberToken(gardenId, it) }
+            result.signalRev?.let { GardenSyncSettings.setSeenRev(gardenId, "rev", it) }
             plants.clear(); plants.addAll(result.plants)
             plantTombstones = result.plantTombstones.toMutableList()
             careLog.clear(); careLog.addAll(result.careLog)
             careLogTombstones = result.careLogTombstones.toMutableList()
+            meta = result.meta
             persist()
             lastSyncedAt = System.currentTimeMillis()
             GardenSyncSettings.setLastSyncedAt(lastSyncedAt)
         }
         return result
     }
+
+    fun pullPlan() {
+        val gardenId = activeGardenId ?: return
+        val token = GardenSyncSettings.getMemberToken(gardenId) ?: return
+        val r = Cloud.pullPlan(ownDeviceId, gardenId, token)
+        if (r is CloudResult.Ok && gardenId == activeGardenId) plan = r.value
+    }
+
+    /**
+     * Live updates: a cheap change check (see Cloud.gardenSignal) — plants/care log, the garden plan
+     * and memberships each have their own counter, and only what moved is fetched.
+     */
+    fun checkForChanges() {
+        val gardenId = activeGardenId ?: return
+        if (hasLocalChanges) syncNow()
+        val token = GardenSyncSettings.getMemberToken(gardenId)
+        if (token == null) { syncNow(); pullPlan(); return }
+        when (val r = Cloud.gardenSignal(ownDeviceId, gardenId, token)) {
+            is CloudResult.Ok -> {
+                val s = r.value
+                if (s.rev > GardenSyncSettings.getSeenRev(gardenId, "rev")) syncNow()
+                if (s.planRev > GardenSyncSettings.getSeenRev(gardenId, "planRev")) {
+                    pullPlan(); GardenSyncSettings.setSeenRev(gardenId, "planRev", s.planRev)
+                }
+                if (s.membershipRev > GardenSyncSettings.getSeenRev(gardenId, "membershipRev")) {
+                    refreshGardens(); GardenSyncSettings.setSeenRev(gardenId, "membershipRev", s.membershipRev)
+                }
+            }
+            is CloudResult.NotAuthorized -> { GardenSyncSettings.setMemberToken(gardenId, null); refreshGardens() }
+            is CloudResult.Failed -> {}
+        }
+        if (pendingRequests.isNotEmpty()) refreshGardens()
+    }
+
+    fun reportInput() = ReportInput(
+        gardenName = activeGardenName, meta = meta, plants = plants.toList(), plan = plan,
+        planImage = activeGardenId?.let { GardenPlanCache.imageFile(it) },
+    )
 }
 
 @Composable
 fun App() {
-    val appState = remember { GardenAppState(defaultGardenFile()) }
+    val appState = remember { GardenAppState() }
     var screen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showContactDialog by remember { mutableStateOf(false) }
     var showAutoBackupDialog by remember { mutableStateOf(false) }
+    var showJoinDialog by remember { mutableStateOf(false) }
+    var showAppearanceDialog by remember { mutableStateOf(false) }
+    var syncing by remember { mutableStateOf(false) }
+
+    // Live updates: fetch the garden list and do a full sync on open (and on switching garden), then
+    // check for changes every 30 seconds and push local edits within a few seconds.
+    LaunchedEffect(appState.activeGardenId) {
+        withContext(Dispatchers.IO) {
+            appState.refreshGardens()
+            if (appState.activeGardenId != null) { appState.syncNow(); appState.pullPlan() }
+        }
+        var tick = 0
+        while (true) {
+            delay(5_000)
+            tick++
+            withContext(Dispatchers.IO) {
+                if (appState.hasLocalChanges) appState.syncNow()
+                if (tick % 6 == 0) appState.checkForChanges()
+            }
+        }
+    }
 
     SageGardenTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Row(Modifier.fillMaxSize()) {
-                var syncing by remember { mutableStateOf(false) }
                 Sidebar(
+                    appState = appState,
                     screen = screen,
                     onSelect = { screen = it },
-                    filePath = appState.filePath,
-                    onOpenFile = {
-                        val chooser = JFileChooser().apply {
-                            fileFilter = FileNameExtensionFilter("Garden backup JSON", "json")
+                    syncing = syncing,
+                    onSyncNow = {
+                        if (appState.activeGardenId == null) {
+                            scope.launch { snackbarHostState.showSnackbar("Link your phone first — enter its Install ID (on the phone: Settings → Help & about).") }
+                        } else {
+                            syncing = true
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { appState.syncNow().also { appState.pullPlan() } }
+                                syncing = false
+                                snackbarHostState.showSnackbar(when (result) {
+                                    is GardenSyncResult.Success -> "Synced — ${result.plants.size} plant(s) up to date"
+                                    GardenSyncResult.NetworkError -> "Couldn't reach the sync server — check your connection."
+                                    GardenSyncResult.ServerError -> "Sync failed — try again shortly."
+                                    GardenSyncResult.NotAuthorized -> "Not authorised — ask the garden's owner if this computer was removed."
+                                })
+                            }
                         }
+                    },
+                    onJoin = { showJoinDialog = true },
+                    onOpenFile = {
+                        val chooser = JFileChooser().apply { fileFilter = FileNameExtensionFilter("Garden backup JSON", "json") }
                         if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
                             appState.openFile(chooser.selectedFile)
                             scope.launch { snackbarHostState.showSnackbar("Opened ${chooser.selectedFile.name}") }
@@ -273,33 +385,13 @@ fun App() {
                             scope.launch { snackbarHostState.showSnackbar("Saved to ${target.name}") }
                         }
                     },
-                    linkedDeviceId = appState.linkedDeviceId,
-                    onLinkedDeviceIdChange = { appState.updateLinkedDeviceId(it) },
-                    lastSyncedAt = appState.lastSyncedAt,
-                    syncing = syncing,
-                    onSyncNow = {
-                        if (appState.linkedDeviceId.isBlank()) {
-                            scope.launch { snackbarHostState.showSnackbar("Enter the phone's Install ID above first (Help → Sync with other devices on the phone).") }
-                        } else {
-                            syncing = true
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) { appState.syncNow() }
-                                syncing = false
-                                val message = when (result) {
-                                    is GardenSyncResult.Success -> "Synced — ${result.plants.size} plant(s) up to date"
-                                    GardenSyncResult.NetworkError -> "Couldn't reach the sync server — check your connection."
-                                    GardenSyncResult.ServerError -> "Sync failed — try again shortly."
-                                    GardenSyncResult.NotAuthorized -> "Not authorised — check the Install ID, or ask the garden's owner if this computer was removed."
-                                }
-                                snackbarHostState.showSnackbar(message)
-                            }
-                        }
-                    },
-                    onContact = { showContactDialog = true },
                     onRestoreAutoBackup = { showAutoBackupDialog = true },
+                    onAppearance = { showAppearanceDialog = true },
+                    onContact = { showContactDialog = true },
                     onSupport = {
-                        val opened = openInDesktop { desktop -> desktop.browse(URI(SUPPORT_LINK_URL)) }
-                        if (!opened) scope.launch { snackbarHostState.showSnackbar("Couldn't open the link — visit $SUPPORT_LINK_URL") }
+                        if (!openInDesktop { it.browse(URI(SUPPORT_LINK_URL)) }) {
+                            scope.launch { snackbarHostState.showSnackbar("Couldn't open the link — visit $SUPPORT_LINK_URL") }
+                        }
                     }
                 )
                 Column(Modifier.fillMaxSize().padding(24.dp)) {
@@ -336,15 +428,26 @@ fun App() {
                                     onDeleteEntry = { appState.deleteCareLogEntry(it) },
                                     onBack = { screen = Screen.PlantList }
                                 )
-                            } else {
-                                screen = Screen.PlantList
-                            }
+                            } else screen = Screen.PlantList
                         }
-                        is Screen.Audit -> AuditScreen(appState.plants)
+                        is Screen.GardenCheck -> GardenCheckScreen(appState.plants)
+                        is Screen.Reports -> ReportsScreen(
+                            input = appState.reportInput(),
+                            planStatus = if (appState.plan == null)
+                                "Your garden map and irrigation layout will appear here once the garden's owner has opened Sage Garden 1.7.1 or later on their phone (it uploads them automatically). Until then, maps use plant positions only."
+                            else null,
+                            onMessage = { scope.launch { snackbarHostState.showSnackbar(it) } }
+                        )
                     }
                 }
             }
             SnackbarHost(snackbarHostState, modifier = Modifier.padding(16.dp)) { Snackbar(it) }
+
+            if (showJoinDialog) JoinGardenDialog(appState, onDismiss = { showJoinDialog = false }) { message ->
+                showJoinDialog = false
+                scope.launch { snackbarHostState.showSnackbar(message) }
+            }
+            if (showAppearanceDialog) AppearanceDialog(onDismiss = { showAppearanceDialog = false })
 
             if (showContactDialog) {
                 AlertDialog(
@@ -352,19 +455,16 @@ fun App() {
                     title = { Text("Contact & feedback") },
                     text = {
                         Column {
-                            Text("Found a bug, or have an idea for the app? We'd love to hear from you.", fontSize = 13.sp)
+                            Text("Found a bug, or have an idea for the app? We'd love to hear from you.")
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "gardenwizardry685@gmail.com",
-                                fontWeight = FontWeight.SemiBold,
+                                "gardenwizardry685@gmail.com", fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable {
-                                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                                    clipboard.setContents(StringSelection("gardenwizardry685@gmail.com"), null)
+                                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection("gardenwizardry685@gmail.com"), null)
                                     scope.launch { snackbarHostState.showSnackbar("Email address copied") }
                                 }
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Text("(click to copy)", fontSize = 11.sp, color = Color.Gray)
+                            Text("(click to copy)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
                     confirmButton = { TextButton(onClick = { showContactDialog = false }) { Text("Close") } }
@@ -382,31 +482,25 @@ fun App() {
                         Column {
                             if (selectedWeekday == null) {
                                 if (available.isEmpty()) {
-                                    Text("None yet — the first one is created a day after you first open the app with data loaded.", fontSize = 13.sp)
+                                    Text("None yet — the first one is created a day after you first open the app with data loaded.")
                                 } else {
-                                    Text("Runs silently once a day as a safety net — pick a snapshot to restore.", fontSize = 12.sp, color = Color.Gray)
+                                    Text("Runs silently once a day as a safety net — pick a snapshot to restore.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Spacer(Modifier.height(10.dp))
                                     available.forEach { (weekday, modifiedAt) ->
-                                        Text(
-                                            sdf.format(Date(modifiedAt)),
-                                            fontSize = 13.sp,
-                                            modifier = Modifier.fillMaxWidth().clickable { selectedWeekday = weekday }.padding(vertical = 8.dp)
-                                        )
+                                        Text(sdf.format(Date(modifiedAt)), modifier = Modifier.fillMaxWidth().clickable { selectedWeekday = weekday }.padding(vertical = 8.dp))
                                     }
                                 }
                             } else {
-                                Text("This replaces every plant and care-log entry currently shown with what's in this snapshot, then saves immediately. This can't be undone.", fontSize = 13.sp)
+                                Text("This replaces every plant and care-log entry currently shown with what's in this snapshot, then saves immediately. This can't be undone.")
                             }
                         }
                     },
                     confirmButton = {
-                        if (selectedWeekday != null) {
-                            TextButton(onClick = {
-                                appState.restoreAutoBackup(selectedWeekday!!)
-                                showAutoBackupDialog = false
-                                scope.launch { snackbarHostState.showSnackbar("Restored from automatic backup") }
-                            }) { Text("Restore") }
-                        }
+                        if (selectedWeekday != null) TextButton(onClick = {
+                            appState.restoreAutoBackup(selectedWeekday!!)
+                            showAutoBackupDialog = false
+                            scope.launch { snackbarHostState.showSnackbar("Restored from automatic backup") }
+                        }) { Text("Restore") }
                     },
                     dismissButton = { TextButton(onClick = { showAutoBackupDialog = false }) { Text("Cancel") } }
                 )
@@ -417,82 +511,193 @@ fun App() {
 
 @Composable
 private fun Sidebar(
+    appState: GardenAppState,
     screen: Screen,
     onSelect: (Screen) -> Unit,
-    filePath: String,
-    onOpenFile: () -> Unit,
-    onSaveAs: () -> Unit,
-    linkedDeviceId: String,
-    onLinkedDeviceIdChange: (String) -> Unit,
-    lastSyncedAt: Long,
     syncing: Boolean,
     onSyncNow: () -> Unit,
+    onJoin: () -> Unit,
+    onOpenFile: () -> Unit,
+    onSaveAs: () -> Unit,
+    onRestoreAutoBackup: () -> Unit,
+    onAppearance: () -> Unit,
     onContact: () -> Unit,
     onSupport: () -> Unit,
-    onRestoreAutoBackup: () -> Unit
 ) {
-    Column(
-        Modifier.width(240.dp).fillMaxHeight().background(SageGreenDark).padding(16.dp)
-    ) {
+    val cs = MaterialTheme.colorScheme
+    Column(Modifier.width(260.dp).fillMaxHeight().background(cs.surfaceContainer).padding(12.dp)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Text("🌿 Sage Garden", color = Color.White, fontSize = 18.sp)
-            Spacer(Modifier.height(24.dp))
-            SidebarItem("📊 Dashboard", screen is Screen.Dashboard) { onSelect(Screen.Dashboard) }
-            SidebarItem("🌱 Plants", screen is Screen.PlantList || screen is Screen.PlantEdit || screen is Screen.CareHistory) { onSelect(Screen.PlantList) }
-            SidebarItem("🔍 Audit", screen is Screen.Audit) { onSelect(Screen.Audit) }
-            Spacer(Modifier.height(24.dp))
-            SidebarItem("📂 Open backup file…", false, onOpenFile)
-            SidebarItem("💾 Save as…", false, onSaveAs)
-            SidebarItem("🕑 Restore automatic backup…", false, onRestoreAutoBackup)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                Icon(Icons.Outlined.Eco, contentDescription = null, tint = cs.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("Sage Garden", style = MaterialTheme.typography.titleMedium, color = cs.onSurface)
+            }
+            GardenPicker(appState, onJoin)
+            Spacer(Modifier.height(12.dp))
+            SidebarItem(Icons.Outlined.Dashboard, "Dashboard", screen is Screen.Dashboard) { onSelect(Screen.Dashboard) }
+            SidebarItem(Icons.Outlined.LocalFlorist, "Plants", screen is Screen.PlantList || screen is Screen.PlantEdit || screen is Screen.CareHistory) { onSelect(Screen.PlantList) }
+            SidebarItem(Icons.Outlined.FactCheck, "Garden check", screen is Screen.GardenCheck) { onSelect(Screen.GardenCheck) }
+            SidebarItem(Icons.Outlined.Summarize, "Reports & map", screen is Screen.Reports) { onSelect(Screen.Reports) }
 
-            Spacer(Modifier.height(36.dp))
-            Text("Sync with phone", color = Color.White, fontSize = 13.sp)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(color = cs.outlineVariant)
+            Spacer(Modifier.height(8.dp))
+            Text("Sync", style = MaterialTheme.typography.labelLarge, color = cs.primary, modifier = Modifier.padding(horizontal = 8.dp))
             Text(
-                "Enter the phone's Install ID (Help → Sync with other devices, on the phone).",
-                color = SageCream, fontSize = 10.sp
+                "Updates arrive automatically while the app is open.",
+                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = linkedDeviceId,
-                onValueChange = onLinkedDeviceIdChange,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                value = appState.linkedDeviceId,
+                onValueChange = { appState.updateLinkedDeviceId(it) },
+                label = { Text("Your phone's Install ID") },
+                supportingText = { Text("On the phone: Settings → Help & about") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
             Button(onClick = onSyncNow, enabled = !syncing, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Sync, contentDescription = null); Spacer(Modifier.width(8.dp))
                 Text(if (syncing) "Syncing…" else "Sync now")
             }
-            if (lastSyncedAt > 0) {
-                Spacer(Modifier.height(6.dp))
+            if (appState.lastSyncedAt > 0) {
                 Text(
-                    "Last synced: ${SimpleDateFormat("dd MMM, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
-                    color = SageCream, fontSize = 10.sp
+                    "Last synced ${SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(Date(appState.lastSyncedAt))}",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(8.dp)
                 )
             }
-        }
 
-        HorizontalDivider(color = SageCream.copy(alpha = 0.3f))
-        Spacer(Modifier.height(12.dp))
-        SidebarItem("✉️ Contact & feedback", false, onContact)
-        SidebarItem("☕ Buy me a coffee", false, onSupport)
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = cs.outlineVariant)
+            SidebarItem(Icons.Outlined.FolderOpen, "Open backup file…", false, onOpenFile)
+            SidebarItem(Icons.Outlined.Save, "Save as…", false, onSaveAs)
+            SidebarItem(Icons.Outlined.History, "Restore automatic backup…", false, onRestoreAutoBackup)
+        }
+        HorizontalDivider(color = cs.outlineVariant)
+        SidebarItem(Icons.Outlined.Palette, "Appearance", false, onAppearance)
+        SidebarItem(Icons.Outlined.Email, "Contact & feedback", false, onContact)
+        SidebarItem(Icons.Outlined.Coffee, "Buy me a coffee", false, onSupport)
         Text(
-            "Data file:\n$filePath",
-            color = SageCream, fontSize = 10.sp
+            "Data file: ${appState.filePath}", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(8.dp)
         )
     }
 }
 
 @Composable
-private fun SidebarItem(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(if (selected) SageGreen else Color.Transparent)
-            .padding(vertical = 10.dp, horizontal = 8.dp),
-        horizontalArrangement = Arrangement.Start
-    ) {
-        Text(label, color = Color.White, fontSize = 13.sp)
+private fun GardenPicker(appState: GardenAppState, onJoin: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "Switch garden") { expanded = true }
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Yard, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Garden", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(appState.activeGardenName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            appState.knownGardens.forEach { g ->
+                DropdownMenuItem(
+                    text = { Text(g.name + if (g.permission == "read") " (view only)" else "") },
+                    leadingIcon = { if (g.gardenId == appState.activeGardenId) Icon(Icons.Outlined.Check, contentDescription = "Current garden") },
+                    onClick = { expanded = false; appState.switchGarden(g.gardenId) }
+                )
+            }
+            appState.pendingRequests.forEach { p ->
+                DropdownMenuItem(text = { Text("${p.name} — waiting for approval") }, onClick = {}, enabled = false,
+                    leadingIcon = { Icon(Icons.Outlined.HourglassEmpty, contentDescription = null) })
+            }
+            HorizontalDivider()
+            DropdownMenuItem(text = { Text("Join a garden…") }, leadingIcon = { Icon(Icons.Outlined.GroupAdd, contentDescription = null) },
+                onClick = { expanded = false; onJoin() })
+        }
     }
+}
+
+@Composable
+private fun JoinGardenDialog(appState: GardenAppState, onDismiss: () -> Unit, onDone: (String) -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var permission by remember { mutableStateOf("write") }
+    var working by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Join a garden") },
+        text = {
+            Column {
+                Text("Ask the garden's owner for their invite code (on their phone: Settings → This garden → Share).", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(value = code, onValueChange = { code = it.uppercase(); error = null }, label = { Text("Invite code") }, singleLine = true, isError = error != null,
+                    supportingText = { error?.let { Text(it) } })
+                Spacer(Modifier.height(8.dp))
+                listOf("write" to "Ask to edit", "read" to "View only").forEach { (value, label) ->
+                    Row(Modifier.fillMaxWidth().selectable(permission == value, role = Role.RadioButton) { permission = value }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = permission == value, onClick = null); Spacer(Modifier.width(8.dp)); Text(label)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(enabled = code.isNotBlank() && !working, onClick = {
+                working = true
+                scope.launch {
+                    val r = withContext(Dispatchers.IO) { appState.joinGarden(code, permission) }
+                    working = false
+                    when (r) {
+                        is CloudResult.Ok -> onDone(if (r.value == "approved") "Joined — pick the garden from the list." else "Request sent. It'll appear in your gardens once the owner approves it.")
+                        is CloudResult.Failed -> error = r.reason
+                        is CloudResult.NotAuthorized -> error = "Not authorised."
+                    }
+                }
+            }) { Text(if (working) "Sending…" else "Send request") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun AppearanceDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Appearance") },
+        text = {
+            Column {
+                Text("Theme", style = MaterialTheme.typography.labelLarge)
+                ThemeMode.entries.forEach { m ->
+                    Row(Modifier.fillMaxWidth().selectable(Appearance.themeMode == m, role = Role.RadioButton) { Appearance.update(mode = m) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = Appearance.themeMode == m, onClick = null); Spacer(Modifier.width(8.dp)); Text(m.label)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Colours", style = MaterialTheme.typography.labelLarge)
+                AppPalette.entries.forEach { p ->
+                    Row(Modifier.fillMaxWidth().selectable(Appearance.palette == p, role = Role.RadioButton) { Appearance.update(palette = p) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = Appearance.palette == p, onClick = null); Spacer(Modifier.width(8.dp)); Text(p.label, modifier = Modifier.weight(1f))
+                        val scheme = paletteScheme(p, dark = false)
+                        listOf(scheme.primary, scheme.primaryContainer, scheme.tertiary).forEach { c ->
+                            Surface(color = c, shape = MaterialTheme.shapes.small, modifier = Modifier.size(18.dp).padding(1.dp)) {}
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+    )
+}
+
+@Composable
+private fun SidebarItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    NavigationDrawerItem(
+        icon = { Icon(icon, contentDescription = null) },
+        label = { Text(label) },
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.height(44.dp)
+    )
 }

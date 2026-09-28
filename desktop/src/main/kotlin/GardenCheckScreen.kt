@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -92,77 +93,79 @@ private fun findExposureConflicts(plants: List<Plant>): List<Pair<Plant, Plant>>
  * conflicts still work here since they only need plant coordinates (GPS or custom-map position),
  * both of which round-trip through sync/backup like any other plant field.
  */
+/** Every Garden check finding — shared by the Garden check screen and the printable garden report. */
+fun gardenCheckIssues(plants: List<Plant>, now: Long = System.currentTimeMillis()): List<AuditIssue> =
+    buildList {
+        val highWaterManual = plants.filter { it.water == "High" && it.manualWateringOnly }
+        if (highWaterManual.isNotEmpty()) add(
+            AuditIssue("High water need, hand-watered only", "These plants need frequent water but aren't on an automatic irrigation path — worth checking they're not being missed.", highWaterManual)
+        )
+
+        val exposureConflicts = findExposureConflicts(plants)
+        if (exposureConflicts.isNotEmpty()) add(
+            AuditIssue(
+                "Placement conflicts",
+                "Plants placed close together on the map with clashing sun or frost needs. Based on map position only — there's no plant-size or true companion-planting data yet, so treat this as a rough guide.",
+                plants = exposureConflicts.flatMap { (a, b) -> listOf(a, b) }.distinctBy { it.id },
+                detailLines = exposureConflicts.map { (a, b) -> describeExposureConflict(a, b) }
+            )
+        )
+
+        val noPhoto = plants.filter { it.photoUri == null && it.photoUris.isEmpty() }
+        if (noPhoto.isNotEmpty()) add(
+            AuditIssue("No photos", "These plants have no photo saved yet.", noPhoto)
+        )
+
+        val noLocation = plants.filter { it.lat == null && it.mapX == null }
+        if (noLocation.isNotEmpty()) add(
+            AuditIssue("No map location", "These plants aren't placed on either map, so they won't show up when browsing by location.", noLocation)
+        )
+
+        val noWateringSchedule = plants.filter { it.wateringFrequencyDays == null && it.summerWateringFrequencyDays == null && it.winterWateringFrequencyDays == null }
+        if (noWateringSchedule.isNotEmpty()) add(
+            AuditIssue("No watering schedule", "No watering frequency is set, so these plants won't appear in reminders or the \"needs watering\" list.", noWateringSchedule)
+        )
+
+        val overdueWatering = plants.filter { computeWateringStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
+        if (overdueWatering.isNotEmpty()) add(
+            AuditIssue("Overdue for watering", "Based on last watered date and frequency.", overdueWatering)
+        )
+
+        val overdueFertilise = plants.filter { computeFertiliseStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
+        if (overdueFertilise.isNotEmpty()) add(
+            AuditIssue("Overdue for fertilising", "Based on last fertilised date and frequency.", overdueFertilise)
+        )
+
+        val overduePrune = plants.filter { computePruneStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
+        if (overduePrune.isNotEmpty()) add(
+            AuditIssue("Overdue for pruning", "Based on last pruned date and frequency.", overduePrune)
+        )
+
+        val overdueFeed = plants.filter { computeFeedStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
+        if (overdueFeed.isNotEmpty()) add(
+            AuditIssue("Overdue for feeding", "Based on last fed date and frequency.", overdueFeed)
+        )
+
+        val frostRisk = frostTenderOutdoorPlants(plants)
+        if (frostRisk.isNotEmpty()) add(
+            AuditIssue("Frost-tender & outdoors", "Worth keeping an eye on the forecast for these — consider covering on cold nights.", frostRisk)
+        )
+    }.sortedBy { it.title }
+
 @Composable
-fun AuditScreen(plants: List<Plant>) {
+fun GardenCheckScreen(plants: List<Plant>) {
     val now = remember { System.currentTimeMillis() }
 
-    val issues = remember(plants, now) {
-        buildList {
-            val highWaterManual = plants.filter { it.water == "High" && it.manualWateringOnly }
-            if (highWaterManual.isNotEmpty()) add(
-                AuditIssue("High water need, hand-watered only", "These plants need frequent water but aren't on an automatic irrigation path — worth checking they're not being missed.", highWaterManual)
-            )
-
-            val exposureConflicts = findExposureConflicts(plants)
-            if (exposureConflicts.isNotEmpty()) add(
-                AuditIssue(
-                    "Placement conflicts",
-                    "Plants placed close together on the map with clashing sun or frost needs. Based on map position only — there's no plant-size or true companion-planting data yet, so treat this as a rough guide.",
-                    plants = exposureConflicts.flatMap { (a, b) -> listOf(a, b) }.distinctBy { it.id },
-                    detailLines = exposureConflicts.map { (a, b) -> describeExposureConflict(a, b) }
-                )
-            )
-
-            val noPhoto = plants.filter { it.photoUri == null && it.photoUris.isEmpty() }
-            if (noPhoto.isNotEmpty()) add(
-                AuditIssue("No photos", "These plants have no photo saved yet.", noPhoto)
-            )
-
-            val noLocation = plants.filter { it.lat == null && it.mapX == null }
-            if (noLocation.isNotEmpty()) add(
-                AuditIssue("No map location", "These plants aren't placed on either map, so they won't show up when browsing by location.", noLocation)
-            )
-
-            val noWateringSchedule = plants.filter { it.wateringFrequencyDays == null && it.summerWateringFrequencyDays == null && it.winterWateringFrequencyDays == null }
-            if (noWateringSchedule.isNotEmpty()) add(
-                AuditIssue("No watering schedule", "No watering frequency is set, so these plants won't appear in reminders or the \"needs watering\" list.", noWateringSchedule)
-            )
-
-            val overdueWatering = plants.filter { computeWateringStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
-            if (overdueWatering.isNotEmpty()) add(
-                AuditIssue("Overdue for watering", "Based on last watered date and frequency.", overdueWatering)
-            )
-
-            val overdueFertilise = plants.filter { computeFertiliseStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
-            if (overdueFertilise.isNotEmpty()) add(
-                AuditIssue("Overdue for fertilising", "Based on last fertilised date and frequency.", overdueFertilise)
-            )
-
-            val overduePrune = plants.filter { computePruneStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
-            if (overduePrune.isNotEmpty()) add(
-                AuditIssue("Overdue for pruning", "Based on last pruned date and frequency.", overduePrune)
-            )
-
-            val overdueFeed = plants.filter { computeFeedStatus(it, now)?.nextDueMillis?.let { d -> d < now } == true }
-            if (overdueFeed.isNotEmpty()) add(
-                AuditIssue("Overdue for feeding", "Based on last fed date and frequency.", overdueFeed)
-            )
-
-            val frostRisk = frostTenderOutdoorPlants(plants)
-            if (frostRisk.isNotEmpty()) add(
-                AuditIssue("Frost-tender & outdoors", "Worth keeping an eye on the forecast for these — consider covering on cold nights.", frostRisk)
-            )
-        }.sortedBy { it.title }
-    }
+    val issues = remember(plants, now) { gardenCheckIssues(plants, now) }
 
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-        Text("Garden audit", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Garden check", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
-        Text("${issues.sumOf { it.count }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = Color.Gray)
+        Text("${issues.sumOf { it.count }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
         if (issues.isEmpty()) {
-            Text("No issues found — nice work! 🌿", color = Color(0xFF3A5A40), fontSize = 14.sp)
+            Text("No issues found — nice work!", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
         }
 
         issues.forEach { issue ->
@@ -175,9 +178,9 @@ fun AuditScreen(plants: List<Plant>) {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("${issue.title} (${issue.count})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(issue.explanation, fontSize = 11.sp, color = Color.Gray)
+                            Text(issue.explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(if (expanded) "▾" else "▸", color = Color.Gray)
+                        Text(if (expanded) "▾" else "▸", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (expanded) {
                         Spacer(Modifier.height(10.dp))

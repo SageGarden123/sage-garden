@@ -20,6 +20,25 @@ class GardenStore(private val file: File) {
         private set
     private var passthrough: JSONObject = JSONObject()
 
+    /** Garden address/coordinates/zones — kept in the phone backup format's "settings" block. */
+    var meta: GardenMeta
+        get() {
+            val s = passthrough.optJSONObject("settings") ?: JSONObject()
+            return GardenMeta(
+                address = s.optString("gardenAddress", ""),
+                lat = if (s.has("gardenLat") && !s.isNull("gardenLat")) s.optDouble("gardenLat") else null,
+                lng = if (s.has("gardenLng") && !s.isNull("gardenLng")) s.optDouble("gardenLng") else null,
+                zones = s.optJSONArray("gardenLocations")?.let { a -> (0 until a.length()).map { a.getString(it) } }
+            )
+        }
+        set(value) {
+            val s = passthrough.optJSONObject("settings") ?: JSONObject()
+            s.put("gardenAddress", value.address)
+            s.put("gardenLat", value.lat ?: JSONObject.NULL); s.put("gardenLng", value.lng ?: JSONObject.NULL)
+            s.put("gardenLocations", value.zones?.let { JSONArray(it) } ?: JSONObject.NULL)
+            passthrough.put("settings", s)
+        }
+
     fun load() {
         if (!file.exists()) {
             plants = mutableListOf()

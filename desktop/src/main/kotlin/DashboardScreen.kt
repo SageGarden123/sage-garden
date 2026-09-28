@@ -1,3 +1,4 @@
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -146,7 +147,7 @@ fun DashboardScreen(plants: List<Plant>, onGoToPlants: () -> Unit, onEditPlant: 
                     ) {
                         Text(p.name.ifBlank { "(unnamed)" }, fontSize = 13.sp)
                         Spacer(Modifier.width(12.dp))
-                        Text(computeWateringStatus(p, now)?.label ?: "", fontSize = 12.sp, color = Color.Gray)
+                        Text(computeWateringStatus(p, now)?.label ?: "", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -159,12 +160,12 @@ fun DashboardScreen(plants: List<Plant>, onGoToPlants: () -> Unit, onEditPlant: 
 private fun StatTile(label: String, value: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.clickable(onClick = onClick),
-        colors = if (selected) CardDefaults.cardColors(containerColor = SageGreen) else CardDefaults.cardColors()
+        colors = if (selected) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary) else CardDefaults.cardColors()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if (selected) Color.White else Color.Unspecified)
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if (selected) MaterialTheme.colorScheme.onPrimary else Color.Unspecified)
             Spacer(Modifier.height(4.dp))
-            Text(label, fontSize = 12.sp, color = if (selected) Color.White.copy(alpha = 0.85f) else Color.Unspecified)
+            Text(label, fontSize = 12.sp, color = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else Color.Unspecified)
         }
     }
 }
@@ -182,7 +183,7 @@ private fun DashboardBarChart(plants: List<Plant>, groupBy: String) {
         plants.groupingBy(keyFn).eachCount().entries.sortedByDescending { it.value }.take(6)
     }
     if (counts.isEmpty()) {
-        Text("No data to chart yet.", fontSize = 12.sp, color = Color.Gray)
+        Text("No data to chart yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val maxCount = counts.maxOf { it.value }.coerceAtLeast(1)
@@ -197,14 +198,14 @@ private fun DashboardBarChart(plants: List<Plant>, groupBy: String) {
                     val fraction = (entry.value.toFloat() / maxCount).coerceIn(0.03f, 1f)
                     val barHeightDp = (110.dp * fraction).coerceAtLeast(3.dp)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(entry.value.toString(), fontSize = 11.sp, color = Color.Gray)
+                        Text(entry.value.toString(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(2.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.55f)
                                 .height(barHeightDp)
                                 .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                .background(SageGreen)
+                                .background(MaterialTheme.colorScheme.primary)
                         )
                     }
                 }
@@ -214,7 +215,7 @@ private fun DashboardBarChart(plants: List<Plant>, groupBy: String) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             counts.forEach { entry ->
                 Text(
-                    entry.key, fontSize = 10.sp, color = Color.Gray, lineHeight = 12.sp,
+                    entry.key, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 12.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f)
                 )

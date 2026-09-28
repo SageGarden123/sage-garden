@@ -16,10 +16,22 @@ dependencies {
     implementation(compose.material3)
     implementation("org.json:json:20240303")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    implementation(compose.materialIconsExtended)
+    // PDF reports: HTML/CSS laid out and rendered to PDF, with SVG garden maps drawn via Batik.
+    implementation("io.github.openhtmltopdf:openhtmltopdf-pdfbox:1.1.28")
+    implementation("io.github.openhtmltopdf:openhtmltopdf-svg-support:1.1.28")
+    // Map export to PNG (SVG rasterised by Batik).
+    implementation("org.apache.xmlgraphics:batik-transcoder:1.19")
+    implementation("org.apache.xmlgraphics:batik-codec:1.19")
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 compose.desktop {
