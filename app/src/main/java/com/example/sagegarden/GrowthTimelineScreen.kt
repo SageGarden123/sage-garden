@@ -64,10 +64,10 @@ fun GrowthPhotoSlider(photos: List<GrowthPhotoEntity>, modifier: Modifier = Modi
         Spacer(Modifier.height(8.dp))
         Slider(value = position, onValueChange = { position = it }, valueRange = 0f..maxIndex)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val shownDate = if (blend < 0.5f) photos[lowerIndex].takenAt else photos[upperIndex].takenAt
-            Text(sdf.format(Date(shownDate)), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(sdf.format(Date(shownDate)), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -132,10 +132,10 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                     else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 },
                 modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding
-            ) { Text("📷 Camera", fontSize = 12.sp) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("🖼️ Gallery", fontSize = 12.sp) }
+            ) { Text("Camera", fontSize = 12.sp) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Gallery", fontSize = 12.sp) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("☁️ Dropbox", fontSize = 12.sp) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Dropbox", fontSize = 12.sp) }
             }
         }
         }
@@ -152,7 +152,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
                         if (canEdit) {
-                            TextButton(onClick = { growthViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                            TextButton(onClick = { growthViewModel.delete(photo.id) }) { Text("Delete", fontSize = 12.sp) }
                         }
                     }
                     val localUriScheme = Uri.parse(photo.uri).scheme
@@ -174,12 +174,12 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                         ) {
                             Text(
                                 if (uploadingPhotoId == photo.id) "Uploading…"
-                                else "☁️ Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
-                                fontSize = 11.sp
+                                else "Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                fontSize = 12.sp
                             )
                         }
                         if (uploadFailedId == photo.id) {
-                            Text("Upload failed — try again", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            Text("Upload failed — try again", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

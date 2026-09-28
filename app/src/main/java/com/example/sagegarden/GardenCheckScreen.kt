@@ -174,7 +174,7 @@ fun GardenCheckScreen(onBack: () -> Unit, onOpenPlant: (String) -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         if (issues.isEmpty()) {
-            Text("No issues found — nice work! 🌿", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
+            Text("No issues found — nice work!", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
         }
 
         issues.forEach { issue ->
@@ -187,7 +187,7 @@ fun GardenCheckScreen(onBack: () -> Unit, onOpenPlant: (String) -> Unit) {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("${issue.title} (${issue.count})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(issue.explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(issue.explanation, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(if (expanded) "▾" else "▸", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

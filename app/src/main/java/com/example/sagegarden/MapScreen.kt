@@ -2,6 +2,9 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.material3.MaterialTheme
 
 import com.example.sagegarden.ui.theme.appColors
@@ -163,7 +166,7 @@ fun MapScreen(
     if (gardenLatLng == null && placementModeForPlantId == null && !hasPlantCoordinates) {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🗺️", fontSize = 40.sp)
+                Icon(Icons.Outlined.Map, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Set your garden's address to see it here",
@@ -397,7 +400,7 @@ fun MapTabScreen(
                     ) { Text("My Drawing", fontSize = 12.sp) }
                 }
                 if (canManageMap && FeatureVisibility.shouldShow(context, Feature.SUN_MAP)) {
-                    OutlinedButton(onClick = onOpenSunMap, contentPadding = CompactButtonPadding) { Text("☀️ Sun map", fontSize = 12.sp) }
+                    OutlinedButton(onClick = onOpenSunMap, contentPadding = CompactButtonPadding) { Text("Sun map", fontSize = 12.sp) }
                 }
             }
         }
@@ -962,7 +965,7 @@ fun CustomMapScreen(
                         Button(
                             onClick = { editingPaths = true },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
-                        ) { Text("💧 Edit irrigation paths", fontSize = 12.sp) }
+                        ) { Text("Edit irrigation paths", fontSize = 12.sp) }
                     }
                 } else {
                     Card(
@@ -973,14 +976,14 @@ fun CustomMapScreen(
                         Column(Modifier.padding(12.dp)) {
                             when {
                                 placingOutlet -> {
-                                    Text("Tap the drawing to mark where the outlet/tap starts 🚰", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text("Tap the drawing to mark where the outlet/tap starts", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                     Spacer(Modifier.height(8.dp))
                                     OutlinedButton(onClick = { placingOutlet = false; if (draftOutlet == null) resetDraft() }, modifier = Modifier.fillMaxWidth()) {
                                         Text("Cancel", fontSize = 12.sp)
                                     }
                                 }
                                 placingSprinklerCenter -> {
-                                    Text("Tap the drawing to place the sprinkler 💧", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text("Tap the drawing to place the sprinkler", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                     Spacer(Modifier.height(8.dp))
                                     OutlinedButton(onClick = { placingSprinklerCenter = false }, modifier = Modifier.fillMaxWidth()) {
                                         Text("Cancel", fontSize = 12.sp)
@@ -1020,7 +1023,7 @@ fun CustomMapScreen(
                                 }
                                 attachingDripSegment != null -> {
                                     Text("Tap the plant(s) this drip line waters", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                    Text("${pendingDripTargets.size} plant(s) selected", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${pendingDripTargets.size} plant(s) selected", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(
@@ -1042,17 +1045,17 @@ fun CustomMapScreen(
                                     Text(
                                         "${draftSegments.count { it.type == "main" }} main segment(s), ${draftSegments.count { it.type == "drip" }} drip line(s), " +
                                                 "${draftSegments.count { it.type == "sprinkler" || it.type == "impact_sprinkler" }} sprinkler(s)",
-                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(onClick = { drawMode = "main" }, modifier = Modifier.weight(1f)) { Text("Draw main pipe", fontSize = 11.sp) }
-                                        Button(onClick = { drawMode = "drip" }, modifier = Modifier.weight(1f)) { Text("Draw drip line", fontSize = 11.sp) }
+                                        Button(onClick = { drawMode = "main" }, modifier = Modifier.weight(1f)) { Text("Draw main pipe", fontSize = 12.sp) }
+                                        Button(onClick = { drawMode = "drip" }, modifier = Modifier.weight(1f)) { Text("Draw drip line", fontSize = 12.sp) }
                                     }
                                     Spacer(Modifier.height(6.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(onClick = { placingSprinklerCenter = true }, modifier = Modifier.weight(1f)) { Text("Add sprinkler", fontSize = 11.sp) }
-                                        Button(onClick = { drawMode = "impact_sprinkler" }, modifier = Modifier.weight(1f)) { Text("Draw impact sprinkler", fontSize = 11.sp) }
+                                        Button(onClick = { placingSprinklerCenter = true }, modifier = Modifier.weight(1f)) { Text("Add sprinkler", fontSize = 12.sp) }
+                                        Button(onClick = { drawMode = "impact_sprinkler" }, modifier = Modifier.weight(1f)) { Text("Draw impact sprinkler", fontSize = 12.sp) }
                                     }
                                     Spacer(Modifier.height(6.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1060,9 +1063,9 @@ fun CustomMapScreen(
                                             onClick = { if (draftSegments.isNotEmpty()) draftSegments.removeAt(draftSegments.size - 1) },
                                             enabled = draftSegments.isNotEmpty(),
                                             modifier = Modifier.weight(1f)
-                                        ) { Text("Undo last segment", fontSize = 11.sp) }
+                                        ) { Text("Undo last segment", fontSize = 12.sp) }
                                         OutlinedButton(onClick = { placingOutlet = true }, modifier = Modifier.weight(1f)) {
-                                            Text("Move outlet", fontSize = 11.sp)
+                                            Text("Move outlet", fontSize = 12.sp)
                                         }
                                     }
                                     Spacer(Modifier.height(6.dp))
@@ -1094,7 +1097,7 @@ fun CustomMapScreen(
                                         Spacer(Modifier.height(4.dp))
                                         Text(
                                             "Draw at least one segment and set the outlet before finishing. Cancel discards this draft without saving.",
-                                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -1105,7 +1108,7 @@ fun CustomMapScreen(
                                         value = draftZone,
                                         onValueChange = { draftZone = it },
                                         label = { Text("Zone name") },
-                                        supportingText = { Text("Match a Tuya zone name for consistent colouring", fontSize = 10.sp) },
+                                        supportingText = { Text("Match a Tuya zone name for consistent colouring", fontSize = 12.sp) },
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     Spacer(Modifier.height(8.dp))
@@ -1136,8 +1139,8 @@ fun CustomMapScreen(
                                                     editingPathId = p.id
                                                     segmentPendingRemovalIndex = null
                                                     isDrafting = true
-                                                }) { Text("Edit", fontSize = 11.sp) }
-                                                TextButton(onClick = { pathPendingDeletion = p }) { Text("Delete", fontSize = 11.sp) }
+                                                }) { Text("Edit", fontSize = 12.sp) }
+                                                TextButton(onClick = { pathPendingDeletion = p }) { Text("Delete", fontSize = 12.sp) }
                                             }
                                         }
                                     }

@@ -400,7 +400,7 @@ fun FormScreen(
                 // the existing photo full-screen is harmless read-only behaviour, so that tap stays
                 // enabled above even when canEdit is false — only capturing a NEW photo is blocked.
                 if (photoUri != null) PlantPhoto(photoUri = photoUri.toString(), photoThumbnailBase64 = photoThumbnailBase64, modifier = Modifier.fillMaxSize())
-                else Text("📷 Tap to take a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else Text("Tap to take a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
 
@@ -414,16 +414,16 @@ fun FormScreen(
                         } else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("📷 Replace with a new photo") }
+                ) { Text("Replace with a new photo") }
                 Spacer(Modifier.height(8.dp))
             }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (photoUri != null) "🖼️ Replace with a photo from your device" else "🖼️ Choose a photo from your device")
+                Text(if (photoUri != null) "Replace with a photo from your device" else "Choose a photo from your device")
             }
             if (dropboxConnected) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (photoUri != null) "☁️ Replace with a photo from Dropbox" else "☁️ Choose a photo from Dropbox")
+                    Text(if (photoUri != null) "Replace with a photo from Dropbox" else "Choose a photo from Dropbox")
                 }
             }
             val currentPhotoUri = photoUri
@@ -452,7 +452,7 @@ fun FormScreen(
                     },
                     enabled = !uploadingPhotoToDropbox && displayId.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (uploadingPhotoToDropbox) "Uploading…" else "☁️ Upload this photo to Dropbox as $previewName") }
+                ) { Text(if (uploadingPhotoToDropbox) "Uploading…" else "Upload this photo to Dropbox as $previewName") }
             }
             if (photoUri != null) {
                 Spacer(Modifier.height(8.dp))
@@ -460,7 +460,7 @@ fun FormScreen(
                     onClick = { photoUri = null },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("🗑️ Remove photo from plant") }
+                ) { Text("Remove photo from plant") }
             }
             }
         }
@@ -499,10 +499,10 @@ fun FormScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water),
             enabled = !aiLoading
-        ) { Text(if (aiLoading) "Identifying…" else "✨ Suggest name from photo (AI)") }
+        ) { Text(if (aiLoading) "Identifying…" else "Suggest name from photo (AI)") }
         Text(
             "AI suggestions are a starting point - always double-check the result.",
-            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
         Spacer(Modifier.height(14.dp))
@@ -529,7 +529,7 @@ fun FormScreen(
             label = { Text("Watering frequency (days)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             supportingText = {
-                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 11.sp)
+                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 12.sp)
             },
             modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
@@ -553,19 +553,19 @@ fun FormScreen(
                 OutlinedButton(
                     onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$displayId") } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (hasCustom) "📍 Change location on custom map" else "📍 Place on custom map") }
+                ) { Text(if (hasCustom) "Change location on custom map" else "Place on custom map") }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$displayId") } },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (hasReal) "📍 Change location on real-world map" else "📍 Place on real-world map") }
+            ) { Text(if (hasReal) "Change location on real-world map" else "Place on real-world map") }
         }
         Spacer(Modifier.height(14.dp))
 
         if (plantId != null && FeatureVisibility.shouldShow(context, Feature.PLANT_HISTORY)) {
             OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("📋 View watering, fertilising, feeding & pruning history")
+                Text("View watering, fertilising, feeding & pruning history")
             }
             Spacer(Modifier.height(14.dp))
         }
@@ -647,9 +647,9 @@ fun FormScreen(
                 enabled = sci.isNotBlank() && !conditionsAutoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
-            ) { Text(if (conditionsAutoFillLoading) "Asking Sage…" else "🌿 Suggest optimal conditions with Sage") }
+            ) { Text(if (conditionsAutoFillLoading) "Asking Sage…" else "Suggest optimal conditions with Sage") }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Enter a scientific name above to use this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -796,9 +796,9 @@ fun FormScreen(
                 enabled = sci.isNotBlank() && !autoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
-            ) { Text(if (autoFillLoading) "Asking Sage…" else "🌿 Suggest care frequencies with Sage") }
+            ) { Text(if (autoFillLoading) "Asking Sage…" else "Suggest care frequencies with Sage") }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Enter a scientific name above to use this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(14.dp))
         }
@@ -810,7 +810,7 @@ fun FormScreen(
         }
         Text(
             "Coordinates based on map location - update the location using the red pin in list view, or by manually updating the coordinates below",
-            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
         }
@@ -866,7 +866,7 @@ fun FormScreen(
         if (plantId != null && FeatureVisibility.shouldShow(context, Feature.GROWTH_TIMELINES)) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { onOpenGrowthTimeline(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("🌱 View growth timeline")
+                Text("View growth timeline")
             }
         }
         if (plantId != null && canEdit) {
@@ -1046,7 +1046,7 @@ fun FormScreen(
                     }
                     if (!bulkApplyToZone && !bulkApplyToSystem) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -1155,10 +1155,10 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                 },
                 contentPadding = extraPhotoButtonPadding,
                 modifier = Modifier.weight(1f)
-            ) { Text("📷 Camera", fontSize = 12.sp, maxLines = 1) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("🖼️ Gallery", fontSize = 12.sp, maxLines = 1) }
+            ) { Text("Camera", fontSize = 12.sp, maxLines = 1) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("Gallery", fontSize = 12.sp, maxLines = 1) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("☁️ Dropbox", fontSize = 12.sp, maxLines = 1) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("Dropbox", fontSize = 12.sp, maxLines = 1) }
             }
         }
         }
@@ -1180,13 +1180,13 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                             OutlinedTextField(
                                 value = label,
                                 onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
-                                label = { Text("Label", fontSize = 11.sp) },
+                                label = { Text("Label", fontSize = 12.sp) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 readOnly = !canEdit
                             )
                             if (canEdit) {
-                                TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 11.sp) }
+                                TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 12.sp) }
                             }
                         }
                         val localUriScheme = Uri.parse(photo.uri).scheme
@@ -1208,12 +1208,12 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                             ) {
                                 Text(
                                     if (uploadingPhotoId == photo.id) "Uploading…"
-                                    else "☁️ Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
-                                    fontSize = 11.sp
+                                    else "Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                    fontSize = 12.sp
                                 )
                             }
                             if (uploadFailedId == photo.id) {
-                                Text("Upload failed — try again", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                Text("Upload failed — try again", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

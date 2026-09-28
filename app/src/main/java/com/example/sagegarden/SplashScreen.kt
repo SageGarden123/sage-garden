@@ -79,7 +79,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 .background(Color.White.copy(alpha = 0.80f))
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            Text("Created by Daniel Luton", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text("Created by Daniel Luton", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
 
         // Fake loading bar

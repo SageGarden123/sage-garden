@@ -2,6 +2,9 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.material3.MaterialTheme
 
 import android.util.Log
@@ -203,7 +206,7 @@ fun DropboxImagePickerDialog(
                                     }.padding(vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(if (entry is DropboxEntry.Folder) "📁" else "🖼️", fontSize = 18.sp)
+                                    Icon(if (entry is DropboxEntry.Folder) Icons.Outlined.Folder else Icons.Outlined.Image, contentDescription = null)
                                     Spacer(Modifier.width(10.dp))
                                     Text(
                                         when (entry) { is DropboxEntry.Folder -> entry.name; is DropboxEntry.Image -> entry.name; is DropboxEntry.File -> entry.name },
@@ -313,7 +316,7 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                                     }.padding(vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(if (entry is DropboxEntry.Folder) "📁" else "📄", fontSize = 18.sp)
+                                    Icon(if (entry is DropboxEntry.Folder) Icons.Outlined.Folder else Icons.Outlined.Description, contentDescription = null)
                                     Spacer(Modifier.width(10.dp))
                                     Text(
                                         when (entry) { is DropboxEntry.Folder -> entry.name; is DropboxEntry.Image -> entry.name; is DropboxEntry.File -> entry.name },
@@ -394,7 +397,7 @@ fun DropboxFolderPickerDialog(
                                         .padding(vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("📁", fontSize = 18.sp)
+                                    Icon(Icons.Outlined.Folder, contentDescription = null)
                                     Spacer(Modifier.width(10.dp))
                                     Text(folder.name, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 }

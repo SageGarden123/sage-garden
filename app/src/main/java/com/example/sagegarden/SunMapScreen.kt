@@ -646,13 +646,13 @@ fun SunMapScreen(onBack: () -> Unit) {
                                 .clickable { selectedCategory = key }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
-                        ) { Text(label, fontSize = 10.sp, color = Color.Black, textAlign = TextAlign.Center) }
+                        ) { Text(label, fontSize = 12.sp, color = Color.Black, textAlign = TextAlign.Center) }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = { clearStrokes(); drawMode = "freehand" }, modifier = Modifier.weight(1f)) { Text("✏️ Draw freehand", fontSize = 12.sp) }
-                    Button(onClick = { clearStrokes(); drawMode = "tap" }, modifier = Modifier.weight(1f)) { Text("📍 Tap points", fontSize = 12.sp) }
+                    Button(onClick = { clearStrokes(); drawMode = "freehand" }, modifier = Modifier.weight(1f)) { Text("Draw freehand", fontSize = 12.sp) }
+                    Button(onClick = { clearStrokes(); drawMode = "tap" }, modifier = Modifier.weight(1f)) { Text("Tap points", fontSize = 12.sp) }
                 }
 
                 val visibleZones = zones.filter { it.mapType == (if (showingRealMap) "real" else "custom") }
@@ -695,7 +695,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                     labelForSunCategory(zone.category), fontSize = 12.sp, modifier = Modifier.weight(1f),
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 )
-                                TextButton(onClick = { pendingDeleteId = zone.id }) { Text("Delete", fontSize = 11.sp) }
+                                TextButton(onClick = { pendingDeleteId = zone.id }) { Text("Delete", fontSize = 12.sp) }
                             }
                         }
                     }

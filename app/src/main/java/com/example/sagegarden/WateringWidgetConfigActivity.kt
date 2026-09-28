@@ -157,17 +157,17 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         Text("Show plants due for", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text("💧 Watering", fontSize = 12.sp) })
-            FilterChip(selected = includePruning, onClick = { includePruning = !includePruning }, label = { Text("✂️ Pruning", fontSize = 12.sp) })
+            FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text("Watering", fontSize = 12.sp) })
+            FilterChip(selected = includePruning, onClick = { includePruning = !includePruning }, label = { Text("Pruning", fontSize = 12.sp) })
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = includeFertilising, onClick = { includeFertilising = !includeFertilising }, label = { Text("🌱 Fertilising", fontSize = 12.sp) })
-            FilterChip(selected = includeFeeding, onClick = { includeFeeding = !includeFeeding }, label = { Text("🍽️ Feeding", fontSize = 12.sp) })
+            FilterChip(selected = includeFertilising, onClick = { includeFertilising = !includeFertilising }, label = { Text("Fertilising", fontSize = 12.sp) })
+            FilterChip(selected = includeFeeding, onClick = { includeFeeding = !includeFeeding }, label = { Text("Feeding", fontSize = 12.sp) })
         }
         if (!includeWatering && !includePruning && !includeFertilising && !includeFeeding) {
             Spacer(Modifier.height(4.dp))
-            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
 
         if (knownGardens.size > 1) {
@@ -192,7 +192,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
                 }
             }
             if (selectedGardenIds?.isEmpty() == true) {
-                Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
             }
         }
         Spacer(Modifier.height(28.dp))

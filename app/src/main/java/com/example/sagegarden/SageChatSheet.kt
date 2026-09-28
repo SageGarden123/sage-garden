@@ -46,11 +46,11 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Sage 🌿", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.weight(1f))
+                Text("Sage", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.weight(1f))
                 TextButton(onClick = { viewModel.clearHistory() }, enabled = messages.isNotEmpty()) {
                     Text("Clear chat", fontSize = 12.sp)
                 }
-                TextButton(onClick = onDismiss) { Text("✕ Minimise", fontSize = 12.sp) }
+                TextButton(onClick = onDismiss) { Text("Minimise", fontSize = 12.sp) }
             }
             Spacer(Modifier.height(2.dp))
             Text(
@@ -58,10 +58,10 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                     entitlement.isPro -> "Unlimited"
                     else -> "${(entitlement.sagePromptLimit - entitlement.sagePromptsUsed).coerceAtLeast(0)} of ${entitlement.sagePromptLimit} free questions left"
                 },
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
-            Text("Ask about plant care or how to use this app.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Ask about plant care or how to use this app.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth()) {

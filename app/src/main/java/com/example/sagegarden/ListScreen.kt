@@ -235,7 +235,7 @@ fun ListScreen(
                                         Box(
                                             modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                             contentAlignment = Alignment.Center
-                                        ) { Text("🌿") }
+                                        ) { Icon(Icons.Outlined.LocalFlorist, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
@@ -243,11 +243,11 @@ fun ListScreen(
                                             Text(plant.name, fontWeight = FontWeight.SemiBold)
                                             if (plantIdsWithPhotos.contains(plant.id)) {
                                                 Spacer(Modifier.width(6.dp))
-                                                Text("📸", fontSize = 12.sp)
+                                                Icon(Icons.Outlined.PhotoLibrary, contentDescription = "Has growth photos", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             if (plantIdsWithExtraPhotos.contains(plant.id)) {
                                                 Spacer(Modifier.width(6.dp))
-                                                Text("📷", fontSize = 12.sp)
+                                                Icon(Icons.Outlined.AttachFile, contentDescription = "Has extra photos", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                         val subtitle = fieldKeys.mapNotNull { listFieldValue(it, plant) }.joinToString(" · ")
@@ -256,7 +256,7 @@ fun ListScreen(
                                         }
                                     }
                                     if (canEdit) {
-                                        IconButton(onClick = { locationChangePlantId = plant.id }) { Text("📍") }
+                                        IconButton(onClick = { locationChangePlantId = plant.id }) { Icon(Icons.Outlined.Place, contentDescription = "Change map location for ${plant.name}") }
                                     }
                                 }
                             }
@@ -364,12 +364,12 @@ fun ListScreen(
                                     onClick = { showProgressPhotosPicker = false; onOpenLocationPhotos(location) },
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
                                 ) {
-                                    Text("📷", fontSize = 14.sp)
+                                    Icon(Icons.Outlined.PhotoCamera, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
                                     Text(
                                         if (count == 1) "1 photo" else "$count photos",
-                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     Text("›", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

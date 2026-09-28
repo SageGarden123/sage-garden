@@ -2,6 +2,9 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -386,7 +389,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                             Box(
                                 modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
-                            ) { Text("🌿") }
+                            ) { Icon(Icons.Outlined.LocalFlorist, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
@@ -397,7 +400,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                                     plant.sun.takeIf { it.isNotBlank() }?.let { "$it sun" },
                                     plant.water.takeIf { it.isNotBlank() }?.let { "$it water" }
                                 ).joinToString(" · "),
-                                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -467,7 +470,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                                 onClick = { if (index < draftKeys.size - 1) { draftKeys.removeAt(index); draftKeys.add(index + 1, key) } },
                                 enabled = index < draftKeys.size - 1
                             ) { Text("↓", fontSize = 14.sp) }
-                            IconButton(onClick = { draftKeys.remove(key) }) { Text("✕", fontSize = 14.sp) }
+                            IconButton(onClick = { draftKeys.remove(key) }) { Icon(Icons.Outlined.Close, contentDescription = "Remove") }
                         }
                     }
 
@@ -572,7 +575,7 @@ fun DetailRow(label: String, value: String) {
     if (value.isBlank()) return
     Column(Modifier.padding(vertical = 6.dp)) {
         Text(value, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -643,7 +646,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
                     val barHeightDp = with(density) { (availablePx * fraction).toDp() }.coerceAtLeast(3.dp)
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(entry.value.toString(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(entry.value.toString(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(2.dp))
                         Box(
                             modifier = Modifier
@@ -660,7 +663,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             counts.forEach { entry ->
                 Text(
-                    entry.key, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 12.sp,
+                    entry.key, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 12.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.weight(1f)
                 )

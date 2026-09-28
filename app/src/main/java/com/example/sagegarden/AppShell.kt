@@ -127,9 +127,9 @@ fun PlantTooltipCard(plant: PlantEntity, onEdit: () -> Unit, onDismiss: () -> Un
                 }
                 Column(Modifier.weight(1f)) {
                     Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text(plant.id, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(plant.id, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = onDismiss) { Text("✕") }
+                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
             }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Edit plant") }

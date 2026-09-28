@@ -1,5 +1,8 @@
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -49,13 +52,13 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
 
         if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("💧 Log watering", fontSize = 12.sp) }
-            Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🌱 Log fertilising", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log watering", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log fertilising", fontSize = 12.sp) }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { pendingLogType = "feed"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("🍽️ Log feeding", fontSize = 12.sp) }
-            Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("✂️ Log pruning", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "feed"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log feeding", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log pruning", fontSize = 12.sp) }
         }
         Spacer(Modifier.height(20.dp))
         }
@@ -66,14 +69,14 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
             entries.forEach { entry ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(careTypeIcon(entry.type), fontSize = 18.sp)
+                        Icon(careTypeIcon(entry.type), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(careTypeLabel(entry.type), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(sdf.format(Date(entry.date)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(sdf.format(Date(entry.date)), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (canEdit) {
-                            TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
+                            TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 12.sp) }
                         }
                     }
                 }
@@ -106,10 +109,10 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
 }
 
 fun careTypeIcon(type: String) = when (type) {
-    "watering" -> "💧"
-    "fertilise" -> "🌱"
-    "feed" -> "🍽️"
-    else -> "✂️"
+    "watering" -> Icons.Outlined.WaterDrop
+    "fertilise" -> Icons.Outlined.Grass
+    "feed" -> Icons.Outlined.Restaurant
+    else -> Icons.Outlined.ContentCut
 }
 
 fun careTypeLabel(type: String) = when (type) {

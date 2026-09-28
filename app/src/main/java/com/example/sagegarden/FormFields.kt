@@ -2,6 +2,9 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +33,7 @@ fun DropdownField(
             label = { Text(label) },
             placeholder = { Text("Pick an option") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
-            supportingText = helperText?.let { { Text(it, fontSize = 11.sp) } },
+            supportingText = helperText?.let { { Text(it, fontSize = 12.sp) } },
             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = enabled).fillMaxWidth()
         )
         ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
@@ -58,7 +61,7 @@ fun DatePickerField(
     OutlinedTextField(
         value = dateString, onValueChange = {}, readOnly = true, enabled = enabled,
         label = { Text(label) }, placeholder = { Text("YYYY-MM-DD") },
-        trailingIcon = { IconButton(onClick = { if (enabled) showDialog = true }, enabled = enabled) { Text("📅") } },
+        trailingIcon = { IconButton(onClick = { if (enabled) showDialog = true }, enabled = enabled) { Icon(Icons.Outlined.CalendarMonth, contentDescription = "Pick a date") } },
         modifier = Modifier.fillMaxWidth()
     )
     if (showDialog) {

@@ -137,7 +137,7 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
                         Column(Modifier.weight(1f)) {
                             val gardenSuffix = gardenNameById[plant.gardenId]?.let { " · $it" } ?: ""
                             Text(plant.name + gardenSuffix, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(plant.location.ifBlank { "No location" }, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(plant.location.ifBlank { "No location" }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(subtitleFor(plant), fontSize = 12.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
