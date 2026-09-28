@@ -8,6 +8,7 @@ package com.example.sagegarden
 import android.Manifest
 import android.app.Application
 import android.content.ContentValues
+import android.util.Log
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
@@ -584,7 +585,13 @@ suspend fun identifyPlantFromUri(context: Context, uri: Uri): PlantIdResult {
 
                 PlantIdResult.Success(commonName, sciName)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Was silently swallowed — a report that AI ID fails specifically for a just-taken
+            // camera photo (but works for the identical photo re-picked from the gallery) has no
+            // way to be diagnosed further without knowing whether this is a read failure on the
+            // MediaStore uri (SecurityException/FileNotFoundException — the interesting case) versus
+            // a network/parsing failure, which would point somewhere else entirely.
+            Log.w("PlantId", "identifyPlantFromUri failed for $uri", e)
             PlantIdResult.Failed
         }
     }
