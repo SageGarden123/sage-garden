@@ -80,12 +80,12 @@ private fun TodaySection(
     val tasks = remember(plants, now, hemisphere, showFertilisePrune, showFeed) {
         buildList {
             plants.forEach { p ->
-                computeWateringStatus(p, now, hemisphere)?.takeIf { (it.nextDueMillis ?: Long.MAX_VALUE) <= dayEnd }?.let { add(CareTask(p, "watering", it)) }
+                computeWateringStatus(p, now, hemisphere)?.takeIf { (it.nextDueMillis ?: now) <= dayEnd }?.let { add(CareTask(p, "watering", it)) }
                 if (showFertilisePrune) {
-                    computeFertiliseStatus(p, now)?.takeIf { (it.nextDueMillis ?: Long.MAX_VALUE) <= dayEnd }?.let { add(CareTask(p, "fertilise", it)) }
-                    computePruneStatus(p, now)?.takeIf { (it.nextDueMillis ?: Long.MAX_VALUE) <= dayEnd }?.let { add(CareTask(p, "prune", it)) }
+                    computeFertiliseStatus(p, now)?.takeIf { (it.nextDueMillis ?: now) <= dayEnd }?.let { add(CareTask(p, "fertilise", it)) }
+                    computePruneStatus(p, now)?.takeIf { (it.nextDueMillis ?: now) <= dayEnd }?.let { add(CareTask(p, "prune", it)) }
                 }
-                if (showFeed) computeFeedStatus(p, now)?.takeIf { (it.nextDueMillis ?: Long.MAX_VALUE) <= dayEnd }?.let { add(CareTask(p, "feed", it)) }
+                if (showFeed) computeFeedStatus(p, now)?.takeIf { (it.nextDueMillis ?: now) <= dayEnd }?.let { add(CareTask(p, "feed", it)) }
             }
         }.sortedWith(compareBy({ it.status.nextDueMillis ?: 0L }, { it.plant.name }))
     }
@@ -259,7 +259,7 @@ private fun OtherGardensDue() {
         dueByGarden = knownGardensIncludingOwn(context).filter { it.gardenId != activeId }.mapNotNull { garden ->
             val hemisphere = GardenSettings.of(context, garden.gardenId).hemisphere
             val count = dao.getAllOnceForGarden(garden.gardenId).count { p ->
-                (computeWateringStatus(p, now, hemisphere)?.nextDueMillis ?: Long.MAX_VALUE) <= dayEnd
+                computeWateringStatus(p, now, hemisphere)?.let { (it.nextDueMillis ?: now) <= dayEnd } == true
             }
             if (count > 0) garden to count else null
         }
