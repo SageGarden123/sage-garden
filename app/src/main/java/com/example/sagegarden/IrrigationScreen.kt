@@ -176,12 +176,9 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
     val statused = remember(plants, now) {
         plants.mapNotNull { p -> computeWateringStatus(p, now)?.let { p to it } }
     }
-    // +1 day then -1ms: matches the truncated-days math computeWateringStatus's label uses ("Due in
-    // 3 day(s)" covers anything from 72h up to just under 96h away), so a plant the app itself labels
-    // "due in 3 days" doesn't get excluded by an exact-hours cutoff a few hours short of it.
-    val cutoff = now + 4 * 86_400_000L - 1
+    // Due within the next 3 calendar days (or overdue) — the same day counting as the "Due in N day(s)" labels.
     val dueOrOverdue = remember(statused, now) {
-        statused.filter { (_, status) -> status.nextDueMillis != null && status.nextDueMillis <= cutoff }
+        statused.filter { (_, status) -> status.nextDueMillis != null && daysUntil(status.nextDueMillis, now) <= 3 }
             .sortedBy { (_, status) -> status.sortKey() }
     }
     val unscheduled = remember(statused) {

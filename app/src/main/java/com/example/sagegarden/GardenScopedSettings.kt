@@ -3,6 +3,8 @@ package com.example.sagegarden
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * Every per-garden setting (reminders, address/zones, weather/frost, irrigation, custom map), for
@@ -193,6 +195,9 @@ class GardenSettings private constructor(private val context: Context, val garde
             if (lat == MAP_FALLBACK_LAT && lng == MAP_FALLBACK_LNG) return null
             return Triple(lat, lng, zoom)
         }
+    fun clearMapCameraPosition() {
+        prefs.edit().remove(key("map_camera_lat")).remove(key("map_camera_lng")).remove(key("map_camera_zoom")).apply()
+    }
     fun setMapCameraPosition(lat: Double, lng: Double, zoom: Float) {
         put("map_camera_lat", lat.toString())
         put("map_camera_lng", lng.toString())
@@ -328,3 +333,8 @@ object ActiveGardenSettingsObserver {
 /** True when ANY garden has reminders on — there's one shared daily alarm and the worker checks every garden, so it must stay armed while any of them wants it. */
 fun anyGardenNotificationsEnabled(context: Context): Boolean =
     allKnownGardenIds(context).any { GardenSettings.of(context, it).notificationsEnabled }
+
+/** Bumped by "Reset map position" so the Map tab rebuilds its camera from the garden's address. */
+object MapResetState {
+    var count by androidx.compose.runtime.mutableStateOf(0)
+}

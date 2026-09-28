@@ -58,18 +58,43 @@ fun effectiveWateringFrequencyDays(plant: PlantEntity, nowMillis: Long = System.
     }
 }
 
+/**
+ * Care dates are compared as CALENDAR DAYS in the phone's own time zone, never as 24-hour periods.
+ * A date picked in the app is stored as UTC midnight of the chosen day; counting 24-hour periods from
+ * that made a plant watered on the 28th with a 2-day frequency "due today" from 8pm on the 29th in
+ * Australia (its due moment, 10am on the 30th local, was under 24 hours away). Anything that isn't
+ * exactly UTC midnight (a "Done" tap, a care-log entry) is a real moment, read in local time.
+ */
+fun careDateToLocalDate(millis: Long): java.time.LocalDate =
+    if (millis % 86_400_000L == 0L) java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+    else java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+
+private fun localDateOf(millis: Long): java.time.LocalDate =
+    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+
+private fun startOfLocalDay(date: java.time.LocalDate): Long =
+    date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+/** Whole calendar days from today until [dueMillis]'s day — 0 = due today, negative = overdue. */
+fun daysUntil(dueMillis: Long, nowMillis: Long = System.currentTimeMillis()): Int =
+    java.time.temporal.ChronoUnit.DAYS.between(localDateOf(nowMillis), localDateOf(dueMillis)).toInt()
+
+/** Next due moment = the start (local midnight) of the day [frequencyDays] after [lastDate]'s day. */
+private fun nextDueMillis(lastDate: Long, frequencyDays: Int): Long =
+    startOfLocalDay(careDateToLocalDate(lastDate).plusDays(frequencyDays.toLong()))
+
+private fun dueLabel(diffDays: Int) = when {
+    diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
+    diffDays == 0 -> "Due today"
+    else -> "Due in $diffDays day(s)"
+}
+
 /** Generic due-date calculator, reused by watering, fertilising, and pruning. */
 fun computeCareStatus(lastDate: Long?, frequencyDays: Int?, nowMillis: Long = System.currentTimeMillis()): WateringStatus? {
     val freq = frequencyDays ?: return null
     val last = lastDate ?: return WateringStatus(nextDueMillis = null, label = "Never — do now")
-    val nextDue = last + freq * 86_400_000L
-    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
-    val label = when {
-        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
-        diffDays == 0 -> "Due today"
-        else -> "Due in $diffDays day(s)"
-    }
-    return WateringStatus(nextDueMillis = nextDue, label = label)
+    val nextDue = nextDueMillis(last, freq)
+    return WateringStatus(nextDueMillis = nextDue, label = dueLabel(daysUntil(nextDue, nowMillis)))
 }
 
 fun computeFertiliseStatus(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis()): WateringStatus? =
@@ -87,14 +112,8 @@ fun computeWateringStatus(plant: PlantEntity, nowMillis: Long = System.currentTi
     val last = plant.lastWateredDate
         ?: return WateringStatus(nextDueMillis = null, label = "Never watered — water now")
 
-    val nextDue = last + freq * 86_400_000L
-    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
-    val label = when {
-        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
-        diffDays == 0 -> "Due today"
-        else -> "Due in $diffDays day(s)"
-    }
-    return WateringStatus(nextDueMillis = nextDue, label = label)
+    val nextDue = nextDueMillis(last, freq)
+    return WateringStatus(nextDueMillis = nextDue, label = dueLabel(daysUntil(nextDue, nowMillis)))
 }
 
 fun frostTenderOutdoorPlants(plants: List<PlantEntity>): List<PlantEntity> =

@@ -98,7 +98,7 @@
     <string name="faq_leave_remove_q">How do I leave a garden or remove someone?</string>
     <string name="faq_leave_remove_a">In Settings → This garden: members can leave, and the owner can remove members or delete the garden entirely.</string>
     <string name="faq_desktop_app_q">Can I use Sage Garden on a computer?</string>
-    <string name="faq_desktop_app_a">Yes, with the Sage Garden desktop app. Link it once by entering this phone\'s Install ID (Settings → Help &amp; about) into the desktop app.</string>
+    <string name="faq_desktop_app_a">Yes, with the Sage Garden desktop app. Link it once by entering this phone\'s Install ID (Settings → About) into the desktop app.</string>
     <string name="faq_widget_add_q">How do I add the home-screen widget?</string>
     <string name="faq_widget_add_a">Long-press your home screen, choose Widgets, and drag \"Plants requiring care\" onto it. You can choose which care types and gardens it shows and how often it refreshes.</string>
     <string name="faq_widget_stale_q">The widget looks out of date.</string>
@@ -122,11 +122,11 @@
     <string name="faq_account_q">Do I need an account?</string>
     <string name="faq_account_a">No. Sage Garden uses a random ID for your phone — no name, email or password.</string>
     <string name="faq_delete_data_q">How do I delete my data?</string>
-    <string name="faq_delete_data_a">Delete plants or a whole garden in the app — deleting a garden you own removes it from the cloud for everyone. To have everything linked to your phone deleted, email us with your Install ID (Settings → Help &amp; about).</string>
+    <string name="faq_delete_data_a">Delete plants or a whole garden in the app — deleting a garden you own removes it from the cloud for everyone. To have everything linked to your phone deleted, email us with your Install ID (Settings → About).</string>
     <string name="faq_not_syncing_q">Changes aren\'t showing on another phone.</string>
     <string name="faq_not_syncing_a">Check both phones are online and in the same garden (tap the name at the top to check). View-only members can\'t make changes. Opening the app on both phones syncs straight away.</string>
     <string name="faq_wrong_hemisphere_q">Summer and winter watering seem the wrong way round.</string>
     <string name="faq_wrong_hemisphere_a">The app works out your hemisphere from the garden\'s address. Check the address is correct, or choose your hemisphere manually if you haven\'t set one.</string>
     <string name="faq_contact_q">How do I report a problem or suggest an idea?</string>
-    <string name="faq_contact_a">Email gardenwizardry685@gmail.com from Settings → Help &amp; about — we read everything.</string>
+    <string name="faq_contact_a">Email gardenwizardry685@gmail.com from Settings → About — we read everything.</string>
 </resources>

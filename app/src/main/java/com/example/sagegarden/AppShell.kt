@@ -379,7 +379,10 @@ fun GardenMapperApp() {
                 )
             }
             composable("map") {
-                MapTabScreen(
+                // Keyed by garden (and by a map reset) so each garden gets its own map state — the
+                // camera is remembered across tab switches, and without a key a garden switch kept
+                // showing wherever the previous garden's map had been left.
+                key(ActiveGardenState.activeGardenId, MapResetState.count) { MapTabScreen(
                     viewModel = viewModel,
                     onMarkerClick = { id -> navController.navigate("form_edit/$id") },
                     onAddPlantAtLatLng = { lat, lng -> navController.navigate("form_new?lat=$lat&lng=$lng") },
@@ -387,7 +390,7 @@ fun GardenMapperApp() {
                     startOnCustom = GardenSettings.active(context).usingCustomMap,
                     onOpenSunMap = { navController.navigate("sunmap") },
                     onNavigateToHelp = { navController.navigate("settings/${SettingsPage.GARDEN.key}") }
-                )
+                ) }
             }
             composable("list") {
                 ListScreen(

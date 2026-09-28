@@ -46,7 +46,7 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
 
             fun isDue(status: WateringStatus?): Boolean {
                 val dueMillis = status?.nextDueMillis ?: return false
-                val diffDays = ((dueMillis - now) / 86_400_000L).toInt()
+                val diffDays = daysUntil(dueMillis, now)
                 return if (diffDays >= 0) diffDays in offsets
                 else overdueRepeatEnabled && (-diffDays) % overdueRepeatDays == 0
             }

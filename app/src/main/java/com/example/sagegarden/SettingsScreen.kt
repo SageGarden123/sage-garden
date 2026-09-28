@@ -199,9 +199,9 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = {
-                    val coords = gardenCoords!!
-                    GardenSettings.active(context).setMapCameraPosition(coords.first, coords.second, 20f)
-                    scope.launch { snackbarHostState.showSnackbar("Map position reset — reopen the Map tab to see it") }
+                    GardenSettings.active(context).clearMapCameraPosition()
+                    MapResetState.count++
+                    scope.launch { snackbarHostState.showSnackbar("The map will open centred on the garden's address") }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text(stringResource(R.string.settings_reset_map_position)) }

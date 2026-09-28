@@ -249,10 +249,6 @@ private data class WidgetLoadResult(
 private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLoadResult {
     val config = getWidgetConfig(context, appWidgetId)
     val now = System.currentTimeMillis()
-    // +1 day then -1ms: matches the truncated-days math computeWateringStatus's label uses ("Due in
-    // 2 day(s)" covers anything from 48h up to just under 72h away), so a plant the app itself labels
-    // "due in {lookaheadDays} days" doesn't get excluded by an exact-hours cutoff a few hours short of it.
-    val cutoff = now + (config.lookaheadDays + 1) * 86_400_000L - 1
 
     // Empty selection means "every garden" (see WidgetConfig.selectedGardenIds) — this is also what
     // makes a widget placed before multi-garden sharing existed keep showing everything unchanged.
@@ -280,7 +276,7 @@ private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLo
                 compute(p, now)?.let { status -> WidgetDueItem(p, status, icon, label, gardenNameById[p.gardenId]) }
             }
         }
-        .filter { it.status.nextDueMillis == null || it.status.nextDueMillis <= cutoff }
+        .filter { it.status.nextDueMillis == null || daysUntil(it.status.nextDueMillis, now) <= config.lookaheadDays }
         .sortedBy { it.status.sortKey() }
         .take(config.maxPlants)
 

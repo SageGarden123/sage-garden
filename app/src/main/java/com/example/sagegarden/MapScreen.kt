@@ -90,8 +90,18 @@ fun MapScreen(
     val categoryFilteredPlants = remember(plants, mapCategoryFilter) {
         if (mapCategoryFilter == "All") plants else plants.filter { it.category == mapCategoryFilter }
     }
-    val gardenLatLng = remember { GardenSettings.active(context).latLng }
-    val savedCamera = remember { GardenSettings.active(context).mapCameraPosition }
+    val gardenLatLng = GardenAddressState.latLng
+    // A saved position more than 2 km from the garden's own address almost certainly belongs to a
+    // different garden (an older version carried one garden's map position over into another), so
+    // the garden's address wins.
+    val savedCamera = remember(ActiveGardenState.activeGardenId) {
+        GardenSettings.active(context).mapCameraPosition?.takeIf { cam ->
+            val home = GardenSettings.active(context).latLng ?: return@takeIf true
+            val out = FloatArray(1)
+            android.location.Location.distanceBetween(cam.first, cam.second, home.first, home.second, out)
+            out[0] < 2_000f
+        }
+    }
     val cameraPositionState = rememberCameraPositionState {
         position = when {
             savedCamera != null -> CameraPosition.fromLatLngZoom(LatLng(savedCamera.first, savedCamera.second), savedCamera.third)

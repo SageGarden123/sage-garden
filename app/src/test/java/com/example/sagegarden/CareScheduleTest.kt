@@ -44,6 +44,22 @@ class CareScheduleTest {
         assertEquals("Overdue by 2 day(s)", computeWateringStatus(plant(lastWatered = now - 5 * day, freq = 3), now, Hemisphere.SOUTHERN)!!.label)
     }
 
+    @Test fun `a picked date counts by calendar day, not 24-hour periods`() {
+        val sydney = TimeZone.getTimeZone("Australia/Sydney")
+        val previous = TimeZone.getDefault()
+        TimeZone.setDefault(sydney)
+        try {
+            // Watered "28 Sep" in the date picker = stored as UTC midnight; 2-day frequency → due 30 Sep.
+            val picked = java.time.LocalDate.of(2026, 9, 28).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            val eveningOf29th = Calendar.getInstance(sydney).apply { clear(); set(2026, Calendar.SEPTEMBER, 29, 20, 0) }.timeInMillis
+            val morningOf30th = Calendar.getInstance(sydney).apply { clear(); set(2026, Calendar.SEPTEMBER, 30, 7, 0) }.timeInMillis
+            assertEquals("Due in 1 day(s)", computeWateringStatus(plant(lastWatered = picked, freq = 2), eveningOf29th, Hemisphere.SOUTHERN)!!.label)
+            assertEquals("Due today", computeWateringStatus(plant(lastWatered = picked, freq = 2), morningOf30th, Hemisphere.SOUTHERN)!!.label)
+        } finally {
+            TimeZone.setDefault(previous)
+        }
+    }
+
     @Test fun `seasonal frequency follows the hemisphere`() {
         val p = plant(freq = 7, summer = 2, winter = 14)
         val january = dateMillis(2026, Calendar.JANUARY, 15)
