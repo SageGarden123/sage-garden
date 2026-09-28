@@ -11,7 +11,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
-        if (getNotificationsEnabled(context)) scheduleWateringReminders(context)
+        if (anyGardenNotificationsEnabled(context)) scheduleWateringReminders(context)
 
         val appWidgetIds = AppWidgetManager.getInstance(context)
             .getAppWidgetIds(ComponentName(context, WateringWidgetReceiver::class.java))

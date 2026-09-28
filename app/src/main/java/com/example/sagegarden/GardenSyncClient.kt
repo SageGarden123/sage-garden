@@ -220,12 +220,15 @@ object GardenSyncClient {
                 // sends these: the server only accepts them from the owner anyway (a non-owner editor's
                 // own locally-cached values from an unrelated garden must never overwrite the real
                 // shared ones — see syncGarden.ts), so a non-owner simply omits them and relies on
-                // whatever the server echoes back. getGardenAddress/getGardenLatLng/getGardenLocations
-                // resolve via effectiveGardenId(context), which callers of sync() always pass as gardenId.
+                // whatever the server echoes back. Must read [gardenId]'s OWN values via the *For
+                // getters, never the active-garden ones: sync() is routinely called for a garden that
+                // isn't the active one (syncAllKnownGardens, widget/notification deep links), and
+                // reading the active garden's address here pushed a shared garden's address up as the
+                // owner's own garden's address whenever the shared garden happened to be on screen.
                 if (isOwnerOfGarden(context, gardenId)) {
-                    getGardenAddress(context).takeIf { it.isNotBlank() }?.let { put("gardenAddress", it) }
-                    getGardenLatLng(context)?.let { (lat, lng) -> put("gardenLat", lat); put("gardenLng", lng) }
-                    getGardenLocations(context)?.let { locs -> put("gardenLocations", JSONArray(locs)) }
+                    getGardenAddressFor(context, gardenId).takeIf { it.isNotBlank() }?.let { put("gardenAddress", it) }
+                    getGardenLatLngFor(context, gardenId)?.let { (lat, lng) -> put("gardenLat", lat); put("gardenLng", lng) }
+                    getGardenLocationsFor(context, gardenId)?.let { locs -> put("gardenLocations", JSONArray(locs)) }
                 }
             }
             val request = Request.Builder().url("$BASE_URL/syncGarden").post(jsonBody(body)).build()
@@ -289,16 +292,17 @@ object GardenSyncClient {
                 GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
                 GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
 
-                json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { setGardenAddress(context, it) }
+                // Written to [gardenId]'s own keys, NOT the active garden's — see setGardenLatLngFor.
+                json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { setGardenAddressFor(context, gardenId, it) }
                 if (!json.isNull("gardenLat") && !json.isNull("gardenLng")) {
-                    setGardenLatLng(context, json.getDouble("gardenLat"), json.getDouble("gardenLng"))
+                    setGardenLatLngFor(context, gardenId, json.getDouble("gardenLat"), json.getDouble("gardenLng"))
                 }
                 // null (vs an empty array) means no garden member has ever explicitly set zones yet —
                 // leave this device's own getOrSeedGardenLocations fallback alone in that case, rather
                 // than locking in a premature empty list.
                 if (!json.isNull("gardenLocations")) {
                     val arr = json.getJSONArray("gardenLocations")
-                    setGardenLocations(context, (0 until arr.length()).map { arr.getString(it) })
+                    setGardenLocationsFor(context, gardenId, (0 until arr.length()).map { arr.getString(it) })
                 }
 
                 GardenSyncStore.setLastSyncedAt(context, System.currentTimeMillis())

@@ -9,7 +9,7 @@ import androidx.work.WorkManager
 /** Fired by the exact alarm set in [scheduleWateringReminders]. Runs the due-check once, then re-arms tomorrow's alarm. */
 class WateringReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (getNotificationsEnabled(context)) {
+        if (anyGardenNotificationsEnabled(context)) {
             WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<WateringReminderWorker>().build())
             scheduleWateringReminders(context)
         }

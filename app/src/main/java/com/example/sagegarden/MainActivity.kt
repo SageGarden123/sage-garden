@@ -653,24 +653,24 @@ private fun gardenScopedBoolean(context: Context, baseKey: String, default: Bool
     if (prefs.contains(scopedKey)) return prefs.getBoolean(scopedKey, default)
     return if (canFallBackToLegacyKey(context, gardenIdOverride)) prefs.getBoolean(baseKey, default) else default
 }
-private fun setGardenScopedBoolean(context: Context, baseKey: String, value: Boolean, prefs: android.content.SharedPreferences = gardenPrefs(context)) {
-    prefs.edit().putBoolean(gardenScopedKey(context, baseKey), value).apply()
+private fun setGardenScopedBoolean(context: Context, baseKey: String, value: Boolean, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null) {
+    prefs.edit().putBoolean(gardenScopedKey(context, baseKey, gardenIdOverride), value).apply()
 }
 private fun gardenScopedInt(context: Context, baseKey: String, default: Int, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null): Int {
     val scopedKey = gardenScopedKey(context, baseKey, gardenIdOverride)
     if (prefs.contains(scopedKey)) return prefs.getInt(scopedKey, default)
     return if (canFallBackToLegacyKey(context, gardenIdOverride)) prefs.getInt(baseKey, default) else default
 }
-private fun setGardenScopedInt(context: Context, baseKey: String, value: Int, prefs: android.content.SharedPreferences = gardenPrefs(context)) {
-    prefs.edit().putInt(gardenScopedKey(context, baseKey), value).apply()
+private fun setGardenScopedInt(context: Context, baseKey: String, value: Int, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null) {
+    prefs.edit().putInt(gardenScopedKey(context, baseKey, gardenIdOverride), value).apply()
 }
 private fun gardenScopedFloat(context: Context, baseKey: String, default: Float, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null): Float {
     val scopedKey = gardenScopedKey(context, baseKey, gardenIdOverride)
     if (prefs.contains(scopedKey)) return prefs.getFloat(scopedKey, default)
     return if (canFallBackToLegacyKey(context, gardenIdOverride)) prefs.getFloat(baseKey, default) else default
 }
-private fun setGardenScopedFloat(context: Context, baseKey: String, value: Float, prefs: android.content.SharedPreferences = gardenPrefs(context)) {
-    prefs.edit().putFloat(gardenScopedKey(context, baseKey), value).apply()
+private fun setGardenScopedFloat(context: Context, baseKey: String, value: Float, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null) {
+    prefs.edit().putFloat(gardenScopedKey(context, baseKey, gardenIdOverride), value).apply()
 }
 /** [prefs] lets a scoped setting live in a different backing file than "garden_mapper_prefs" (e.g. credentialPrefs for Tuya/Rachio secrets) while still keying off the same active-garden id. */
 private fun gardenScopedString(context: Context, baseKey: String, default: String, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null): String {
@@ -678,8 +678,8 @@ private fun gardenScopedString(context: Context, baseKey: String, default: Strin
     if (prefs.contains(scopedKey)) return prefs.getString(scopedKey, default) ?: default
     return if (canFallBackToLegacyKey(context, gardenIdOverride)) (prefs.getString(baseKey, default) ?: default) else default
 }
-private fun setGardenScopedString(context: Context, baseKey: String, value: String, prefs: android.content.SharedPreferences = gardenPrefs(context)) {
-    prefs.edit().putString(gardenScopedKey(context, baseKey), value).apply()
+private fun setGardenScopedString(context: Context, baseKey: String, value: String, prefs: android.content.SharedPreferences = gardenPrefs(context), gardenIdOverride: String? = null) {
+    prefs.edit().putString(gardenScopedKey(context, baseKey, gardenIdOverride), value).apply()
 }
 
 /**
@@ -711,6 +711,16 @@ fun getNotificationsEnabled(context: Context): Boolean = gardenScopedBoolean(con
 fun setNotificationsEnabled(context: Context, value: Boolean) = setGardenScopedBoolean(context, "notifications_enabled", value)
 fun getNotificationsEnabledFor(context: Context, gardenId: String): Boolean =
     gardenScopedBoolean(context, "notifications_enabled", false, gardenIdOverride = gardenId)
+/**
+ * Whether the shared daily reminder alarm should be armed at all. There is only ONE alarm, and
+ * WateringReminderWorker checks every known garden each time it fires — so gating the alarm on the
+ * ACTIVE garden's toggle alone (as BootReceiver/WateringReminderReceiver/app start used to) meant
+ * having a shared garden with reminders off on screen silently stopped your own garden's reminders
+ * too (the receiver skipped both the check and tomorrow's re-arm), and switching reminders off for
+ * one garden cancelled them for all of them.
+ */
+fun anyGardenNotificationsEnabled(context: Context): Boolean =
+    allKnownGardenIds(context).any { getNotificationsEnabledFor(context, it) }
 
 /** "lockscreen", "popup", or "both" */
 fun getNotificationStyle(context: Context): String = gardenScopedString(context, "notification_style", "lockscreen")
@@ -824,17 +834,26 @@ fun getGardenLatLngFor(context: Context, gardenId: String): Pair<Double, Double>
     val lng = gardenScopedString(context, "garden_lng", "", gardenIdOverride = gardenId).toDoubleOrNull()
     return if (lat != null && lng != null) lat to lng else null
 }
-fun setGardenLatLng(context: Context, lat: Double, lng: Double) {
-    setGardenScopedString(context, "garden_lat", lat.toString())
-    setGardenScopedString(context, "garden_lng", lng.toString())
-    // This always writes to whichever garden is currently active (setGardenScopedString resolves via
-    // effectiveGardenId internally, same as getHemisphere() below) — hemisphere is now derived from
-    // these coordinates, so refresh the reactive singleton immediately whenever they change, whether
-    // from the user picking an address locally or a sync pulling down the owner's address for the
-    // first time, so anything reading HemisphereState (dashboard/list/audit "due" status) doesn't
-    // wait for an unrelated recomposition.
-    HemisphereState.value = getHemisphere(context)
-    GardenAddressState.latLng = lat to lng
+fun setGardenLatLng(context: Context, lat: Double, lng: Double) = setGardenLatLngFor(context, effectiveGardenId(context), lat, lng)
+/**
+ * Writes a SPECIFIC garden's coordinates. GardenSyncClient must use this (never the active-garden
+ * setGardenLatLng) because it syncs every known garden in the background, not just the active one —
+ * writing a synced garden's echoed-back coordinates via the active-garden setter was a real bug:
+ * syncing a shared garden you're a member of while your own garden was active silently overwrote
+ * YOUR garden's address/coordinates with THEIRS (and the owner's next sync then pushed that wrong
+ * address up to the server for their own garden too).
+ *
+ * Hemisphere is derived from these coordinates, so the reactive singletons are refreshed immediately
+ * — but only when [gardenId] is the garden actually on screen; a background sync of some other garden
+ * must not repaint the active garden's address section or hemisphere-dependent "due" status.
+ */
+fun setGardenLatLngFor(context: Context, gardenId: String, lat: Double, lng: Double) {
+    setGardenScopedString(context, "garden_lat", lat.toString(), gardenIdOverride = gardenId)
+    setGardenScopedString(context, "garden_lng", lng.toString(), gardenIdOverride = gardenId)
+    if (gardenId == effectiveGardenId(context)) {
+        HemisphereState.value = getHemisphere(context)
+        GardenAddressState.latLng = lat to lng
+    }
 }
 private const val MAP_FALLBACK_LAT = 40.785091
 private const val MAP_FALLBACK_LNG = -73.968285
@@ -862,15 +881,19 @@ fun setMapCameraPosition(context: Context, lat: Double, lng: Double, zoom: Float
     setGardenScopedString(context, "map_camera_lng", lng.toString())
     setGardenScopedFloat(context, "map_camera_zoom", zoom)
 }
-fun getGardenAddress(context: Context): String = gardenScopedString(context, "garden_address", "")
-fun setGardenAddress(context: Context, address: String) {
-    setGardenScopedString(context, "garden_address", address)
-    GardenAddressState.address = address
+fun getGardenAddress(context: Context): String = getGardenAddressFor(context, effectiveGardenId(context))
+fun getGardenAddressFor(context: Context, gardenId: String): String = gardenScopedString(context, "garden_address", "", gardenIdOverride = gardenId)
+fun setGardenAddress(context: Context, address: String) = setGardenAddressFor(context, effectiveGardenId(context), address)
+/** Writes a SPECIFIC garden's address — see setGardenLatLngFor for why GardenSyncClient must use this. */
+fun setGardenAddressFor(context: Context, gardenId: String, address: String) {
+    setGardenScopedString(context, "garden_address", address, gardenIdOverride = gardenId)
+    if (gardenId == effectiveGardenId(context)) GardenAddressState.address = address
 }
 /** Null distinguishes "never set up" (seed from existing plants' locations) from "explicitly emptied". */
-fun getGardenLocations(context: Context): List<String>? {
+fun getGardenLocations(context: Context): List<String>? = getGardenLocationsFor(context, effectiveGardenId(context))
+fun getGardenLocationsFor(context: Context, gardenId: String): List<String>? {
     val prefs = gardenPrefs(context)
-    val scopedKey = gardenScopedKey(context, "garden_locations")
+    val scopedKey = gardenScopedKey(context, "garden_locations", gardenId)
     // Unlike gardenScopedString, this used to fall back to the legacy unscoped key unconditionally
     // whenever the scoped key didn't exist yet — even for a garden that isn't this device's own
     // default one (see feedback_garden_scoped_setting_fallback). That meant a member viewing a
@@ -878,12 +901,14 @@ fun getGardenLocations(context: Context): List<String>? {
     // list instead of nothing, which getOrSeedGardenLocations then trusted as the real value and
     // never replaced with the owner's actual synced zones. Gated the same way every other scoped
     // getter already is.
-    val raw = (if (prefs.contains(scopedKey)) prefs.getString(scopedKey, null) else if (canFallBackToLegacyKey(context)) prefs.getString("garden_locations", null) else null) ?: return null
+    val raw = (if (prefs.contains(scopedKey)) prefs.getString(scopedKey, null) else if (canFallBackToLegacyKey(context, gardenId)) prefs.getString("garden_locations", null) else null) ?: return null
     return raw.split("").filter { it.isNotBlank() }
 }
-fun setGardenLocations(context: Context, locations: List<String>) {
-    GardenAddressState.locations = locations
-    setGardenScopedString(context, "garden_locations", locations.joinToString(""))
+fun setGardenLocations(context: Context, locations: List<String>) = setGardenLocationsFor(context, effectiveGardenId(context), locations)
+/** Writes a SPECIFIC garden's zones — see setGardenLatLngFor for why GardenSyncClient must use this. */
+fun setGardenLocationsFor(context: Context, gardenId: String, locations: List<String>) {
+    if (gardenId == effectiveGardenId(context)) GardenAddressState.locations = locations
+    setGardenScopedString(context, "garden_locations", locations.joinToString(""), gardenIdOverride = gardenId)
 }
 /**
  * Reads the managed garden-locations list, seeding it from existing plants' distinct locations the
@@ -7455,7 +7480,7 @@ fun HelpScreen(
                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
-                    } else cancelWateringReminders(context)
+                    } else if (!anyGardenNotificationsEnabled(context)) cancelWateringReminders(context)
                 })
             }
 
@@ -7637,7 +7662,7 @@ fun HelpScreen(
 
             var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getWeatherSkipEnabled(context)) }
             var rainThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRainProbabilityThreshold(context)) }
-            val hasGardenAddress = remember { getGardenLatLng(context) != null }
+            val hasGardenAddress = remember(ActiveGardenState.activeGardenId, GardenAddressState.latLng) { getGardenLatLng(context) != null }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
