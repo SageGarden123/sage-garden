@@ -137,6 +137,16 @@ private fun CarApp() {
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
     var installId by remember { mutableStateOf(getLinkedInstallId(context)) }
+    var gardenId by remember { mutableStateOf(getActiveGardenId(context)) }
+    var gardens by remember { mutableStateOf<List<SyncClient.Garden>>(emptyList()) }
+    var pending by remember { mutableStateOf<List<String>>(emptyList()) }
+    fun refreshGardens() {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { SyncClient.listGardens(getOwnDeviceId(context)) } ?: return@launch
+            gardens = result.gardens; pending = result.pending
+            result.gardens.forEach { if (it.memberToken.isNotBlank()) setMemberToken(context, it.gardenId, it.memberToken) }
+        }
+    }
     var plants by remember { mutableStateOf(loadCachedPlants(context)) }
     var gardenLatLng by remember { mutableStateOf(getSavedGardenLatLng(context)) }
     var loading by remember { mutableStateOf(false) }
@@ -145,17 +155,17 @@ private fun CarApp() {
     val snackbarHostState = remember { SnackbarHostState() }
 
     fun refresh() {
-        if (installId.isBlank()) return
+        if (gardenId.isBlank()) return
         loading = true
         errorMessage = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                SyncClient.fetch(getOwnDeviceId(context), installId.trim(), getMemberToken(context))
+                SyncClient.fetch(getOwnDeviceId(context), gardenId.trim(), getMemberToken(context, gardenId))
             }
             loading = false
             when (result) {
                 is SyncResult.Success -> {
-                    result.memberToken?.let { setMemberToken(context, it) }
+                    result.memberToken?.let { setMemberToken(context, gardenId, it) }
                     plants = result.plants.sortedBy { it.name.lowercase() }
                     saveCachedPlants(context, plants)
                     if (result.gardenLat != null && result.gardenLng != null) {
@@ -165,7 +175,7 @@ private fun CarApp() {
                 }
                 SyncResult.NotAuthorized -> {
                     // Removed from the garden, or the token is stale — forget it so re-linking starts fresh.
-                    setMemberToken(context, null)
+                    setMemberToken(context, gardenId, null)
                     errorMessage = "Not authorised — check the Install ID, or ask the garden's owner if this display was removed."
                 }
                 SyncResult.NetworkError -> errorMessage = "Couldn't reach the server — check your connection."
@@ -174,7 +184,7 @@ private fun CarApp() {
         }
     }
 
-    LaunchedEffect(Unit) { if (installId.isNotBlank() && plants.isEmpty()) refresh() }
+    LaunchedEffect(Unit) { refreshGardens(); if (gardenId.isNotBlank() && plants.isEmpty()) refresh() }
 
     BackHandler(enabled = screen !is Screen.Dashboard) { screen = Screen.Dashboard }
 
@@ -182,12 +192,12 @@ private fun CarApp() {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("🌿 Sage Garden") },
+                title = { Text(gardens.firstOrNull { it.gardenId == gardenId }?.name ?: "Sage Garden") },
                 actions = {
                     IconButton(onClick = { screen = if (screen is Screen.Map) Screen.Dashboard else Screen.Map }) {
                         Text("🗺️", fontSize = 18.sp)
                     }
-                    IconButton(onClick = { refresh() }, enabled = !loading && installId.isNotBlank()) {
+                    IconButton(onClick = { refresh() }, enabled = !loading && gardenId.isNotBlank()) {
                         Text("🔄", fontSize = 18.sp)
                     }
                     IconButton(onClick = { screen = Screen.Settings }) {
@@ -229,8 +239,23 @@ private fun CarApp() {
                     onInstallIdChange = {
                         installId = it
                         setLinkedInstallId(context, it)
+                        gardenId = it
                     },
-                    onConnect = { screen = Screen.Dashboard; refresh() },
+                    onConnect = { screen = Screen.Dashboard; refresh(); refreshGardens() },
+                    gardens = gardens,
+                    pending = pending,
+                    activeGardenId = gardenId,
+                    onPickGarden = { id ->
+                        gardenId = id; setActiveGardenId(context, id)
+                        plants = emptyList(); screen = Screen.Dashboard; refresh()
+                    },
+                    onJoin = { code, done ->
+                        scope.launch {
+                            val error = withContext(Dispatchers.IO) { SyncClient.requestJoin(getOwnDeviceId(context), code) }
+                            done(error)
+                            refreshGardens()
+                        }
+                    },
                     onBack = { screen = Screen.Dashboard }
                 )
             }
@@ -568,9 +593,16 @@ private fun SettingsScreen(
     installId: String,
     onInstallIdChange: (String) -> Unit,
     onConnect: () -> Unit,
+    gardens: List<SyncClient.Garden>,
+    pending: List<String>,
+    activeGardenId: String,
+    onPickGarden: (String) -> Unit,
+    onJoin: (String, (String?) -> Unit) -> Unit,
     onBack: () -> Unit
 ) {
     var text by remember { mutableStateOf(installId) }
+    var inviteCode by remember { mutableStateOf("") }
+    var joinMessage by remember { mutableStateOf<String?>(null) }
     var accent by remember { mutableStateOf(getSavedAccentColor(context)) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -583,7 +615,7 @@ private fun SettingsScreen(
         Text("Connected garden", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Paste the phone's Install ID — Help → Sync with other devices, on the phone.",
+            "Paste your phone's Install ID — on the phone: Settings → About.",
             fontSize = 12.sp, color = Color.Gray
         )
         Spacer(Modifier.height(8.dp))
@@ -597,6 +629,33 @@ private fun SettingsScreen(
             enabled = text.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) { Text("Connect & sync") }
+
+        Spacer(Modifier.height(28.dp))
+        Text("Gardens", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(6.dp))
+        gardens.forEach { g ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onPickGarden(g.gardenId) }.padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = g.gardenId == activeGardenId, onClick = { onPickGarden(g.gardenId) })
+                Text(g.name, fontSize = 16.sp)
+            }
+        }
+        pending.forEach { name -> Text("$name — waiting for the owner to approve", fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp)) }
+        Spacer(Modifier.height(8.dp))
+        Text("Join someone else's garden with their invite code (on their phone: Settings → This garden → Share). This display only ever views gardens.", fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = inviteCode, onValueChange = { inviteCode = it.uppercase(); joinMessage = null }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(), label = { Text("Invite code") }
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { onJoin(inviteCode) { error -> joinMessage = error ?: "Request sent — the garden appears here once the owner approves it." } },
+            enabled = inviteCode.isNotBlank(), modifier = Modifier.fillMaxWidth()
+        ) { Text("Join garden") }
+        joinMessage?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 13.sp) }
 
         Spacer(Modifier.height(28.dp))
         Text("Accent colour", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)

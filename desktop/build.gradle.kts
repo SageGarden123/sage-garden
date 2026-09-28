@@ -45,7 +45,7 @@ compose.desktop {
             // first) or looks like the same version again (in which case Windows Installer may
             // just no-op instead of actually updating anything). Keeping it at a fixed value across
             // builds is what forced manual uninstall/reinstall for every test build so far.
-            packageVersion = "1.5.1"
+            packageVersion = "1.6.0"
 
             // jlink's automatic module detection scans compiled bytecode for module dependencies,
             // but java.net.http.HttpClient's actual implementation lives behind an internal SPI
@@ -54,7 +54,7 @@ compose.desktop {
             // is missing it entirely (java.lang.NoClassDefFoundError: java/net/http/HttpClient at
             // runtime, even though it compiles fine). jdk.crypto.ec is needed alongside it for the
             // TLS handshake against the (HTTPS) Cloud Functions endpoint.
-            modules("java.net.http", "jdk.crypto.ec")
+            modules("java.net.http", "jdk.crypto.ec", "java.desktop", "java.xml", "jdk.xml.dom", "java.logging", "java.naming", "java.sql", "java.instrument", "java.management", "java.prefs", "jdk.unsupported")
 
             windows {
                 // Adds an install-location page to the MSI wizard instead of silently installing

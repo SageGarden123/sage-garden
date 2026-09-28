@@ -34,6 +34,41 @@ object SyncClient {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    data class Garden(val gardenId: String, val name: String, val memberToken: String)
+    data class Gardens(val gardens: List<Garden>, val pending: List<String>)
+
+    /** Gardens this display belongs to (and names of gardens it's waiting to be approved into). */
+    fun listGardens(ownDeviceId: String): Gardens? = try {
+        val request = Request.Builder().url("$BASE_URL/listMyGardens?deviceId=${java.net.URLEncoder.encode(ownDeviceId, "UTF-8")}").get().build()
+        httpClient.newCall(request).execute().use { r ->
+            val text = r.body?.string()
+            if (!r.isSuccessful || text == null) null else {
+                val json = JSONObject(text)
+                val g = json.getJSONArray("gardens")
+                val p = json.optJSONArray("pendingRequests") ?: JSONArray()
+                Gardens(
+                    (0 until g.length()).map { g.getJSONObject(it) }.map { Garden(it.getString("gardenId"), it.optString("name", "Garden"), it.optString("memberToken")) },
+                    (0 until p.length()).map { p.getJSONObject(it).optString("name", "Garden") }
+                )
+            }
+        }
+    } catch (_: Exception) { null }
+
+    /** Asks to join the garden behind [inviteCode] with view-only access. Returns null on success, or an error message. */
+    fun requestJoin(ownDeviceId: String, inviteCode: String): String? = try {
+        val body = JSONObject().put("deviceId", ownDeviceId).put("inviteCode", inviteCode.trim().uppercase())
+            .put("requestedPermission", "read").put("displayName", "Car display")
+        val request = Request.Builder().url("$BASE_URL/requestJoinGarden")
+            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        httpClient.newCall(request).execute().use { r ->
+            when {
+                r.isSuccessful -> null
+                r.code == 404 -> "That invite code wasn't recognised."
+                else -> "Couldn't send the request (HTTP ${r.code})."
+            }
+        }
+    } catch (e: Exception) { "Couldn't reach the server." }
+
     fun fetch(ownDeviceId: String, gardenId: String, memberToken: String?): SyncResult {
         return try {
             val body = JSONObject().apply {

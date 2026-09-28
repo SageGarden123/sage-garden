@@ -44,7 +44,7 @@ fun getLinkedInstallId(context: Context): String =
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_INSTALL_ID, "") ?: ""
 fun setLinkedInstallId(context: Context, id: String) {
     // A different garden means a different membership — drop the old token.
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_INSTALL_ID, id).remove(KEY_MEMBER_TOKEN).apply()
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_INSTALL_ID, id).putString("active_garden_id", id).apply()
 }
 
 private const val KEY_OWN_DEVICE_ID = "own_device_id"
@@ -64,10 +64,23 @@ fun getOwnDeviceId(context: Context): String {
     prefs.edit().putString(KEY_OWN_DEVICE_ID, id).apply()
     return id
 }
-fun getMemberToken(context: Context): String? =
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MEMBER_TOKEN, null)
-fun setMemberToken(context: Context, token: String?) {
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_MEMBER_TOKEN, token).apply()
+/** Member token for [gardenId]. Migrates the single token 0.4 kept for the linked phone's garden. */
+fun getMemberToken(context: Context, gardenId: String): String? {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    prefs.getString(KEY_MEMBER_TOKEN, null)?.let { legacy ->
+        prefs.edit().remove(KEY_MEMBER_TOKEN).putString("token.${getLinkedInstallId(context)}", legacy).apply()
+    }
+    return prefs.getString("token.$gardenId", null)
+}
+fun setMemberToken(context: Context, gardenId: String, token: String?) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("token.$gardenId", token).apply()
+}
+
+/** Which garden is shown — defaults to the linked phone's own garden. */
+fun getActiveGardenId(context: Context): String =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("active_garden_id", null) ?: getLinkedInstallId(context)
+fun setActiveGardenId(context: Context, gardenId: String) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("active_garden_id", gardenId).apply()
 }
 
 private const val KEY_GARDEN_LAT = "garden_lat"
