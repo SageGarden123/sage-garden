@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -65,10 +67,10 @@ fun LocationPhotoSlider(photos: List<LocationPhotoEntity>, modifier: Modifier = 
         Spacer(Modifier.height(8.dp))
         Slider(value = position, onValueChange = { position = it }, valueRange = 0f..maxIndex)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 11.sp, color = Color.Gray)
+            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val shownDate = if (blend < 0.5f) photos[lowerIndex].takenAt else photos[upperIndex].takenAt
-            Text(sdf.format(Date(shownDate)), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3A5A40))
-            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 11.sp, color = Color.Gray)
+            Text(sdf.format(Date(shownDate)), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -105,11 +107,11 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Progress photos — $location", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Progress photos — $location", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(6.dp))
         Text(
             "For the best before/after comparison, take one photo of this whole area each season, from roughly the same spot.",
-            fontSize = 12.sp, color = Color.Gray
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(14.dp))
 
@@ -117,7 +119,7 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
             LocationPhotoSlider(photos = sorted)
             Spacer(Modifier.height(20.dp))
         } else {
-            Text("Add at least 2 photos of this area to compare then vs now.", color = Color.Gray, fontSize = 13.sp)
+            Text("Add at least 2 photos of this area to compare then vs now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Spacer(Modifier.height(14.dp))
         }
 
@@ -181,7 +183,7 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                             )
                         }
                         if (uploadFailedId == photo.id) {
-                            Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                            Text("Upload failed — try again", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

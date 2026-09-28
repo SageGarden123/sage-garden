@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -85,11 +87,11 @@ fun DayOfWeekPicker(selectedDays: Set<Int>, onToggleDay: (Int) -> Unit, modifier
             val selected = day in selectedDays
             Box(
                 modifier = Modifier.size(34.dp).clip(RoundedCornerShape(50))
-                    .background(if (selected) Color(0xFF3A5A40) else Color(0xFFE3DDCF))
+                    .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onToggleDay(day) },
                 contentAlignment = Alignment.Center
             ) {
-                Text(label, fontSize = 11.sp, color = if (selected) Color.White else Color(0xFF3A5A40), fontWeight = FontWeight.SemiBold)
+                Text(label, fontSize = 11.sp, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -130,7 +132,7 @@ fun NumberWheel(range: IntRange, selected: Int, onSelectedChange: (Int) -> Unit,
                     Text(
                         "%02d".format(value),
                         fontSize = if (value == selected) 20.sp else 16.sp,
-                        color = if (value == selected) Color(0xFF233821) else Color.Gray,
+                        color = if (value == selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -139,7 +141,7 @@ fun NumberWheel(range: IntRange, selected: Int, onSelectedChange: (Int) -> Unit,
         }
         Box(
             Modifier.fillMaxWidth().height(itemHeight).align(Alignment.Center)
-                .background(Color(0x1A3A5A40), RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
         )
     }
 }
@@ -151,9 +153,9 @@ fun DurationWheelPicker(totalMinutes: Int, onTotalMinutesChange: (Int) -> Unit, 
     val minutes = totalMinutes % 60
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         NumberWheel(range = 0..5, selected = hours, onSelectedChange = { onTotalMinutesChange(it * 60 + minutes) }, modifier = Modifier.width(56.dp))
-        Text("hr", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(horizontal = 8.dp))
+        Text("hr", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
         NumberWheel(range = 0..59, selected = minutes, onSelectedChange = { onTotalMinutesChange(hours * 60 + it) }, modifier = Modifier.width(56.dp))
-        Text("min", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
+        Text("min", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
     }
 }
 
@@ -190,19 +192,19 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
     }.sortedByDescending { it.startTime }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()).imePadding()) {
-        Text("Irrigation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Irrigation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(12.dp))
 
         ExpandableSection(title = "Water now/soon (${dueOrOverdue.size})", initiallyExpanded = true) {
             if (dueOrOverdue.isEmpty()) {
-                Text("Nothing due within the next 3 days.", fontSize = 12.sp, color = Color.Gray)
+                Text("Nothing due within the next 3 days.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 dueOrOverdue.forEach { (plant, status) ->
                     val overdue = status.nextDueMillis!! <= now
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onPlantClick(plant.id) },
                         colors = CardDefaults.cardColors(
-                            containerColor = if (overdue) Color(0xFFFBE9E7) else Color(0xFFF5F5F0)
+                            containerColor = if (overdue) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer
                         )
                     ) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -210,12 +212,12 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                                 Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 Text(
                                     plant.location.ifBlank { "No location" },
-                                    fontSize = 11.sp, color = Color.Gray
+                                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Text(
                                 status.label, fontSize = 12.sp,
-                                color = if (overdue) Color(0xFFB23B3B) else Color(0xFF3A5A40),
+                                color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -232,17 +234,17 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 unscheduled.forEach { (plant, _) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onPlantClick(plant.id) },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F0))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                     ) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 Text(
                                     plant.location.ifBlank { "No location" },
-                                    fontSize = 11.sp, color = Color.Gray
+                                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text("Never watered", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                            Text("Never watered", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -263,7 +265,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
 
             Text(
                 "Estimated from your logged watering durations and a flow rate you calibrate per zone/outlet — not a metered reading.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
 
@@ -288,16 +290,16 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             val zoneOutlets = remember(wateringEvents) {
                 wateringEvents.map { it.zone to it.outlet }.distinct().sortedBy { it.first + it.second }
             }
-            Text("Flow rate calibration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Text("Flow rate calibration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             Text(
                 "For each zone/outlet below: put a 1-litre container under it, run the water, time how many seconds it takes to fill, then enter that number and tap Save. This converts to a flow rate (litres/minute) used to turn logged watering durations into litres used.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
 
             if (zoneOutlets.isEmpty()) {
-                Text("No watering events logged yet.", fontSize = 12.sp, color = Color.Gray)
+                Text("No watering events logged yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 zoneOutlets.forEach { (zone, outlet) ->
                     val existing = flowRateByKey[zone to outlet]
@@ -308,9 +310,9 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                         Column(Modifier.weight(1f)) {
                             Text("$zone — outlet $outlet", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             if (existing != null) {
-                                Text("${"%.2f".format(existing.litersPerMinute)} L/min", fontSize = 11.sp, color = Color(0xFF3A5A40))
+                                Text("${"%.2f".format(existing.litersPerMinute)} L/min", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                             } else {
-                                Text("Not calibrated", fontSize = 11.sp, color = Color.Gray)
+                                Text("Not calibrated", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         OutlinedTextField(
@@ -349,34 +351,34 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             val allTimeLiters = allTimeCalibrated.sumOf { e -> e.durationMinutes * (flowRateByKey[e.zone to e.outlet]?.litersPerMinute ?: 0.0) }
             val allTimeCost = allTimeLiters / 1000.0 * waterRate
 
-            Text("This month so far", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Text("This month so far", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
-            Text("${"%.0f".format(totalLiters)} L", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+            Text("${"%.0f".format(totalLiters)} L", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
             if (waterRate > 0) {
-                Text("≈ \$${"%.2f".format(totalCost)}", fontSize = 14.sp, color = Color(0xFF3A5A40))
+                Text("≈ \$${"%.2f".format(totalCost)}", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
             } else {
-                Text("Enter a water rate above to see an estimated cost.", fontSize = 11.sp, color = Color.Gray)
+                Text("Enter a water rate above to see an estimated cost.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when {
                 monthEvents.isEmpty() && flowRates.isEmpty() -> {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "No zones calibrated yet — enter a flow rate above for at least one zone/outlet.",
-                        fontSize = 11.sp, color = Color.Gray
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 monthEvents.isEmpty() -> {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "No watering events logged since the start of this month — that's why this reads 0, not a calibration problem. See \"All time\" below.",
-                        fontSize = 11.sp, color = Color.Gray
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 uncalibratedCount > 0 -> {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "$uncalibratedCount event(s) this month excluded — calibrate the zone/outlet above to include them.",
-                        fontSize = 11.sp, color = Color(0xFFB23B3B)
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -388,18 +390,18 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     val liters = zoneEvents.sumOf { e -> e.durationMinutes * (flowRateByKey[e.zone to e.outlet]?.litersPerMinute ?: 0.0) }
                     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                         Text(zone, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        Text("${"%.0f".format(liters)} L", fontSize = 12.sp, color = Color.Gray)
+                        Text("${"%.0f".format(liters)} L", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("All time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+            Text("All time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
-            Text("${"%.0f".format(allTimeLiters)} L", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+            Text("${"%.0f".format(allTimeLiters)} L", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
             if (waterRate > 0) {
-                Text("≈ \$${"%.2f".format(allTimeCost)}", fontSize = 13.sp, color = Color(0xFF3A5A40))
+                Text("≈ \$${"%.2f".format(allTimeCost)}", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
             }
         }
         }
@@ -409,7 +411,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
         ExpandableSection(title = "My watering schedule (manual reference)", initiallyExpanded = false) {
             Text(
                 "Your own record of what days/times each zone runs — entered by hand, purely for your reference. Doesn't read from or write to Tuya.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             val scheduleGardenId = remember { effectiveGardenId(context) }
@@ -427,7 +429,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                         TextButton(onClick = { addingForZone = mapping.zone }) { Text("+ Add", fontSize = 12.sp) }
                     }
                     if (entries.isEmpty()) {
-                        Text("No schedule entered yet.", fontSize = 11.sp, color = Color.Gray)
+                        Text("No schedule entered yet.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         entries.forEach { entry ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
@@ -435,7 +437,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                                     Text(formatTuyaTimerDays(loopStringToDays(entry.daysOfWeek)), fontSize = 12.sp)
                                     Text(
                                         "${formatStartTime(entry.startTimeMinutes)} • ${formatDurationMinutes(entry.durationMinutes)}",
-                                        fontSize = 11.sp, color = Color.Gray
+                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 TextButton(onClick = { editingEntry = entry }) { Text("Edit", fontSize = 11.sp) }
@@ -462,20 +464,20 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     title = { Text(if (existing != null) "Edit schedule for \"$zone\"" else "Add schedule for \"$zone\"") },
                     text = {
                         Column {
-                            Text("Days", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Text("Days", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(6.dp))
                             DayOfWeekPicker(
                                 selectedDays = selectedDays,
                                 onToggleDay = { day -> selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day }
                             )
                             Spacer(Modifier.height(16.dp))
-                            Text("Start time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Text("Start time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(6.dp))
                             OutlinedButton(onClick = { showStartTimeDialog = true }) {
                                 Text(formatStartTime(startHour * 60 + startMinute))
                             }
                             Spacer(Modifier.height(16.dp))
-                            Text("Duration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Text("Duration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(6.dp))
                             DurationWheelPicker(totalMinutes = totalMinutes, onTotalMinutesChange = { totalMinutes = it }, modifier = Modifier.fillMaxWidth())
                         }
@@ -539,7 +541,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     IrrigationSystem.RACHIO -> "Rachio"
                     else -> "Tuya"
                 }
-                Text("No irrigation data yet — connect $irrigationSystemName zones and sync in Help.", color = Color.Gray)
+                Text("No irrigation data yet — connect $irrigationSystemName zones and sync in Help.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 filtered.forEach { e ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -547,9 +549,9 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                             Text(e.zone, fontWeight = FontWeight.SemiBold)
                             val sdf = SimpleDateFormat("dd MMM yyyy, h:mm a", locale)
                             val end = e.startTime + e.durationMinutes * 60_000L
-                            Text("Start: ${sdf.format(Date(e.startTime))}", fontSize = 12.sp, color = Color.Gray)
-                            Text("End: ${sdf.format(Date(end))}", fontSize = 12.sp, color = Color.Gray)
-                            Text("Duration: ${e.durationMinutes} min", fontSize = 12.sp, color = Color.Gray)
+                            Text("Start: ${sdf.format(Date(e.startTime))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("End: ${sdf.format(Date(end))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Duration: ${e.durationMinutes} min", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Application
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -59,7 +61,7 @@ fun PlantTooltipCard(plant: PlantEntity, onEdit: () -> Unit, onDismiss: () -> Un
                 }
                 Column(Modifier.weight(1f)) {
                     Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text(plant.id, fontSize = 11.sp, color = Color.Gray)
+                    Text(plant.id, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = onDismiss) { Text("✕") }
             }

@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Application
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -70,17 +72,17 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
         Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
             TextButton(onClick = onBack) { Text("‹ Back") }
             Spacer(Modifier.height(6.dp))
-            Text("Zones due a progress photo", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+            Text("Zones due a progress photo", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Spacer(Modifier.height(14.dp))
 
             if (dueZones.isEmpty()) {
-                Text("Nothing needs attention right now.", color = Color.Gray, fontSize = 13.sp)
+                Text("Nothing needs attention right now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             } else {
                 dueZones.forEach { zone ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onOpenZone(zone) }) {
                         Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(zone, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("Add photo ›", fontSize = 12.sp, color = Color(0xFFB23B3B))
+                            Text("Add photo ›", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -123,11 +125,11 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(14.dp))
 
         if (matchingPlants.isEmpty()) {
-            Text("Nothing needs attention right now.", color = Color.Gray, fontSize = 13.sp)
+            Text("Nothing needs attention right now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             matchingPlants.forEach { plant ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -135,9 +137,9 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
                         Column(Modifier.weight(1f)) {
                             val gardenSuffix = gardenNameById[plant.gardenId]?.let { " · $it" } ?: ""
                             Text(plant.name + gardenSuffix, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(plant.location.ifBlank { "No location" }, fontSize = 11.sp, color = Color.Gray)
+                            Text(plant.location.ifBlank { "No location" }, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(subtitleFor(plant), fontSize = 12.sp, color = Color(0xFFB23B3B), fontWeight = FontWeight.SemiBold)
+                        Text(subtitleFor(plant), fontSize = 12.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

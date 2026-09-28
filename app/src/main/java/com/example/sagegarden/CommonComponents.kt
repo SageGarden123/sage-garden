@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -68,7 +70,7 @@ fun ExpandableSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(if (expanded) "▾" else "▸", color = Color.Gray, fontSize = 16.sp)
+                Text(if (expanded) "▾" else "▸", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
             }
             if (expanded) {
                 Spacer(Modifier.height(12.dp))

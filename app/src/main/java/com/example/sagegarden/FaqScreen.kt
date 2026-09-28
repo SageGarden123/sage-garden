@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -64,7 +66,7 @@ fun FaqScreen(onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Frequently Asked Questions", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Frequently Asked Questions", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(12.dp))
 
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -79,11 +81,11 @@ fun FaqScreen(onBack: () -> Unit) {
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(faq.question, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                            Text(if (expanded) "▾" else "▸", color = Color.Gray)
+                            Text(if (expanded) "▾" else "▸", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (expanded) {
                             Spacer(Modifier.height(6.dp))
-                            Text(faq.answer, fontSize = 12.sp, color = Color.Gray)
+                            Text(faq.answer, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

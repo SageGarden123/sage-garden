@@ -52,8 +52,9 @@ class WateringWidgetConfigActivity : ComponentActivity() {
             return
         }
 
+        com.example.sagegarden.ui.theme.AppearanceState.load(applicationContext)
         setContent {
-            MaterialTheme {
+            com.example.sagegarden.ui.theme.SageGardenTheme {
                 WidgetConfigScreen(
                     initialConfig = getWidgetConfig(this, appWidgetId),
                     onSave = { config ->
@@ -122,11 +123,11 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
-        Text("Plants requiring care", fontSize = 12.sp, color = Color.Gray)
+        Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text("Plants requiring care", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
-        Text("Refresh every", fontSize = 13.sp, color = Color.Gray)
+        Text("Refresh every", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(1 to "1 day", 2 to "2 days", 3 to "3 days", 7 to "7 days").forEach { (days, label) ->
@@ -135,7 +136,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Show up to", fontSize = 13.sp, color = Color.Gray)
+        Text("Show up to", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             maxPlantsOptions.forEach { n ->
@@ -144,7 +145,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Include plants due within", fontSize = 13.sp, color = Color.Gray)
+        Text("Include plants due within", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0 to "Today only", 2 to "2 days", 5 to "5 days", 7 to "7 days").forEach { (days, label) ->
@@ -153,7 +154,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Show plants due for", fontSize = 13.sp, color = Color.Gray)
+        Text("Show plants due for", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text("💧 Watering", fontSize = 12.sp) })
@@ -166,12 +167,12 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         if (!includeWatering && !includePruning && !includeFertilising && !includeFeeding) {
             Spacer(Modifier.height(4.dp))
-            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
         }
 
         if (knownGardens.size > 1) {
             Spacer(Modifier.height(20.dp))
-            Text("Show plants from", fontSize = 13.sp, color = Color.Gray)
+            Text("Show plants from", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             knownGardens.forEach { garden ->
                 Row(
@@ -191,7 +192,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
                 }
             }
             if (selectedGardenIds?.isEmpty() == true) {
-                Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
             }
         }
         Spacer(Modifier.height(28.dp))

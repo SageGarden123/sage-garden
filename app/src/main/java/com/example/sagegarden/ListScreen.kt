@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -151,7 +153,7 @@ fun ListScreen(
 
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No plants match — tap + to add one.", color = Color.Gray)
+                    Text("No plants match — tap + to add one.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 val listState = rememberLazyListState(
@@ -179,12 +181,12 @@ fun ListScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF3A5A40),
+                                        label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
                                         if (collapsedGroups.contains(label)) "▸ ${plantsInGroup.size}" else "▾",
-                                        color = Color(0xFF3A5A40), fontSize = 13.sp
+                                        color = MaterialTheme.colorScheme.primary, fontSize = 13.sp
                                     )
                                 }
                             }
@@ -202,7 +204,7 @@ fun ListScreen(
                                         )
                                     } else {
                                         Box(
-                                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE3DDCF)),
+                                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                             contentAlignment = Alignment.Center
                                         ) { Text("🌿") }
                                     }
@@ -221,7 +223,7 @@ fun ListScreen(
                                         }
                                         val subtitle = fieldKeys.mapNotNull { listFieldValue(it, plant) }.joinToString(" · ")
                                         if (subtitle.isNotBlank()) {
-                                            Text(subtitle, fontSize = 12.sp, color = Color.Gray)
+                                            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                     if (canEdit) {
@@ -238,8 +240,8 @@ fun ListScreen(
 
         FloatingActionButton(
             onClick = onAddPlant,
-            containerColor = Color(0xFFFF7A45),
-            contentColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.tertiary,
+            contentColor = MaterialTheme.colorScheme.onTertiary,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(20.dp)
@@ -256,7 +258,7 @@ fun ListScreen(
                     Column {
                         Text(
                             "Pick where to place this plant. You'll be taken to the map — tap the new spot.",
-                            fontSize = 13.sp, color = Color.Gray
+                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { locationChangePlantId = null; onChangeLocation(id, false) }, modifier = Modifier.fillMaxWidth()) {
@@ -281,7 +283,7 @@ fun ListScreen(
                 title = { Text("Customise fields shown") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text("Choose which details appear under each plant's name:", fontSize = 12.sp, color = Color.Gray)
+                        Text("Choose which details appear under each plant's name:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         listFieldCatalog.forEach { option ->
                             val checked = draftFields.contains(option.key)
@@ -323,9 +325,9 @@ fun ListScreen(
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
                         if (allLocations.isEmpty()) {
-                            Text("Add a location to a plant first to track progress photos for it.", fontSize = 12.sp, color = Color.Gray)
+                            Text("Add a location to a plant first to track progress photos for it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
-                            Text("Tap a zone below to view or add photos of that area.", fontSize = 12.sp, color = Color.Gray)
+                            Text("Tap a zone below to view or add photos of that area.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(10.dp))
                             allLocations.forEach { location ->
                                 val count = photoCounts[location] ?: 0
@@ -338,10 +340,10 @@ fun ListScreen(
                                     Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
                                     Text(
                                         if (count == 1) "1 photo" else "$count photos",
-                                        fontSize = 11.sp, color = Color.Gray
+                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.width(4.dp))
-                                    Text("›", fontSize = 16.sp, color = Color.Gray)
+                                    Text("›", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

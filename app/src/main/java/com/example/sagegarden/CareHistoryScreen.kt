@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Application
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +44,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Watering, fertilising, feeding & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Watering, fertilising, feeding & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(14.dp))
 
         if (canEdit) {
@@ -59,7 +61,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
         }
 
         if (entries.isEmpty()) {
-            Text("No entries yet — log watering, fertilising, feeding, or pruning above.", color = Color.Gray, fontSize = 13.sp)
+            Text("No entries yet — log watering, fertilising, feeding, or pruning above.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             entries.forEach { entry ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -68,7 +70,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(careTypeLabel(entry.type), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(sdf.format(Date(entry.date)), fontSize = 11.sp, color = Color.Gray)
+                            Text(sdf.format(Date(entry.date)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (canEdit) {
                             TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
@@ -86,7 +88,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
             title = { Text("Log ${careTypeLabel(type).lowercase()}") },
             text = {
                 Column {
-                    Text("Pick the date — defaults to today if left blank.", fontSize = 12.sp, color = Color.Gray)
+                    Text("Pick the date — defaults to today if left blank.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
                     DatePickerField("Date", logDate, { logDate = it }, restrictToPastOrToday = true)
                 }

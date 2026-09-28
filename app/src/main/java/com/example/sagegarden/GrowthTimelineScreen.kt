@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -62,10 +64,10 @@ fun GrowthPhotoSlider(photos: List<GrowthPhotoEntity>, modifier: Modifier = Modi
         Spacer(Modifier.height(8.dp))
         Slider(value = position, onValueChange = { position = it }, valueRange = 0f..maxIndex)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 11.sp, color = Color.Gray)
+            Text(sdf.format(Date(photos.first().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val shownDate = if (blend < 0.5f) photos[lowerIndex].takenAt else photos[upperIndex].takenAt
-            Text(sdf.format(Date(shownDate)), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3A5A40))
-            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 11.sp, color = Color.Gray)
+            Text(sdf.format(Date(shownDate)), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+            Text(sdf.format(Date(photos.last().takenAt)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -110,14 +112,14 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("‹ Back") }
         Spacer(Modifier.height(6.dp))
-        Text("Growth timeline", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF233821))
+        Text("Growth timeline", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(14.dp))
 
         if (sorted.size >= 2) {
             GrowthPhotoSlider(photos = sorted)
             Spacer(Modifier.height(20.dp))
         } else {
-            Text("Add at least 2 growth photos to compare then vs now.", color = Color.Gray, fontSize = 13.sp)
+            Text("Add at least 2 growth photos to compare then vs now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Spacer(Modifier.height(14.dp))
         }
 
@@ -177,7 +179,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
                             )
                         }
                         if (uploadFailedId == photo.id) {
-                            Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                            Text("Upload failed — try again", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

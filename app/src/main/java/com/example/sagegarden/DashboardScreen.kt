@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -117,13 +119,13 @@ fun StatCard(
     Card(
         modifier = modifier.then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) Color(0xFF3A5A40) else MaterialTheme.colorScheme.surface
+            containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
         ),
-        border = if (selected) BorderStroke(2.dp, Color(0xFF233821)) else null
+        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(value, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (selected) Color.White else Color(0xFF3A5A40))
-            Text(label, fontSize = 12.sp, color = if (selected) Color.White.copy(alpha = 0.85f) else Color.Gray)
+            Text(value, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+            Text(label, fontSize = 12.sp, color = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -291,7 +293,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
             val df = DecimalFormat("0.##")
             Text(
                 "${filteredPlants.size}/${allPlants.size} unique plants shown (${df.format(percentage)}%)",
-                fontSize = 13.sp, color = Color.Gray, modifier = Modifier.weight(1f)
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
             )
                     OutlinedButton(onClick = { showCustomiseDialog = true }, modifier = Modifier.padding(end = 8.dp)) {
             Text("Customise")
@@ -308,7 +310,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                 .padding(16.dp)
         ) {
             if (filteredPlants.isEmpty()) {
-                Text("No plants match these filters.", color = Color.Gray)
+                Text("No plants match these filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 return@Column
             }
 
@@ -372,7 +374,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                             )
                         } else {
                             Box(
-                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE3DDCF)),
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) { Text("🌿") }
                         }
@@ -385,10 +387,10 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                                     plant.sun.takeIf { it.isNotBlank() }?.let { "$it sun" },
                                     plant.water.takeIf { it.isNotBlank() }?.let { "$it water" }
                                 ).joinToString(" · "),
-                                fontSize = 11.sp, color = Color.Gray
+                                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text("›", fontSize = 18.sp, color = Color.Gray)
+                        Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -442,7 +444,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
             title = { Text("Customise dashboard") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Figures shown (in order):", fontSize = 12.sp, color = Color.Gray)
+                    Text("Figures shown (in order):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(6.dp))
                     draftKeys.forEachIndexed { index, key ->
                         val option = dashboardStatCatalog.firstOrNull { it.key == key }
@@ -465,7 +467,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                         Spacer(Modifier.height(10.dp))
                         HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
-                        Text("Add more:", fontSize = 12.sp, color = Color.Gray)
+                        Text("Add more:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         addableOptions.forEach { option ->
                             Row(
@@ -533,7 +535,7 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                     }
                     Text(plantToShow.name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     if (plantToShow.sci.isNotBlank()) {
-                        Text(plantToShow.sci, fontSize = 13.sp, color = Color.Gray, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                        Text(plantToShow.sci, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                     }
                     Spacer(Modifier.height(16.dp))
                     DetailRow("Sun", plantToShow.sun)
@@ -561,7 +563,7 @@ fun DetailRow(label: String, value: String) {
     if (value.isBlank()) return
     Column(Modifier.padding(vertical = 6.dp)) {
         Text(value, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Text(label, fontSize = 11.sp, color = Color.Gray)
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -588,8 +590,8 @@ fun SimpleFilterDropdown(label: String, options: List<String>, selected: String,
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
         Column(Modifier.padding(14.dp)) {
-            Text(value, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3A5A40))
-            Text(label, fontSize = 12.sp, color = Color.Gray)
+            Text(value, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -607,7 +609,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         plants.groupingBy(keyFn).eachCount().entries.sortedByDescending { it.value }.take(6)
     }
     if (counts.isEmpty()) {
-        Text("No data to chart yet.", fontSize = 12.sp, color = Color.Gray)
+        Text("No data to chart yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val maxCount = counts.maxOf { it.value }.coerceAtLeast(1)
@@ -632,14 +634,14 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
                     val barHeightDp = with(density) { (availablePx * fraction).toDp() }.coerceAtLeast(3.dp)
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(entry.value.toString(), fontSize = 11.sp, color = Color.Gray)
+                        Text(entry.value.toString(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(2.dp))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.55f)
                                 .height(barHeightDp)
                                 .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                .background(Color(0xFF3A5A40))
+                                .background(MaterialTheme.colorScheme.primary)
                         )
                     }
                 }
@@ -649,7 +651,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             counts.forEach { entry ->
                 Text(
-                    entry.key, fontSize = 10.sp, color = Color.Gray, lineHeight = 12.sp,
+                    entry.key, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 12.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.weight(1f)
                 )

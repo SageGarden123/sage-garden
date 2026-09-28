@@ -2,6 +2,10 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
+import com.example.sagegarden.ui.theme.appColors
+
 import android.Manifest
 import android.app.Application
 import android.content.ContentValues
@@ -362,10 +366,10 @@ fun FormScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp)
     ) {
         if (!canEdit) {
-            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.warningContainer), modifier = Modifier.fillMaxWidth()) {
                 Text(
                     "View-only — you don't have edit access to this garden.",
-                    modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFF6B5300)
+                    modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = MaterialTheme.appColors.onWarningContainer
                 )
             }
             Spacer(Modifier.height(14.dp))
@@ -375,11 +379,11 @@ fun FormScreen(
             // Dropbox connection — it's a plain HTTPS shared link that renders fine without this
             // device being linked. Only picking/uploading a NEW cloud photo actually needs it,
             // and those specific buttons below already gate on dropboxConnected individually.
-            Text("Connect your cloud storage in the Help tab first.", color = Color.Gray, fontSize = 13.sp)
+            Text("Connect your cloud storage in the Help tab first.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             Box(
                 modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFE3DDCF))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable(enabled = canEdit || photoUri != null) {
                         if (photoUri != null) {
                             showPhotoViewer = true
@@ -396,7 +400,7 @@ fun FormScreen(
                 // the existing photo full-screen is harmless read-only behaviour, so that tap stays
                 // enabled above even when canEdit is false — only capturing a NEW photo is blocked.
                 if (photoUri != null) PlantPhoto(photoUri = photoUri.toString(), photoThumbnailBase64 = photoThumbnailBase64, modifier = Modifier.fillMaxSize())
-                else Text("📷 Tap to take a photo", color = Color.Gray)
+                else Text("📷 Tap to take a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
 
@@ -455,7 +459,7 @@ fun FormScreen(
                 OutlinedButton(
                     onClick = { photoUri = null },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("🗑️ Remove photo from plant") }
             }
             }
@@ -470,9 +474,9 @@ fun FormScreen(
             label = { Text("Plant ID") },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = Color.Black,
-                disabledBorderColor = Color.Gray,
-                disabledLabelColor = Color.Gray
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
         Spacer(Modifier.height(14.dp))
@@ -508,12 +512,12 @@ fun FormScreen(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D8FB0)),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water),
             enabled = !aiLoading
         ) { Text(if (aiLoading) "Identifying…" else "✨ Suggest name from photo (AI)") }
         Text(
             "AI suggestions are a starting point - always double-check the result.",
-            fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp)
+            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
         Spacer(Modifier.height(14.dp))
@@ -593,10 +597,10 @@ fun FormScreen(
                 },
                 enabled = sci.isNotBlank() && !conditionsAutoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D8FB0))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
             ) { Text(if (conditionsAutoFillLoading) "Asking Sage…" else "🌿 Suggest optimal conditions with Sage") }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = Color.Gray)
+                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -640,11 +644,11 @@ fun FormScreen(
 
         if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
-            Text("Overrides the frequency above during summer/winter. Leave a season blank to fall back to the frequency above for that season — not to skip it.", fontSize = 12.sp, color = Color.Gray)
+            Text("Overrides the frequency above during summer/winter. Leave a season blank to fall back to the frequency above for that season — not to skip it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             Text(
                 "There's no dedicated \"skip this season\" option. Entering 0 does NOT skip watering — it means water every 0 days, so the plant will constantly show as overdue. Leaving the field blank doesn't skip it either — it just uses the frequency above. To effectively skip a season, enter a large number of days here (e.g. 365) so it won't come due again until the season is over.",
-                fontSize = 12.sp, color = Color(0xFFB23B3B)
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.error
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -738,10 +742,10 @@ fun FormScreen(
                 },
                 enabled = sci.isNotBlank() && !autoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D8FB0))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
             ) { Text(if (autoFillLoading) "Asking Sage…" else "🌿 Suggest care frequencies with Sage") }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = Color.Gray)
+                Text("Enter a scientific name above to use this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(14.dp))
         }
@@ -778,7 +782,7 @@ fun FormScreen(
         }
         Text(
             "Coordinates based on map location - update the location using the red pin in list view, or by manually updating the coordinates below",
-            fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp)
+            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
         if (displayId.isNotBlank() && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
@@ -844,7 +848,7 @@ fun FormScreen(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A5A40))
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) { Text("Save plant") }
         }
 
@@ -858,7 +862,7 @@ fun FormScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text("Delete this plant") }
         }
 
@@ -1031,7 +1035,7 @@ fun FormScreen(
                     }
                     if (!bulkApplyToZone && !bulkApplyToSystem) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 11.sp, color = Color.Gray)
+                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -1126,7 +1130,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
     ExpandableSection(title = "Extra photos (${photos.size})") {
         Text(
             "Anything else worth keeping a photo of for this plant — its watering system, a care-instruction leaflet, etc.",
-            fontSize = 12.sp, color = Color.Gray
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
         if (canEdit) {
@@ -1198,7 +1202,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                                 )
                             }
                             if (uploadFailedId == photo.id) {
-                                Text("Upload failed — try again", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                                Text("Upload failed — try again", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

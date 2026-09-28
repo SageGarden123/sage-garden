@@ -2,6 +2,11 @@
 
 package com.example.sagegarden
 
+import com.example.sagegarden.ui.theme.AppearanceState
+import com.example.sagegarden.ui.theme.SageGardenTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
@@ -32,6 +37,7 @@ class MainActivity : ComponentActivity() {
             DropboxAuthState.checkAndRefresh(applicationContext)
         }
         AppCheckClient.init(applicationContext)
+        AppearanceState.load(applicationContext)
         // Synced here (synchronously, before the first composition) rather than in a LaunchedEffect
         // inside GardenMapperApp — these are plain SharedPreferences reads, and doing them before
         // setContent avoids a startup window where a deep-linked route (e.g. a notification opening
@@ -52,12 +58,14 @@ class MainActivity : ComponentActivity() {
         PendingPlantEditState.plantId = intent.getStringExtra("widget_plant_id")
         PendingPlantEditState.gardenId = intent.getStringExtra("widget_garden_id")
         setContent {
-            MaterialTheme {
-                var showSplash by remember { mutableStateOf(true) }
-                if (showSplash) {
-                    SplashScreen(onFinished = { showSplash = false })
-                } else {
-                    GardenMapperApp()
+            SageGardenTheme {
+                Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+                    var showSplash by remember { mutableStateOf(true) }
+                    if (showSplash) {
+                        SplashScreen(onFinished = { showSplash = false })
+                    } else {
+                        GardenMapperApp()
+                    }
                 }
             }
         }

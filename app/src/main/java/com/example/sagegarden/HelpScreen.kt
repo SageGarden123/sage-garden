@@ -2,6 +2,10 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
+import com.example.sagegarden.ui.theme.appColors
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -67,11 +71,11 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
     ExpandableSection(title = "Garden address", initiallyExpanded = initiallyExpanded) {
         Text(
             "Centres the Map tab on your garden and enables weather-aware watering reminders below.",
-            fontSize = 12.sp, color = Color.Gray
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
         if (!canEdit) {
-            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = Color.Gray)
+            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
         }
 
@@ -96,7 +100,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
         }
 
         if (gardenCoords != null) {
-            Text("Garden location set ✅", fontSize = 12.sp, color = Color(0xFF3A5A40))
+            Text("Garden location set ✅", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(6.dp))
         }
 
@@ -169,7 +173,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                             }.padding(12.dp),
                             fontSize = 13.sp
                         )
-                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     gardenGeocoderPredictions.forEach { address ->
                         Text(
@@ -185,7 +189,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                             }.padding(12.dp),
                             fontSize = 13.sp
                         )
-                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -213,11 +217,11 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
     ExpandableSection(title = "Garden zones") {
         Text(
             "Manage the named areas of your garden (e.g. \"Front garden\", \"Back garden\") — these appear as a dropdown when adding or editing a plant, instead of typing the same names over and over.",
-            fontSize = 12.sp, color = Color.Gray
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
         if (!canEdit) {
-            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = Color.Gray)
+            Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
         }
         var gardenLocations by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).getOrSeedLocations(plants)) }
@@ -254,13 +258,13 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                         TextButton(onClick = {
                             gardenLocations = gardenLocations.filterIndexed { i, _ -> i != index }
                             GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
-                        }) { Text("Remove", fontSize = 11.sp, color = Color(0xFFB23B3B)) }
+                        }) { Text("Remove", fontSize = 11.sp, color = MaterialTheme.colorScheme.error) }
                     }
                 }
             }
         }
         if (gardenLocations.isEmpty()) {
-            Text("No zones yet — add one below.", fontSize = 12.sp, color = Color.Gray)
+            Text("No zones yet — add one below.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
         }
         if (canEdit) {
@@ -296,7 +300,7 @@ fun AvatarBubble(name: String) {
         modifier = Modifier
             .size(32.dp)
             .clip(RoundedCornerShape(50))
-            .background(Color(0xFF3A5A40)),
+            .background(MaterialTheme.colorScheme.primary),
         contentAlignment = Alignment.Center
     ) {
         Text(name.trim().take(1).uppercase().ifBlank { "?" }, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -397,7 +401,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         }
     }
 
-    Text("Choose which garden's plants and care history you're viewing and editing.", fontSize = 12.sp, color = Color.Gray)
+    Text("Choose which garden's plants and care history you're viewing and editing.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(10.dp))
 
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
@@ -415,9 +419,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(garden.name, modifier = Modifier.weight(1f))
                             if (garden.role == "owner") {
-                                PermissionChip("Owner", Color(0xFF3A5A40))
+                                PermissionChip("Owner", MaterialTheme.colorScheme.primary)
                             } else {
-                                PermissionChip(if (garden.permission == "read") "View-only" else "Editor", Color(0xFF6E6E6E))
+                                PermissionChip(if (garden.permission == "read") "View-only" else "Editor", MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
@@ -433,11 +437,11 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     Spacer(Modifier.height(12.dp))
 
     if (pendingForActiveGarden.isNotEmpty()) {
-        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3CD)), modifier = Modifier.fillMaxWidth()) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.warningContainer), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 Text(
                     "🔔 ${pendingForActiveGarden.size} request${if (pendingForActiveGarden.size == 1) "" else "s"} to join ${activeGarden?.name ?: "this garden"}",
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B5300)
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.appColors.onWarningContainer
                 )
             }
         }
@@ -469,7 +473,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             OutlinedButton(
                 onClick = { showDeleteGardenConfirm = true },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text("🗑️ Delete ${activeGarden?.name ?: "this garden"}", fontSize = 12.sp) }
         }
     } else if (activeGardenId != installId) {
@@ -477,7 +481,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         OutlinedButton(
             onClick = { showLeaveConfirm = true },
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
         ) { Text("🚪 Leave ${activeGarden?.name ?: "this garden"}", fontSize = 12.sp) }
     }
 
@@ -493,7 +497,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         AvatarBubble(requesterLabel)
                         Spacer(Modifier.width(10.dp))
                         Text(requesterLabel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        PermissionChip(if (req.requestedPermission == "read") "View-only" else "Edit", Color(0xFF6E6E6E))
+                        PermissionChip(if (req.requestedPermission == "read") "View-only" else "Edit", MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -508,7 +512,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                             modifier = Modifier.weight(1f)
                         ) { Text("✓ Approve", fontSize = 12.sp) }
                         OutlinedButton(
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                             onClick = {
                                 scope.launch {
                                     GardenMembershipClient.respondToJoinRequest(context, activeGardenId, req.requestingDeviceId, approve = false)
@@ -528,7 +532,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         Text("Your pending requests", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         pendingMyRequests.forEach { req ->
-            Text("• ${req.name} — waiting for approval", fontSize = 12.sp, color = Color.Gray)
+            Text("• ${req.name} — waiting for approval", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -579,10 +583,10 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             text = {
                 Column {
                     when {
-                        loadingShareCode -> Text("Loading…", fontSize = 12.sp, color = Color.Gray)
-                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have code?\" on their own device.", fontSize = 12.sp, color = Color.Gray)
+                        loadingShareCode -> Text("Loading…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have code?\" on their own device.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         else -> {
-                            Text("Share this code:", fontSize = 12.sp, color = Color.Gray)
+                            Text("Share this code:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 shareCode ?: "", fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -593,9 +597,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 }
                             )
                             Spacer(Modifier.height(4.dp))
-                            Text("(tap to copy)", fontSize = 11.sp, color = Color.Gray)
+                            Text("(tap to copy)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(10.dp))
-                            Text("Regenerating invalidates this code for anyone you haven't shared it with yet.", fontSize = 11.sp, color = Color.Gray)
+                            Text("Regenerating invalidates this code for anyone you haven't shared it with yet.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -630,7 +634,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         label = { Text("Your name") }, placeholder = { Text("e.g. My phone") },
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Shown to the garden's owner so they know whose request this is.", fontSize = 11.sp, color = Color.Gray)
+                    Text("Shown to the garden's owner so they know whose request this is.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Invite code") }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
@@ -640,7 +644,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                     }
                     Text(
                         if (wantsWrite) "The owner can still grant view-only instead." else "View-only — you won't be able to make changes.",
-                        fontSize = 11.sp, color = Color.Gray
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
@@ -715,8 +719,8 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     when {
-                        loadingMembers -> Text("Loading…", fontSize = 12.sp, color = Color.Gray)
-                        members.isEmpty() -> Text("No one else has access yet.", fontSize = 12.sp, color = Color.Gray)
+                        loadingMembers -> Text("Loading…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        members.isEmpty() -> Text("No one else has access yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         else -> members.forEach { member ->
                             val memberLabel = member.displayName?.takeIf { it.isNotBlank() }
                                 ?: (if (member.role == "owner") "You" else "Device ${member.deviceId.take(8)}")
@@ -726,15 +730,15 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                     Spacer(Modifier.width(10.dp))
                                     Text(memberLabel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                     if (member.role == "owner") {
-                                        PermissionChip("Owner", Color(0xFF3A5A40))
+                                        PermissionChip("Owner", MaterialTheme.colorScheme.primary)
                                     } else {
-                                        PermissionChip(if (member.permission == "write") "Editor" else "View-only", Color(0xFF6E6E6E))
+                                        PermissionChip(if (member.permission == "write") "Editor" else "View-only", MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                                 if (member.role != "owner") {
                                     Spacer(Modifier.height(8.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 42.dp)) {
-                                        Text("Edit access", fontSize = 12.sp, modifier = Modifier.weight(1f), color = Color.Gray)
+                                        Text("Edit access", fontSize = 12.sp, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Switch(
                                             checked = member.permission == "write",
                                             onCheckedChange = { checked ->
@@ -762,7 +766,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                                 }
                                             }
                                         }
-                                    ) { Text("Remove access", color = Color(0xFFB23B3B), fontSize = 12.sp) }
+                                    ) { Text("Remove access", color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 HorizontalDivider()
@@ -795,7 +799,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                             else -> snackbarHostState.showSnackbar("Couldn't leave — try again.")
                         }
                     }
-                }) { Text("Leave", color = Color(0xFFB23B3B)) }
+                }) { Text("Leave", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showLeaveConfirm = false }) { Text("Cancel") } }
         )
@@ -816,7 +820,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             },
             confirmButton = {
                 TextButton(onClick = { showDeleteGardenConfirm = false; showDeleteGardenFinalConfirm = true }) {
-                    Text("Continue", color = Color(0xFFB23B3B))
+                    Text("Continue", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }) { Text("Cancel") } }
@@ -859,7 +863,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                     },
                     enabled = !deletingGarden && confirmText == gardenName
-                ) { Text(if (deletingGarden) "Deleting…" else "Delete", color = Color(0xFFB23B3B)) }
+                ) { Text(if (deletingGarden) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(
@@ -1009,7 +1013,7 @@ fun HelpScreen(
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
             Row(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Frequently Asked Questions", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text("›", fontSize = 20.sp, color = Color.Gray)
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -1026,7 +1030,7 @@ fun HelpScreen(
                     setDefaultLandingTab(context, key)
                 }
             )
-            Text("Takes effect next time you open the app.", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
+            Text("Takes effect next time you open the app.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
@@ -1037,7 +1041,7 @@ fun HelpScreen(
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             ExpandableSection(title = "Plant notifications") {
-            Text("Get reminded when your plants require care.", fontSize = 12.sp, color = Color.Gray)
+            Text("Get reminded when your plants require care.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var notifsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).notificationsEnabled) }
@@ -1071,12 +1075,12 @@ fun HelpScreen(
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && notifsEnabled && !hasNotifPermission) {
                 Spacer(Modifier.height(6.dp))
-                Text("Notification permission isn't granted — enable it in system settings for reminders to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                Text("Notification permission isn't granted — enable it in system settings for reminders to show.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
             }
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && notifsEnabled && !hasExactAlarmPermission) {
                 Spacer(Modifier.height(6.dp))
-                Text("Exact alarm permission isn't granted — reminders may fire late or not at all.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                Text("Exact alarm permission isn't granted — reminders may fire late or not at all.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = {
                     context.startActivity(
@@ -1090,15 +1094,15 @@ fun HelpScreen(
 
             if (notifsEnabled) {
                 Spacer(Modifier.height(12.dp))
-                Text("Style", fontSize = 12.sp, color = Color.Gray)
+                Text("Style", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("lockscreen" to "Lock screen", "popup" to "Pop-up", "both" to "Both").forEach { (key, label) ->
                         Button(
                             onClick = { notifStyle = key; deviceReminderSettings(context).notificationStyle = key },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (notifStyle == key) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                                contentColor = if (notifStyle == key) Color.White else Color.Black
+                                containerColor = if (notifStyle == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (notifStyle == key) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                             ),
                             modifier = Modifier.weight(1f)
                         ) { Text(label, fontSize = 11.sp) }
@@ -1106,7 +1110,7 @@ fun HelpScreen(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Remind me", fontSize = 12.sp, color = Color.Gray)
+                Text("Remind me", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 listOf(0 to "On the day", 1 to "1 day before", 2 to "2 days before", 3 to "3 days before").forEach { (days, label) ->
                     val checked = notifOffsets.contains(days)
@@ -1128,7 +1132,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
-                Text("Overdue repeat reminders", fontSize = 12.sp, color = Color.Gray)
+                Text("Overdue repeat reminders", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 var overdueRepeatEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatEnabled) }
                 var overdueRepeatDaysText by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatDays.toString()) }
@@ -1178,7 +1182,7 @@ fun HelpScreen(
                 }
 
                 Spacer(Modifier.height(10.dp))
-                Text("Notify at", fontSize = 12.sp, color = Color.Gray)
+                Text("Notify at", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 var showTimeDialog by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { showTimeDialog = true }, modifier = Modifier.fillMaxWidth()) {
@@ -1211,27 +1215,27 @@ fun HelpScreen(
             }
 
             ExpandableSection(title = "Hemisphere") {
-            Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = Color.Gray)
+            Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).latLng != null }
             if (gardenHasAddress) {
                 val hemisphere = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).hemisphere }
                 Text(
                     "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3A5A40)
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary
                 )
-                Text("Set a different garden address above to change this.", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+                Text("Set a different garden address above to change this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             } else {
                 var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).hemisphere) }
-                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = Color.Gray)
+                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
                         Button(
                             onClick = { hemisphere = value; GardenSettings.active(context).hemisphereFallback = value },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (hemisphere == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                                contentColor = if (hemisphere == value) Color.White else Color.Black
+                                containerColor = if (hemisphere == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (hemisphere == value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                             ),
                             modifier = Modifier.weight(1f)
                         ) { Text(label, fontSize = 12.sp) }
@@ -1242,7 +1246,7 @@ fun HelpScreen(
 
             if (FeatureVisibility.shouldShow(context, Feature.WEATHER_AWARE_REMINDERS)) {
             ExpandableSection(title = "Weather-aware reminders") {
-            Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = Color.Gray)
+            Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).weatherSkipEnabled) }
@@ -1254,7 +1258,7 @@ fun HelpScreen(
                 Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; GardenSettings.active(context).weatherSkipEnabled = it })
             }
             if (!hasGardenAddress) {
-                Text("Set your garden address above (Garden address) to use this.", fontSize = 11.sp, color = Color.Gray)
+                Text("Set your garden address above (Garden address) to use this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             var frostWarningsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostWarningsEnabled) }
             var frostThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostTempThreshold.toFloat()) }
@@ -1264,7 +1268,7 @@ fun HelpScreen(
             }
             if (frostWarningsEnabled) {
                 Spacer(Modifier.height(8.dp))
-                Text("Warn when the forecast minimum is at or below ${"%.1f".format(frostThreshold)}°C", fontSize = 12.sp, color = Color.Gray)
+                Text("Warn when the forecast minimum is at or below ${"%.1f".format(frostThreshold)}°C", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 Slider(
                     value = frostThreshold, onValueChange = { frostThreshold = it },
@@ -1275,7 +1279,7 @@ fun HelpScreen(
 
                 if (weatherSkipEnabled) {
                     Spacer(Modifier.height(12.dp))
-                    Text("Flag if rain probability is at least $rainThreshold%", fontSize = 12.sp, color = Color.Gray)
+                    Text("Flag if rain probability is at least $rainThreshold%", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Slider(
                         value = rainThreshold.toFloat(), onValueChange = { rainThreshold = it.toInt() },
@@ -1287,7 +1291,7 @@ fun HelpScreen(
                     var rainAmountThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rainAmountThresholdMm) }
                     Text(
                         "And at least ${"%.1f".format(rainAmountThreshold)}mm forecast (filters out high-probability drizzle)",
-                        fontSize = 12.sp, color = Color.Gray
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(4.dp))
                     Slider(
@@ -1307,23 +1311,23 @@ fun HelpScreen(
         ExpandableSection(title = "Photos & cloud storage") {
             Text("Photo storage", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Choose whether new photos are stored on this device, or automatically saved to your own cloud storage. See the FAQ above for the pros and cons of each.", fontSize = 12.sp, color = Color.Gray)
+            Text("Choose whether new photos are stored on this device, or automatically saved to your own cloud storage. See the FAQ above for the pros and cons of each.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = { photoMode = "local"; setPhotoStorageMode(context, "local") },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (photoMode == "local") Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (photoMode == "local") Color.White else Color.Black
+                        containerColor = if (photoMode == "local") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (photoMode == "local") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
                 ) { Text("On this device", fontSize = 12.sp) }
                 Button(
                     onClick = { photoMode = "cloud"; setPhotoStorageMode(context, "cloud") },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (photoMode == "cloud") Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (photoMode == "cloud") Color.White else Color.Black
+                        containerColor = if (photoMode == "cloud") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (photoMode == "cloud") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
                 ) { Text("Cloud link", fontSize = 12.sp) }
             }
@@ -1331,7 +1335,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(8.dp))
                 val dropboxToken = DropboxAuthState.token
                 if (dropboxToken != null) {
-                    Text("✅ Connected to Dropbox", fontSize = 12.sp, color = Color(0xFF3A5A40))
+                    Text("✅ Connected to Dropbox", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(6.dp))
                     TextButton(onClick = { DropboxAuthState.clear(context) }) { Text("Disconnect") }
                 } else {
@@ -1343,7 +1347,7 @@ fun HelpScreen(
 
             Text("Auto-link photos by Plant ID", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Photos named after a Plant ID (e.g. \"P0001.jpg\") link automatically. Only new, unlinked photos are added.", fontSize = 12.sp, color = Color.Gray)
+            Text("Photos named after a Plant ID (e.g. \"P0001.jpg\") link automatically. Only new, unlinked photos are added.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             if (photoMode == "local") {
@@ -1396,20 +1400,20 @@ fun HelpScreen(
 
                 testResult?.let {
                     Spacer(Modifier.height(6.dp))
-                    Text(it, fontSize = 12.sp, color = if (it.startsWith("✅")) Color(0xFF3A5A40) else Color(0xFFB23B3B))
+                    Text(it, fontSize = 12.sp, color = if (it.startsWith("✅")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 }
                 if (DropboxLinkState.linking) {
                     Spacer(Modifier.height(10.dp))
                     val current = DropboxLinkState.current; val total = DropboxLinkState.total
                     LinearProgressIndicator(progress = { if (total > 0) current.toFloat() / total.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(4.dp))
-                    Text("$current of $total images linked", fontSize = 12.sp, color = Color.Gray)
+                    Text("$current of $total images linked", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val linkResult = DropboxLinkState.result ?: getLastDropboxLinkResult(context)
                 linkResult?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                        color = if (it.startsWith("Linking unsuccessful")) Color(0xFFB23B3B) else Color(0xFF3A5A40))
+                        color = if (it.startsWith("Linking unsuccessful")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
                 if (showFolderPicker) {
                     DropboxFolderPickerDialog(
@@ -1428,7 +1432,7 @@ fun HelpScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text("Clear auto-linked photos (keep plants)") }
         }
         }
@@ -1445,8 +1449,8 @@ fun HelpScreen(
                     Button(
                         onClick = { irrigationSystem = value; GardenSettings.active(context).irrigationSystem = value },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (irrigationSystem == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                            contentColor = if (irrigationSystem == value) Color.White else Color.Black
+                            containerColor = if (irrigationSystem == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (irrigationSystem == value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                         ),
                         modifier = Modifier.weight(1f),
                         contentPadding = CompactButtonPadding
@@ -1454,7 +1458,7 @@ fun HelpScreen(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text("Switching doesn't delete the other system's saved credentials or zones — it just hides them.", fontSize = 11.sp, color = Color.Gray)
+            Text("Switching doesn't delete the other system's saved credentials or zones — it just hides them.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             if (irrigationSystem == IrrigationSystem.TUYA) {
@@ -1467,7 +1471,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Connect your own Tuya Cloud project to sync smart-irrigation history. Stored only on this device — never shared with other users of this app, and not included in backups.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -1495,7 +1499,7 @@ fun HelpScreen(
             )
             if (tuyaClientId.isBlank() || tuyaClientSecret.isBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text("Both fields are required to sync irrigation history.", fontSize = 11.sp, color = Color.Gray)
+                Text("Both fields are required to sync irrigation history.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
             if (tuyaEditing) {
@@ -1520,11 +1524,11 @@ fun HelpScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Irrigation zones (Tuya)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text(if (zonesExpanded) "▾" else "▸ ${zoneRows.count { it.first.isNotBlank() }}", color = Color.Gray, fontSize = 13.sp)
+                Text(if (zonesExpanded) "▾" else "▸ ${zoneRows.count { it.first.isNotBlank() }}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             if (zonesExpanded) {
                 Spacer(Modifier.height(6.dp))
-                Text("Add a friendly zone name for each physical outlet on your Tuya devices. Zone names should match your Watering System field values.", fontSize = 12.sp, color = Color.Gray)
+                Text("Add a friendly zone name for each physical outlet on your Tuya devices. Zone names should match your Watering System field values.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 zoneRows.forEachIndexed { index, (zoneName, deviceId, outlet) ->
                     Column(Modifier.padding(bottom = 12.dp)) {
@@ -1557,7 +1561,7 @@ fun HelpScreen(
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("Clear all zones") }
             }
             }
@@ -1573,7 +1577,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Connect your Rachio account with the API key from the Rachio app (Profile → API key) to sync smart-irrigation history. Stored only on this device — never shared with other users of this app, and not included in backups.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
@@ -1592,7 +1596,7 @@ fun HelpScreen(
             )
             if (rachioApiToken.isBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text("An API token is required to sync irrigation history.", fontSize = 11.sp, color = Color.Gray)
+                Text("An API token is required to sync irrigation history.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
             if (rachioEditing) {
@@ -1623,7 +1627,7 @@ fun HelpScreen(
                     },
                     modifier = Modifier.fillMaxWidth(), enabled = !rachioTesting
                 ) { Text(if (rachioTesting) "Testing…" else "Test connection") }
-                rachioTestResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
+                rachioTestResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
@@ -1634,11 +1638,11 @@ fun HelpScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Irrigation zones (Rachio)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text(if (rachioZonesExpanded) "▾" else "▸ ${rachioZoneRows.count { it.first.isNotBlank() }}", color = Color.Gray, fontSize = 13.sp)
+                Text(if (rachioZonesExpanded) "▾" else "▸ ${rachioZoneRows.count { it.first.isNotBlank() }}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             if (rachioZonesExpanded) {
                 Spacer(Modifier.height(6.dp))
-                Text("Add a friendly zone name for each Rachio zone (use Test connection above to find your device/zone IDs). Zone names should match your Watering System field values.", fontSize = 12.sp, color = Color.Gray)
+                Text("Add a friendly zone name for each Rachio zone (use Test connection above to find your device/zone IDs). Zone names should match your Watering System field values.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 rachioZoneRows.forEachIndexed { index, (zoneName, deviceId, zoneId) ->
                     Column(Modifier.padding(bottom = 12.dp)) {
@@ -1669,7 +1673,7 @@ fun HelpScreen(
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("Clear all zones") }
             }
             }
@@ -1680,7 +1684,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Where irrigation_log.csv is read from and appended to — separate from wherever your photos are stored.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             if (getPhotoStorageMode(context) == "cloud") {
@@ -1713,20 +1717,20 @@ fun HelpScreen(
                     "Pulls the last 30 days of watering activity from Rachio and appends new sessions to irrigation_log.csv."
                 else
                     "Pulls the last 30 days of watering activity from Tuya and appends new sessions to irrigation_log.csv so history isn't lost once Tuya's ~7-day retention rolls over.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             val syncing by wateringViewModel.syncing.collectAsState()
             val syncResult by wateringViewModel.lastSyncResult.collectAsState()
             Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync watering history") }
-            syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
+            syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             // Re-read whenever a manual sync finishes (syncing flips back to false) or the garden changes.
             val lastIrrigationSyncAt = remember(ActiveGardenState.activeGardenId, syncing) { GardenSettings.of(context, effectiveGardenId(context)).lastIrrigationSyncAt }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Also syncs automatically every $IRRIGATION_AUTO_SYNC_DAYS days in the background." +
                     if (lastIrrigationSyncAt > 0L) " Last synced ${java.text.SimpleDateFormat("d MMM yyyy, h:mm a", Locale.getDefault()).format(java.util.Date(lastIrrigationSyncAt))}." else "",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
             }
@@ -1778,12 +1782,12 @@ fun HelpScreen(
             Spacer(Modifier.height(4.dp))
             Text(
                 "Turn off the floating 🌿 button and plant-form suggestions if you'd rather not see Sage.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
             Text(
                 "Drag the floating 🌿 button up or down if it's covering something. Stuck somewhere awkward?",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
             TextButton(onClick = {
@@ -1800,12 +1804,12 @@ fun HelpScreen(
 
             Text(
                 "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget, and Dropbox backup. Advanced mode adds everything else — weather-aware reminders, irrigation, the sun map, the audit, cost & water usage tracking, watering history, growth photo timelines, the custom garden map, progress photos, soil pH, seasonal watering, fertilising/pruning/feeding, Sage's care-frequency suggestions, plant history, coordinates, place-on-map buttons, extra photos, and multi-device/garden sharing.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 "Sage isn't affected by this toggle — it's available in both modes (its own on/off switch is above).",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1821,7 +1825,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Nothing is deleted when you switch — your Tuya/Rachio setup, sun map, and history stay saved.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(20.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
@@ -1859,7 +1863,7 @@ fun HelpScreen(
         val canManageActiveGardenMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
         if (canManageActiveGardenMap && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)) {
         ExpandableSection(title = "Custom garden map") {
-            Text("Upload a hand-drawn or custom image of your garden instead of using the real-world map.", fontSize = 12.sp, color = Color.Gray)
+            Text("Upload a hand-drawn or custom image of your garden instead of using the real-world map.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var customMapUri by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapUri) }
@@ -1881,7 +1885,7 @@ fun HelpScreen(
                 }
                 Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(10.dp))
                 var mapRotationDeg by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapRotation) }
-                Text("Orientation", fontSize = 12.sp, color = Color.Gray)
+                Text("Orientation", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = {
@@ -1892,13 +1896,13 @@ fun HelpScreen(
                 ) { Text("Rotate 90° (currently ${mapRotationDeg}°)") }
                 Text(
                     "Rotating shifts what's shown at each spot on the map — recheck any markers, paths, or sun zones you've already placed after rotating.",
-                    fontSize = 11.sp, color = Color(0xFFB23B3B), modifier = Modifier.padding(top = 6.dp)
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = { GardenSettings.active(context).customMapUri = null; GardenSettings.active(context).usingCustomMap = false; customMapUri = null; useCustomMap = false },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("Clear custom map") }
             }
         }
@@ -1910,7 +1914,7 @@ fun HelpScreen(
         ExpandableSection(title = "Data") {
             Text("Export to spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = Color.Gray)
+            Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             Button(onClick = { exportLauncher.launch(csvExportFileNameForGarden(context, effectiveGardenId(context))) }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV to device") }
             if (DropboxAuthState.token != null) {
@@ -1919,7 +1923,7 @@ fun HelpScreen(
                     mutableStateOf(getDropboxCsvFolderPath(context) ?: getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: "")
                 }
                 var showDropboxCsvFolderPicker by remember { mutableStateOf(false) }
-                Text("Dropbox folder", fontSize = 12.sp, color = Color.Gray)
+                Text("Dropbox folder", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = dropboxCsvFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
@@ -2007,7 +2011,7 @@ fun HelpScreen(
 
             Text("Import from spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Upload a CSV in the same format to add or update plants in bulk.", fontSize = 12.sp, color = Color.Gray)
+            Text("Upload a CSV in the same format to add or update plants in bulk.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
@@ -2020,7 +2024,7 @@ fun HelpScreen(
                     modifier = Modifier.fillMaxWidth(), enabled = canEditActiveGarden && !dropboxCsvImporting
                 ) { Text(if (dropboxCsvImporting) "Importing…" else "☁️ Choose CSV from Dropbox") }
             }
-            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden.", fontSize = 11.sp, color = Color.Gray) }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (showDropboxCsvPicker) {
                 DropboxCsvPickerDialog(
                     context = context,
@@ -2039,10 +2043,10 @@ fun HelpScreen(
 
             Text("Backup & restore all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Backs up all plants (including seasonal watering, fertilising, pruning, and indoor/manual-watering settings), irrigation paths and watering history, sun exposure zones, growth timeline photos, fertilise/prune history, Tuya zone mappings, your custom map drawing and its rotation, and all app preferences (weather-aware reminders, garden address, notification and reminder settings, default tab, and more) to a Dropbox folder you choose.", fontSize = 12.sp, color = Color.Gray)
+            Text("Backs up all plants (including seasonal watering, fertilising, pruning, and indoor/manual-watering settings), irrigation paths and watering history, sun exposure zones, growth timeline photos, fertilise/prune history, Tuya zone mappings, your custom map drawing and its rotation, and all app preferences (weather-aware reminders, garden address, notification and reminder settings, default tab, and more) to a Dropbox folder you choose.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             if (isGardenOwner) {
-                Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 11.sp, color = Color(0xFFB23B3B))
+                Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(10.dp))
 
@@ -2056,7 +2060,7 @@ fun HelpScreen(
             }
 
             if (DropboxAuthState.token != null) {
-                Text("Backup folder", fontSize = 12.sp, color = Color.Gray)
+                Text("Backup folder", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = backupFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
@@ -2186,7 +2190,7 @@ fun HelpScreen(
                                 ) {
                                     Column {
                                         Text(info.fileName, fontSize = 13.sp)
-                                        Text(sdf.format(info.modifiedAt), fontSize = 11.sp, color = Color.Gray)
+                                        Text(sdf.format(info.modifiedAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -2197,8 +2201,8 @@ fun HelpScreen(
                 )
             }
 
-            if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = Color.Gray) }
-            backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
+            if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
 
             if (showRestoreConfirm) {
                 var forceFreshRestore by remember { mutableStateOf(false) }
@@ -2237,7 +2241,7 @@ fun HelpScreen(
 
             Text("Export backup to device", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Saves the same backup to a folder you choose on this device — or a synced folder like Google Drive/OneDrive — no Dropbox connection needed. Uses the system file picker, so no extra app permissions are required.", fontSize = 12.sp, color = Color.Gray)
+            Text("Saves the same backup to a folder you choose on this device — or a synced folder like Google Drive/OneDrive — no Dropbox connection needed. Uses the system file picker, so no extra app permissions are required.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var localBackupFolder by remember { mutableStateOf(getLocalBackupFolderUri(context)) }
@@ -2282,7 +2286,7 @@ fun HelpScreen(
                 ) { Text("Restore from this folder") }
             }
 
-            localBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
+            localBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
 
             if (showLocalRestoreConfirm) {
                 var forceFreshLocalRestore by remember { mutableStateOf(false) }
@@ -2322,7 +2326,7 @@ fun HelpScreen(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Runs silently once a day, no setup needed — keeps up to 7 rolling daily snapshots on this device (plus Dropbox too, if it's connected above), as a safety net under the manual backups above.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
 
@@ -2341,7 +2345,7 @@ fun HelpScreen(
             ) { Text(if (autoBackupWorking) "Restoring…" else "Restore from automatic backup") }
             if (availableAutoBackups.isEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Text("None yet — the first one is created the next time you open the app.", fontSize = 11.sp, color = Color.Gray)
+                Text("None yet — the first one is created the next time you open the app.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (showAutoBackupPicker) {
@@ -2371,7 +2375,7 @@ fun HelpScreen(
                 )
             }
 
-            autoBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = Color(0xFF3A5A40)) }
+            autoBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
 
             if (showAutoRestoreConfirm) {
                 var forceFreshAutoRestore by remember { mutableStateOf(false) }
@@ -2413,15 +2417,15 @@ fun HelpScreen(
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Reset all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFFB23B3B))
+            Text("Reset all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(6.dp))
-            Text("Clears every plant in this app. Cannot be undone.", fontSize = 12.sp, color = Color.Gray)
+            Text("Clears every plant in this app. Cannot be undone.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(), enabled = isGardenOwner,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text("Reset garden") }
-            if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 11.sp, color = Color.Gray) }
+            if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         }
 
@@ -2429,7 +2433,7 @@ fun HelpScreen(
         ExpandableSection(title = "Sync with other devices") {
             Text(
                 "Keep this garden's plants and care history in sync between this phone, another phone sharing this garden, and the desktop app. Enter this device's Install ID (below) into the desktop app once to link them, then use \"Sync plants & care history\" on either device whenever you want to pull in the other's changes. (This is separate from the Irrigation section's \"Sync watering history\" button, which only pulls Tuya/Rachio watering events.)",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
 
@@ -2439,7 +2443,7 @@ fun HelpScreen(
 
             Text(
                 "Only relevant if you also use the desktop app — enter this device's Install ID there once to link them. Not needed for phone-to-phone garden sharing above.",
-                fontSize = 11.sp, color = Color.Gray
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
             val syncInstallId = remember { getOrCreateInstallId(context) }
@@ -2462,7 +2466,7 @@ fun HelpScreen(
                 var recoverInstallIdText by remember { mutableStateOf("") }
                 Text(
                     "Reinstalling always generates a brand-new Install ID, with no way to recover the old one automatically. If you restore an old backup after reinstalling, every plant stays tagged with the OLD Install ID and won't show up anywhere — not lost, just orphaned. Paste that old ID here (it's the \"gardenId\" field on any plant in the old backup's JSON, or whatever you copied from this same field before uninstalling) to fix it. Requires restarting the app afterwards.",
-                    fontSize = 11.sp, color = Color.Gray
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -2485,7 +2489,7 @@ fun HelpScreen(
             if (lastSyncedAt > 0) {
                 Text(
                     "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
-                    fontSize = 11.sp, color = Color.Gray
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -2509,14 +2513,14 @@ fun HelpScreen(
                 enabled = !syncing && canEditActiveGarden,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
-            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 11.sp, color = Color.Gray) }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         }
 
         ExpandableSection(title = "Support Sage Garden") {
             Text(
                 "Sage Garden is free, with no ads. If it's useful to you, a small tip helps cover running costs (Sage AI, hosting).",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
@@ -2535,7 +2539,7 @@ fun HelpScreen(
         ExpandableSection(title = "Contact & feedback") {
             Text(
                 "Found a bug, or have an idea for the app? We'd love to hear from you at gardenwizardry685@gmail.com.",
-                fontSize = 12.sp, color = Color.Gray
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
@@ -2556,7 +2560,7 @@ fun HelpScreen(
             val installId = remember { getOrCreateInstallId(context) }
             Text(
                 "Install ID: $installId (tap to copy — quote this if you contact support)",
-                fontSize = 10.sp, color = Color.Gray,
+                fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.clickable {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", installId))

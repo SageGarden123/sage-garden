@@ -2,6 +2,10 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
+import com.example.sagegarden.ui.theme.appColors
+
 import android.app.Application
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -168,7 +172,7 @@ fun MapScreen(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "Once set, the map centres on your garden instead of a generic location.",
-                    fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = { PendingHelpFocusState.focusWeatherSection = true; onNavigateToHelp() }) {
@@ -231,10 +235,10 @@ fun MapScreen(
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     if (hasCategory) Color.White
-                                    else if (plant.native.startsWith("Native")) Color(0xFF3A5A40)
-                                    else Color(0xFFFF7A45)
+                                    else if (plant.native.startsWith("Native")) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.tertiary
                                 )
-                                .border(1.5.dp, Color(0xFF3A5A40), RoundedCornerShape(50))
+                                .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
                                 .pointerInput(plant.id) { detectTapGestures { tooltipPlant = plant } },
                             contentAlignment = Alignment.Center
                         ) {
@@ -250,7 +254,7 @@ fun MapScreen(
         if (placementModeForPlantId != null) {
             Box(
                 modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)
-                    .background(Color(0xFF3A5A40), RoundedCornerShape(8.dp)).padding(12.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)).padding(12.dp)
             ) {
                 Text("Tap anywhere to place this plant", color = Color.White, fontSize = 13.sp)
             }
@@ -278,7 +282,7 @@ fun MapScreen(
                     ) {
                         Text(selectedCategoryLabel, fontSize = 12.sp)
                         Spacer(Modifier.width(4.dp))
-                        Text(if (categoryMenuExpanded) "▾" else "▸", fontSize = 12.sp, color = Color.Gray)
+                        Text(if (categoryMenuExpanded) "▾" else "▸", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
                         categoryLabels.forEach { (key, label) ->
@@ -298,8 +302,8 @@ fun MapScreen(
                 val c = cameraPositionState.position.target
                 onMapTap(c.latitude, c.longitude)
             },
-            containerColor = Color(0xFFFF7A45),
-            contentColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.tertiary,
+            contentColor = MaterialTheme.colorScheme.onTertiary,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(20.dp)
@@ -379,16 +383,16 @@ fun MapTabScreen(
                         onClick = { showingCustom = false },
                         contentPadding = CompactButtonPadding,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                            contentColor = if (!showingCustom) Color.White else Color.Black
+                            containerColor = if (!showingCustom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (!showingCustom) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                         )
                     ) { Text("Real Map", fontSize = 12.sp) }
                     Button(
                         onClick = { showingCustom = true },
                         contentPadding = CompactButtonPadding,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (showingCustom) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                            contentColor = if (showingCustom) Color.White else Color.Black
+                            containerColor = if (showingCustom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (showingCustom) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                         )
                     ) { Text("My Drawing", fontSize = 12.sp) }
                 }
@@ -563,7 +567,7 @@ fun CustomMapScreen(
 
     if (mapUri == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No custom map uploaded yet — add one in Help.", color = Color.Gray)
+            Text("No custom map uploaded yet — add one in Help.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -795,7 +799,7 @@ fun CustomMapScreen(
                     if (seg.type == "sprinkler" && seg.points.isNotEmpty()) {
                         val center = toPx(seg.points[0])
                         val radiusPx = (seg.radius ?: 0.08f) * w
-                        val col = if (isSelected) Color(0xFFE53935) else Color(0xFF888888)
+                        val col = if (isSelected) Color(0xFFB23B3B) else Color.Gray
                         drawCircle(color = col.copy(alpha = 0.22f), radius = radiusPx, center = center)
                         drawCircle(color = col, radius = radiusPx, center = center, style = Stroke(width = 3f))
                     } else {
@@ -803,7 +807,7 @@ fun CustomMapScreen(
                         if (pxPoints.size >= 2) {
                             drawPath(
                                 path = buildPath(pxPoints),
-                                color = if (isSelected) Color(0xFFE53935) else Color(0xFF888888),
+                                color = if (isSelected) Color(0xFFB23B3B) else Color.Gray,
                                 style = Stroke(
                                     width = (if (seg.type == "main") 12f else if (seg.type == "impact_sprinkler") 26f else 5f) + if (isSelected) 4f else 0f,
                                     cap = StrokeCap.Round
@@ -876,7 +880,7 @@ fun CustomMapScreen(
                 val yDp = with(density) { (frac.y * containerSize.height).toDp() }
                 Box(
                     modifier = Modifier.offset(x = xDp - 4.dp, y = yDp - 4.dp).size(8.dp)
-                        .clip(RoundedCornerShape(50)).background(Color(0xFFFF7A45).copy(alpha = 0.85f))
+                        .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f))
                         .border(1.dp, Color.White, RoundedCornerShape(50))
                 )
             }
@@ -957,7 +961,7 @@ fun CustomMapScreen(
                     Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = { editingPaths = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D8FB0))
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
                         ) { Text("💧 Edit irrigation paths", fontSize = 12.sp) }
                     }
                 } else {
@@ -1016,7 +1020,7 @@ fun CustomMapScreen(
                                 }
                                 attachingDripSegment != null -> {
                                     Text("Tap the plant(s) this drip line waters", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                    Text("${pendingDripTargets.size} plant(s) selected", fontSize = 11.sp, color = Color.Gray)
+                                    Text("${pendingDripTargets.size} plant(s) selected", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(
@@ -1038,7 +1042,7 @@ fun CustomMapScreen(
                                     Text(
                                         "${draftSegments.count { it.type == "main" }} main segment(s), ${draftSegments.count { it.type == "drip" }} drip line(s), " +
                                                 "${draftSegments.count { it.type == "sprinkler" || it.type == "impact_sprinkler" }} sprinkler(s)",
-                                        fontSize = 11.sp, color = Color.Gray
+                                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1090,7 +1094,7 @@ fun CustomMapScreen(
                                         Spacer(Modifier.height(4.dp))
                                         Text(
                                             "Draw at least one segment and set the outlet before finishing. Cancel discards this draft without saving.",
-                                            fontSize = 10.sp, color = Color.Gray
+                                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }

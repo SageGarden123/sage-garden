@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.util.Log
 import android.content.Context
 import androidx.compose.foundation.clickable
@@ -175,8 +177,8 @@ fun DropboxImagePickerDialog(
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading || resolving -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = Color(0xFFB23B3B), fontSize = 13.sp)
-                        entries.isEmpty() -> Text("Nothing here.", color = Color.Gray, fontSize = 13.sp)
+                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        entries.isEmpty() -> Text("Nothing here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(entries) { entry ->
                                 Row(
@@ -208,7 +210,7 @@ fun DropboxImagePickerDialog(
                                         fontSize = 14.sp, modifier = Modifier.weight(1f)
                                     )
                                 }
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             }
                         }
                     }
@@ -285,8 +287,8 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading || resolving -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = Color(0xFFB23B3B), fontSize = 13.sp)
-                        entries.isEmpty() -> Text("No CSV files here.", color = Color.Gray, fontSize = 13.sp)
+                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        entries.isEmpty() -> Text("No CSV files here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(entries) { entry ->
                                 Row(
@@ -318,7 +320,7 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                                         fontSize = 14.sp, modifier = Modifier.weight(1f)
                                     )
                                 }
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             }
                         }
                     }
@@ -377,8 +379,8 @@ fun DropboxFolderPickerDialog(
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = Color(0xFFB23B3B), fontSize = 13.sp)
-                        folders.isEmpty() -> Text("No subfolders here.", color = Color.Gray, fontSize = 13.sp)
+                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        folders.isEmpty() -> Text("No subfolders here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(folders) { folder ->
                                 Row(
@@ -396,7 +398,7 @@ fun DropboxFolderPickerDialog(
                                     Spacer(Modifier.width(10.dp))
                                     Text(folder.name, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 }
-                                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             }
                         }
                     }

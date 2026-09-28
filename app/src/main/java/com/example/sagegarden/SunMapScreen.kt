@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material3.MaterialTheme
+
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -345,16 +347,16 @@ fun SunMapScreen(onBack: () -> Unit) {
                 Button(
                     onClick = { showingRealMap = true; drawMode = null; clearStrokes() },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showingRealMap) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (showingRealMap) Color.White else Color.Black
+                        containerColor = if (showingRealMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (showingRealMap) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.weight(1f)
                 ) { Text("Real Map", fontSize = 12.sp) }
                 Button(
                     onClick = { showingRealMap = false; drawMode = null; clearStrokes() },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (!showingRealMap) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
-                        contentColor = if (!showingRealMap) Color.White else Color.Black
+                        containerColor = if (!showingRealMap) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (!showingRealMap) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.weight(1f)
                 ) { Text("My Drawing", fontSize = 12.sp) }
@@ -583,7 +585,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                 Text(
                     if (drawMode == "tap") "Tap to place each corner, then confirm.${if (!showingRealMap) " Pinch to zoom." else ""}"
                     else "Drag to trace the zone's outline, then confirm.",
-                    fontSize = 12.sp, color = Color.Gray
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -624,7 +626,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                     ) { Text("Cancel", fontSize = 12.sp) }
                 }
             } else {
-                Text("Zone type", fontSize = 12.sp, color = Color.Gray)
+                Text("Zone type", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -638,7 +640,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (selected) colorForSunCategory(key) else colorForSunCategory(key).copy(alpha = 0.25f))
                                 .then(
-                                    if (selected) Modifier.border(2.dp, Color(0xFF233821), RoundedCornerShape(8.dp))
+                                    if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onPrimaryContainer, RoundedCornerShape(8.dp))
                                     else Modifier
                                 )
                                 .clickable { selectedCategory = key }
@@ -674,7 +676,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                     .fillMaxWidth()
                                     .onGloballyPositioned { zoneRowPositions[zone.id] = it.positionInParent().y }
                                     .clip(RoundedCornerShape(6.dp))
-                                    .then(if (isSelected) Modifier.background(Color(0xFF3A5A40).copy(alpha = 0.15f)) else Modifier)
+                                    .then(if (isSelected) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) else Modifier)
                                     .clickable {
                                         selectedZoneId = zone.id
                                         if (showingRealMap) {
