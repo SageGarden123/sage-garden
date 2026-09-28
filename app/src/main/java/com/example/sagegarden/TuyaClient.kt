@@ -119,8 +119,8 @@ object TuyaClient {
 
     /** [gardenId] defaults to the active garden; background callers pass the garden they're syncing explicitly. */
     private fun requireCredentials(context: Context, gardenId: String = effectiveGardenId(context)): Pair<String, String> {
-        val clientId = getTuyaClientIdFor(context, gardenId)
-        val clientSecret = getTuyaClientSecretFor(context, gardenId)
+        val clientId = GardenSettings.of(context, gardenId).tuyaClientId
+        val clientSecret = GardenSettings.of(context, gardenId).tuyaClientSecret
         if (clientId.isBlank() || clientSecret.isBlank()) {
             throw RuntimeException("Tuya isn't connected — add your Client ID and Secret in Help first")
         }

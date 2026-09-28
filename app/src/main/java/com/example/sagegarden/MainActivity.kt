@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         // last active — otherwise leaving the app open on someone else's shared garden and closing
         // it means the next launch silently stays in their garden until you notice and switch back.
         GardenMembershipStore.setActiveGardenId(applicationContext, null)
+        ActiveGardenSettingsObserver.install(applicationContext)
         EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
         if (anyGardenNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)

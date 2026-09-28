@@ -39,7 +39,7 @@ enum class Hemisphere { SOUTHERN, NORTHERN }
  * [SageEnabledState] and [AdvancedModeState]. Composables that show "due" status (dashboard,
  * widget preview inside the app, audit) need to recompute the moment this changes in Help, not
  * just on next navigation. Background call sites with no running Compose tree (the reminder
- * worker) should read [getHemisphere] directly from prefs instead of this, since the singleton
+ * worker) should read GardenSettings.of(context, gardenId).hemisphere directly instead of this, since the singleton
  * may not have been synced yet in a cold-started worker process.
  */
 object HemisphereState {

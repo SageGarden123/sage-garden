@@ -31,7 +31,7 @@ object RachioClient {
 
     /** [gardenId] defaults to the active garden; background callers pass the garden they're syncing explicitly. */
     private fun requireToken(context: Context, gardenId: String = effectiveGardenId(context)): String {
-        val token = getRachioApiTokenFor(context, gardenId)
+        val token = GardenSettings.of(context, gardenId).rachioApiToken
         if (token.isBlank()) throw RuntimeException("Rachio isn't connected — add your API token in Help first")
         return token
     }

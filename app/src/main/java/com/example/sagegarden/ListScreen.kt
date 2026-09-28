@@ -60,7 +60,7 @@ fun ListScreen(
     var groupBy by remember { mutableStateOf(getListGroupBy(context)) }
     var sortBy by remember { mutableStateOf(getListSortBy(context)) }
     var fieldKeys by remember { mutableStateOf(getListFieldKeys(context)) }
-    val hasCustomMap = remember { getCustomMapUri(context) != null }
+    val hasCustomMap = remember { GardenSettings.active(context).customMapUri != null }
     val now = remember { System.currentTimeMillis() }
     val collapsedGroups = ListScreenState.collapsedGroups
 

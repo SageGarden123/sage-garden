@@ -217,7 +217,7 @@ fun SunMapScreen(onBack: () -> Unit) {
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
     )
     val zones by sunViewModel.zones.collectAsState()
-    val mapUri = remember { getCustomMapUri(context) }
+    val mapUri = remember { GardenSettings.active(context).customMapUri }
     val hasCustomMap = mapUri != null
 
     // Real Map is the default base layer — users can switch to their uploaded drawing if they have one.
@@ -251,7 +251,7 @@ fun SunMapScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         if (SunMapCameraState.initialized) return@LaunchedEffect
         SunMapCameraState.initialized = true
-        val gardenLatLng = getGardenLatLng(context)
+        val gardenLatLng = GardenSettings.active(context).latLng
         if (gardenLatLng != null) {
             cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(gardenLatLng.first, gardenLatLng.second), 18f)
         } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -519,7 +519,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                             translationX = panOffset.x, translationY = panOffset.y
                         )
                     ) {
-                        val mapRotation = remember { getCustomMapRotation(context) }
+                        val mapRotation = remember { GardenSettings.active(context).customMapRotation }
                         AsyncImage(
                             model = ImageRequest.Builder(context).data(mapUri).transformations(RotateTransformation(mapRotation.toFloat())).build(),
                             contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,

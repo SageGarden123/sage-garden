@@ -35,14 +35,14 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
         val locationPhotoDao = AppDatabase.getInstance(applicationContext).locationPhotoDao()
 
         for (gardenId in allKnownGardenIds(applicationContext)) {
-            if (!getNotificationsEnabledFor(applicationContext, gardenId)) continue
+            if (!GardenSettings.of(applicationContext, gardenId).notificationsEnabled) continue
 
             val plants = plantDao.getAllOnceForGarden(gardenId)
             if (plants.isEmpty()) continue
 
-            val offsets = getNotificationOffsetsFor(applicationContext, gardenId)
-            val overdueRepeatEnabled = getOverdueRepeatEnabledFor(applicationContext, gardenId)
-            val overdueRepeatDays = getOverdueRepeatDaysFor(applicationContext, gardenId)
+            val offsets = GardenSettings.of(applicationContext, gardenId).notificationOffsets
+            val overdueRepeatEnabled = GardenSettings.of(applicationContext, gardenId).overdueRepeatEnabled
+            val overdueRepeatDays = GardenSettings.of(applicationContext, gardenId).overdueRepeatDays
 
             fun isDue(status: WateringStatus?): Boolean {
                 val dueMillis = status?.nextDueMillis ?: return false
@@ -51,45 +51,53 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
                 else overdueRepeatEnabled && (-diffDays) % overdueRepeatDays == 0
             }
 
-            val weatherSkipEnabled = getWeatherSkipEnabledFor(applicationContext, gardenId)
-            val frostWarningsEnabled = getFrostWarningsEnabledFor(applicationContext, gardenId)
+            val weatherSkipEnabled = GardenSettings.of(applicationContext, gardenId).weatherSkipEnabled
+            val frostWarningsEnabled = GardenSettings.of(applicationContext, gardenId).frostWarningsEnabled
             val forecast = if (weatherSkipEnabled || frostWarningsEnabled) {
-                getGardenLatLngFor(applicationContext, gardenId)?.let { (lat, lng) -> WeatherHelper.fetchTodayForecast(lat, lng) }
+                GardenSettings.of(applicationContext, gardenId).latLng?.let { (lat, lng) -> WeatherHelper.fetchTodayForecast(lat, lng) }
             } else null
 
-            val hemisphere = getHemisphereFor(applicationContext, gardenId)
+            val hemisphere = GardenSettings.of(applicationContext, gardenId).hemisphere
             val duePlants = plants.filter { isDue(computeWateringStatus(it, now, hemisphere)) }
             if (duePlants.isNotEmpty()) {
                 val outdoorDuePlants = duePlants.filter { !it.isIndoor }
                 if (weatherSkipEnabled && outdoorDuePlants.isNotEmpty() && forecast != null &&
-                    forecast.maxProbabilityPercent >= getRainProbabilityThresholdFor(applicationContext, gardenId) &&
-                    forecast.totalPrecipitationMm >= getRainAmountThresholdFor(applicationContext, gardenId)
+                    forecast.maxProbabilityPercent >= GardenSettings.of(applicationContext, gardenId).rainProbabilityThreshold &&
+                    forecast.totalPrecipitationMm >= GardenSettings.of(applicationContext, gardenId).rainAmountThresholdMm
                 ) {
                     totalRainWarningMm = (totalRainWarningMm ?: 0.0) + forecast.totalPrecipitationMm
                 }
                 allDueWatering.addAll(duePlants)
             }
 
-            if (getFertiliseRemindersEnabledFor(applicationContext, gardenId)) {
+            if (GardenSettings.of(applicationContext, gardenId).fertiliseRemindersEnabled) {
                 allDueFertilise.addAll(plants.filter { isDue(computeFertiliseStatus(it, now)) })
             }
-            if (getPruneRemindersEnabledFor(applicationContext, gardenId)) {
+            if (GardenSettings.of(applicationContext, gardenId).pruneRemindersEnabled) {
                 allDuePrune.addAll(plants.filter { isDue(computePruneStatus(it, now)) })
             }
-            if (getFeedRemindersEnabledFor(applicationContext, gardenId)) {
+            if (GardenSettings.of(applicationContext, gardenId).feedRemindersEnabled) {
                 allDueFeed.addAll(plants.filter { isDue(computeFeedStatus(it, now)) })
             }
 
             if (frostWarningsEnabled) {
                 val minTemp = forecast?.minTempCelsius
-                if (minTemp != null && minTemp <= getFrostTempThresholdFor(applicationContext, gardenId)) {
+                if (minTemp != null && minTemp <= GardenSettings.of(applicationContext, gardenId).frostTempThreshold) {
                     allFrostAtRisk.addAll(frostTenderOutdoorPlants(plants))
                 }
             }
 
-            if (getProgressPhotoRemindersEnabledFor(applicationContext, gardenId)) {
+            val gardenSettings = GardenSettings.of(applicationContext, gardenId)
+            if (gardenSettings.progressPhotoRemindersEnabled) {
+                // Enabled before the enable time was recorded — start the clock now instead of treating every never-photographed zone as due forever.
+                if (gardenSettings.progressPhotoRemindersEnabledAt == 0L) gardenSettings.progressPhotoRemindersEnabledAt = now
                 val photos = locationPhotoDao.getAllOnceForGarden(gardenId)
-                allDueProgressPhotoZones.addAll(dueProgressPhotoZones(plants, photos, now))
+                allDueProgressPhotoZones.addAll(
+                    progressPhotoZonesToNotify(
+                        plants, photos, now, gardenSettings.progressPhotoRemindersEnabledAt,
+                        gardenSettings.overdueRepeatEnabled, gardenSettings.overdueRepeatDays
+                    )
+                )
             }
         }
 

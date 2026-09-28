@@ -33,11 +33,13 @@ object BackupHelper {
 
     private suspend fun buildBackupPayload(
         context: Context,
+        gardenId: String,
         plants: List<PlantEntity>,
         paths: List<IrrigationPathEntity>,
         events: List<WateringEvent>,
         mapFileNameBase: String = BACKUP_MAP_FILENAME_PREFIX
     ): BackupPayload {
+        val gardenSettings = GardenSettings.of(context, gardenId)
         val root = JSONObject()
         root.put("backupVersion", 2)
         root.put("createdAt", System.currentTimeMillis())
@@ -165,7 +167,7 @@ object BackupHelper {
         root.put("waterFlowRates", flowRatesArr)
 
         val tuyaArr = JSONArray()
-        getTuyaZoneMappings(context).forEach { m ->
+        gardenSettings.tuyaZoneMappings.forEach { m ->
             val o = JSONObject()
             o.put("zone", m.zone); o.put("deviceId", m.deviceId); o.put("outlet", m.outlet)
             tuyaArr.put(o)
@@ -173,7 +175,7 @@ object BackupHelper {
         root.put("tuyaZoneMappings", tuyaArr)
 
         val rachioArr = JSONArray()
-        getRachioZoneMappings(context).forEach { m ->
+        gardenSettings.rachioZoneMappings.forEach { m ->
             val o = JSONObject()
             o.put("zone", m.zone); o.put("deviceId", m.deviceId); o.put("zoneId", m.zoneId)
             rachioArr.put(o)
@@ -181,12 +183,12 @@ object BackupHelper {
         root.put("rachioZoneMappings", rachioArr)
 
         val settings = JSONObject()
-        settings.put("irrigationSystem", getIrrigationSystem(context).name)
+        settings.put("irrigationSystem", gardenSettings.irrigationSystem.name)
         settings.put("photoStorageMode", getPhotoStorageMode(context))
         settings.put("dropboxPhotoFolderPath", getDropboxPhotoFolderPath(context) ?: "")
         settings.put("localPhotoFolderUri", getLocalPhotoFolderUri(context)?.toString() ?: "")
-        settings.put("usingCustomMap", isUsingCustomMap(context))
-        settings.put("customMapRotation", getCustomMapRotation(context))
+        settings.put("usingCustomMap", gardenSettings.usingCustomMap)
+        settings.put("customMapRotation", gardenSettings.customMapRotation)
         settings.put("dashboardStatKeys", getDashboardStatKeys(context).joinToString(","))
         settings.put("dashboardChartEnabled", getDashboardChartEnabled(context))
         settings.put("dashboardChartGroupBy", getDashboardChartGroupBy(context))
@@ -194,27 +196,27 @@ object BackupHelper {
         settings.put("listGroupBy", getListGroupBy(context))
         settings.put("listSortBy", getListSortBy(context))
         settings.put("defaultLandingTab", getDefaultLandingTab(context))
-        settings.put("notificationsEnabled", getNotificationsEnabled(context))
-        settings.put("notificationStyle", getNotificationStyle(context))
-        settings.put("notificationOffsets", getNotificationOffsets(context).joinToString(","))
-        settings.put("notificationHour", getNotificationHour(context))
-        settings.put("notificationMinute", getNotificationMinute(context))
-        settings.put("overdueRepeatEnabled", getOverdueRepeatEnabled(context))
-        settings.put("overdueRepeatDays", getOverdueRepeatDays(context))
-        settings.put("fertiliseRemindersEnabled", getFertiliseRemindersEnabled(context))
-        settings.put("pruneRemindersEnabled", getPruneRemindersEnabled(context))
-        settings.put("feedRemindersEnabled", getFeedRemindersEnabled(context))
-        settings.put("weatherSkipEnabled", getWeatherSkipEnabled(context))
-        settings.put("rainProbabilityThreshold", getRainProbabilityThreshold(context))
-        settings.put("rainAmountThresholdMm", getRainAmountThreshold(context).toDouble())
-        settings.put("frostWarningsEnabled", getFrostWarningsEnabled(context))
-        settings.put("frostTempThreshold", getFrostTempThreshold(context))
+        settings.put("notificationsEnabled", gardenSettings.notificationsEnabled)
+        settings.put("notificationStyle", deviceReminderSettings(context).notificationStyle)
+        settings.put("notificationOffsets", gardenSettings.notificationOffsets.joinToString(","))
+        settings.put("notificationHour", deviceReminderSettings(context).notificationHour)
+        settings.put("notificationMinute", deviceReminderSettings(context).notificationMinute)
+        settings.put("overdueRepeatEnabled", gardenSettings.overdueRepeatEnabled)
+        settings.put("overdueRepeatDays", gardenSettings.overdueRepeatDays)
+        settings.put("fertiliseRemindersEnabled", gardenSettings.fertiliseRemindersEnabled)
+        settings.put("pruneRemindersEnabled", gardenSettings.pruneRemindersEnabled)
+        settings.put("feedRemindersEnabled", gardenSettings.feedRemindersEnabled)
+        settings.put("weatherSkipEnabled", gardenSettings.weatherSkipEnabled)
+        settings.put("rainProbabilityThreshold", gardenSettings.rainProbabilityThreshold)
+        settings.put("rainAmountThresholdMm", gardenSettings.rainAmountThresholdMm.toDouble())
+        settings.put("frostWarningsEnabled", gardenSettings.frostWarningsEnabled)
+        settings.put("frostTempThreshold", gardenSettings.frostTempThreshold)
         settings.put("waterRatePerKiloliter", getWaterRatePerKiloliter(context))
-        val gardenLatLng = getGardenLatLng(context)
+        val gardenLatLng = gardenSettings.latLng
         settings.put("gardenLat", gardenLatLng?.first ?: JSONObject.NULL)
         settings.put("gardenLng", gardenLatLng?.second ?: JSONObject.NULL)
-        settings.put("gardenAddress", getGardenAddress(context))
-        val gardenLocations = getGardenLocations(context)
+        settings.put("gardenAddress", gardenSettings.address)
+        val gardenLocations = gardenSettings.locations
         settings.put("gardenLocations", if (gardenLocations != null) JSONArray(gardenLocations) else JSONObject.NULL)
         settings.put("irrigationLogFolderUri", getIrrigationLogFolderUri(context)?.toString() ?: "")
         settings.put("irrigationLogDropboxFolderPath", getIrrigationLogDropboxFolderPath(context) ?: "")
@@ -227,7 +229,7 @@ object BackupHelper {
         settings.put("progressPhotoDropboxFolders", progressPhotoFolders)
         root.put("settings", settings)
 
-        val mapUri = getCustomMapUri(context)
+        val mapUri = gardenSettings.customMapUri
         var mapBytes: ByteArray? = null
         var mapFileName: String? = null
         if (mapUri != null) {
@@ -249,12 +251,14 @@ object BackupHelper {
 
     private suspend fun applyBackupRoot(
         context: Context,
+        gardenId: String,
         root: JSONObject,
         viewModel: PlantViewModel,
         pathViewModel: IrrigationPathViewModel,
         wateringViewModel: WateringZoneViewModel,
         forceFresh: Boolean = false
     ): BackupCounts {
+        val gardenSettings = GardenSettings.of(context, gardenId)
         val plantsArr = root.optJSONArray("plants") ?: JSONArray()
         for (i in 0 until plantsArr.length()) {
             val o = plantsArr.getJSONObject(i)
@@ -296,7 +300,7 @@ object BackupHelper {
                     lastFedDate = if (o.isNull("lastFedDate")) null else o.optLong("lastFedDate"),
                     feedFrequencyDays = if (o.isNull("feedFrequencyDays")) null else o.optInt("feedFrequencyDays"),
                     updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", 0L),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -310,7 +314,7 @@ object BackupHelper {
                     id = o.getString("id"), zone = o.getString("zone"),
                     outletX = o.getDouble("outletX"), outletY = o.getDouble("outletY"),
                     segmentsJson = o.getString("segmentsJson"),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -322,7 +326,7 @@ object BackupHelper {
                 id = o.getString("id"), zone = o.getString("zone"), outlet = o.optString("outlet", "1"),
                 startTime = o.getLong("startTime"), durationMinutes = o.getInt("durationMinutes"),
                 source = o.optString("source", "Tuya"),
-                gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                gardenId = o.optString("gardenId", "").ifBlank { gardenId }
             )
         }
         if (restoredEvents.isNotEmpty()) wateringViewModel.importEvents(restoredEvents)
@@ -336,7 +340,7 @@ object BackupHelper {
                 SunZoneEntity(
                     id = o.getString("id"), category = o.getString("category"), pointsJson = o.getString("pointsJson"),
                     mapType = o.optString("mapType", "custom"), // older backups predate real-map zones
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -348,7 +352,7 @@ object BackupHelper {
                 GrowthPhotoEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), uri = o.getString("uri"),
                     takenAt = o.getLong("takenAt"), label = o.optString("label", ""),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -360,7 +364,7 @@ object BackupHelper {
                 ExtraPhotoEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), uri = o.getString("uri"),
                     label = o.optString("label", ""), addedAt = o.optLong("addedAt", System.currentTimeMillis()),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -372,7 +376,7 @@ object BackupHelper {
                 LocationPhotoEntity(
                     id = o.getString("id"), location = o.getString("location"), uri = o.getString("uri"),
                     label = o.optString("label", ""), takenAt = o.optLong("takenAt", System.currentTimeMillis()),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -383,7 +387,7 @@ object BackupHelper {
             db.manualZoneScheduleDao().upsert(
                 ManualZoneScheduleEntity(
                     id = o.getString("id"), zone = o.getString("zone"),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) },
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId },
                     daysOfWeek = o.getString("daysOfWeek"), startTimeMinutes = o.optInt("startTimeMinutes", 360),
                     durationMinutes = o.getInt("durationMinutes"),
                     createdAt = o.optLong("createdAt", System.currentTimeMillis())
@@ -399,7 +403,7 @@ object BackupHelper {
                     id = o.getString("id"), plantId = o.getString("plantId"), type = o.getString("type"),
                     date = o.getLong("date"), notes = o.optString("notes", ""),
                     updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", 0L),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -410,7 +414,7 @@ object BackupHelper {
             db.waterFlowRateDao().upsert(
                 WaterFlowRateEntity(
                     zone = o.getString("zone"), outlet = o.optString("outlet", "1"), litersPerMinute = o.getDouble("litersPerMinute"),
-                    gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
                 )
             )
         }
@@ -420,32 +424,32 @@ object BackupHelper {
             val o = tuyaArr.getJSONObject(i)
             TuyaZoneMapping(o.getString("zone"), o.getString("deviceId"), o.optString("outlet", "1"))
         }
-        setTuyaZoneMappings(context, tuyaMappings)
-        // Explicit refresh here (not inside setTuyaZoneMappings itself) since a restore is a
+        gardenSettings.tuyaZoneMappings = tuyaMappings
+        // Explicit refresh here (not inside the tuyaZoneMappings setter itself) since a restore is a
         // genuine external change the zone editor should pick up immediately — unlike the editor's
-        // own Save/Fetch-local-key actions, which also call setTuyaZoneMappings but shouldn't reset
+        // own Save/Fetch-local-key actions, which also go through that setter but shouldn't reset
         // the editor's in-progress rows from what they just saved.
-        TuyaZoneMappingState.mappings = tuyaMappings
+        if (gardenId == effectiveGardenId(context)) TuyaZoneMappingState.mappings = tuyaMappings
 
         val rachioArr = root.optJSONArray("rachioZoneMappings") ?: JSONArray()
         val rachioMappings = (0 until rachioArr.length()).map { i ->
             val o = rachioArr.getJSONObject(i)
             RachioZoneMapping(o.getString("zone"), o.getString("deviceId"), o.getString("zoneId"))
         }
-        setRachioZoneMappings(context, rachioMappings)
+        gardenSettings.rachioZoneMappings = rachioMappings
 
         root.optJSONObject("settings")?.let { s ->
             // Restored before Tuya/Rachio credentials (deliberately excluded from backup for
             // security) so the zone-mapping panel just above shows under the right vendor instead
             // of silently defaulting to "None" once those wiped credentials fail the fallback
-            // heuristic in getIrrigationSystem() — which made restored zone mappings look lost.
+            // heuristic in GardenSettings.irrigationSystem — which made restored zone mappings look lost.
             IrrigationSystem.entries.firstOrNull { it.name == s.optString("irrigationSystem", "") }
-                ?.let { setIrrigationSystem(context, it) }
+                ?.let { gardenSettings.irrigationSystem = it }
             setPhotoStorageMode(context, s.optString("photoStorageMode", "local"))
             s.optString("localPhotoFolderUri", "").takeIf { it.isNotBlank() }
                 ?.let { setLocalPhotoFolderUri(context, Uri.parse(it)) }
-            setUsingCustomMap(context, s.optBoolean("usingCustomMap", false))
-            setCustomMapRotation(context, s.optInt("customMapRotation", 0))
+            gardenSettings.usingCustomMap = s.optBoolean("usingCustomMap", false)
+            gardenSettings.customMapRotation = s.optInt("customMapRotation", 0)
             s.optString("dashboardStatKeys", "").split(",").filter { it.isNotBlank() }
                 .let { if (it.isNotEmpty()) setDashboardStatKeys(context, it) }
             setDashboardChartEnabled(context, s.optBoolean("dashboardChartEnabled", true))
@@ -458,28 +462,28 @@ object BackupHelper {
             // Deliberately not restored: the OS permission is never granted on a fresh install/restore,
             // so restoring "enabled" would show a red permission warning the user didn't ask for.
             // Leave it off; they can flip it back on (which re-prompts for permission) if they want it.
-            setNotificationStyle(context, s.optString("notificationStyle", "lockscreen"))
+            deviceReminderSettings(context).notificationStyle = s.optString("notificationStyle", "lockscreen")
             s.optString("notificationOffsets", "0").split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
-                .let { if (it.isNotEmpty()) setNotificationOffsets(context, it) }
-            setNotificationTime(context, s.optInt("notificationHour", 8), s.optInt("notificationMinute", 0))
-            setOverdueRepeatEnabled(context, s.optBoolean("overdueRepeatEnabled", true))
-            setOverdueRepeatDays(context, s.optInt("overdueRepeatDays", 3))
-            setFertiliseRemindersEnabled(context, s.optBoolean("fertiliseRemindersEnabled", false))
-            setPruneRemindersEnabled(context, s.optBoolean("pruneRemindersEnabled", false))
-            setFeedRemindersEnabled(context, s.optBoolean("feedRemindersEnabled", false))
-            setWeatherSkipEnabled(context, s.optBoolean("weatherSkipEnabled", false))
-            setRainProbabilityThreshold(context, s.optInt("rainProbabilityThreshold", 60))
-            setRainAmountThreshold(context, s.optDouble("rainAmountThresholdMm", 1.0).toFloat())
-            setFrostWarningsEnabled(context, s.optBoolean("frostWarningsEnabled", true))
-            setFrostTempThreshold(context, s.optDouble("frostTempThreshold", 2.0))
+                .let { if (it.isNotEmpty()) gardenSettings.notificationOffsets = it }
+            deviceReminderSettings(context).setNotificationTime(s.optInt("notificationHour", 8), s.optInt("notificationMinute", 0))
+            gardenSettings.overdueRepeatEnabled = s.optBoolean("overdueRepeatEnabled", true)
+            gardenSettings.overdueRepeatDays = s.optInt("overdueRepeatDays", 3)
+            gardenSettings.fertiliseRemindersEnabled = s.optBoolean("fertiliseRemindersEnabled", false)
+            gardenSettings.pruneRemindersEnabled = s.optBoolean("pruneRemindersEnabled", false)
+            gardenSettings.feedRemindersEnabled = s.optBoolean("feedRemindersEnabled", false)
+            gardenSettings.weatherSkipEnabled = s.optBoolean("weatherSkipEnabled", false)
+            gardenSettings.rainProbabilityThreshold = s.optInt("rainProbabilityThreshold", 60)
+            gardenSettings.rainAmountThresholdMm = s.optDouble("rainAmountThresholdMm", 1.0).toFloat()
+            gardenSettings.frostWarningsEnabled = s.optBoolean("frostWarningsEnabled", true)
+            gardenSettings.frostTempThreshold = s.optDouble("frostTempThreshold", 2.0)
             setWaterRatePerKiloliter(context, s.optDouble("waterRatePerKiloliter", getWaterRatePerKiloliter(context)))
             if (!s.isNull("gardenLat") && !s.isNull("gardenLng")) {
-                setGardenLatLng(context, s.optDouble("gardenLat"), s.optDouble("gardenLng"))
+                gardenSettings.setLatLng(s.optDouble("gardenLat"), s.optDouble("gardenLng"))
             }
-            setGardenAddress(context, s.optString("gardenAddress", ""))
+            gardenSettings.address = s.optString("gardenAddress", "")
             if (!s.isNull("gardenLocations")) {
                 val arr = s.optJSONArray("gardenLocations") ?: JSONArray()
-                setGardenLocations(context, (0 until arr.length()).map { arr.getString(it) })
+                gardenSettings.locations = (0 until arr.length()).map { arr.getString(it) }
             }
             s.optString("irrigationLogFolderUri", "").takeIf { it.isNotBlank() }
                 ?.let { setIrrigationLogFolderUri(context, Uri.parse(it)) }
@@ -570,13 +574,15 @@ object BackupHelper {
         plants: List<PlantEntity>,
         paths: List<IrrigationPathEntity>,
         events: List<WateringEvent>,
-        jsonFileName: String = BACKUP_JSON_FILENAME
+        jsonFileName: String = BACKUP_JSON_FILENAME,
+        /** Which garden this backs up / restores into — the one on screen unless a caller says otherwise. */
+        gardenId: String = effectiveGardenId(context)
     ): BackupResult = withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext BackupResult(false, "Dropbox isn't connected")
             val folderPath = getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: ""
             val mapFileNameBase = jsonFileName.removeSuffix(".json") + "_map"
-            val payload = buildBackupPayload(context, plants, paths, events, mapFileNameBase)
+            val payload = buildBackupPayload(context, gardenId, plants, paths, events, mapFileNameBase)
 
             // WriteMode.OVERWRITE replaces a same-named file in place instead of the default ADD
             // mode, which throws a conflict error rather than actually overwriting — matters for the
@@ -601,11 +607,13 @@ object BackupHelper {
         plants: List<PlantEntity>,
         paths: List<IrrigationPathEntity>,
         events: List<WateringEvent>,
-        folderUri: Uri
+        folderUri: Uri,
+        /** Which garden this backs up / restores into — the one on screen unless a caller says otherwise. */
+        gardenId: String = effectiveGardenId(context)
     ): BackupResult = withContext(Dispatchers.IO) {
         try {
             val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return@withContext BackupResult(false, "Couldn't open the chosen folder")
-            val payload = buildBackupPayload(context, plants, paths, events)
+            val payload = buildBackupPayload(context, gardenId, plants, paths, events)
 
             if (payload.mapBytes != null && payload.mapFileName != null) {
                 val mimeType = when {
@@ -643,7 +651,9 @@ object BackupHelper {
         pathViewModel: IrrigationPathViewModel,
         wateringViewModel: WateringZoneViewModel,
         jsonFileName: String = BACKUP_JSON_FILENAME,
-        forceFresh: Boolean = false
+        forceFresh: Boolean = false,
+        /** Which garden this backs up / restores into — the one on screen unless a caller says otherwise. */
+        gardenId: String = effectiveGardenId(context)
     ): RestoreResult = withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext RestoreResult(false, "Dropbox isn't connected")
@@ -657,7 +667,7 @@ object BackupHelper {
                 return@withContext RestoreResult(false, "No backup found in this Dropbox folder")
             }
             val root = JSONObject(out.toString("UTF-8"))
-            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
+            val counts = applyBackupRoot(context, gardenId, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
 
             val mapFileName = if (root.isNull("customMapFileName")) null else root.optString("customMapFileName")
             if (!mapFileName.isNullOrBlank()) {
@@ -667,7 +677,7 @@ object BackupHelper {
                     client.files().download(mapPath).download(mapOut)
                     val localFile = File(context.filesDir, mapFileName)
                     localFile.writeBytes(mapOut.toByteArray())
-                    setCustomMapUri(context, Uri.fromFile(localFile))
+                    GardenSettings.of(context, gardenId).customMapUri = Uri.fromFile(localFile)
                 } catch (_: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
             }
 
@@ -688,7 +698,9 @@ object BackupHelper {
         pathViewModel: IrrigationPathViewModel,
         wateringViewModel: WateringZoneViewModel,
         folderUri: Uri,
-        forceFresh: Boolean = false
+        forceFresh: Boolean = false,
+        /** Which garden this backs up / restores into — the one on screen unless a caller says otherwise. */
+        gardenId: String = effectiveGardenId(context)
     ): RestoreResult = withContext(Dispatchers.IO) {
         try {
             val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return@withContext RestoreResult(false, "Couldn't open the chosen folder")
@@ -696,7 +708,7 @@ object BackupHelper {
             val text = context.contentResolver.openInputStream(jsonFile.uri)?.use { it.bufferedReader().readText() }
                 ?: return@withContext RestoreResult(false, "Couldn't read the backup file")
             val root = JSONObject(text)
-            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
+            val counts = applyBackupRoot(context, gardenId, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
 
             val mapFileName = if (root.isNull("customMapFileName")) null else root.optString("customMapFileName")
             if (!mapFileName.isNullOrBlank()) {
@@ -706,7 +718,7 @@ object BackupHelper {
                         if (bytes != null) {
                             val localFile = File(context.filesDir, mapFileName)
                             localFile.writeBytes(bytes)
-                            setCustomMapUri(context, Uri.fromFile(localFile))
+                            GardenSettings.of(context, gardenId).customMapUri = Uri.fromFile(localFile)
                         }
                     } catch (_: Exception) { /* map missing or unreachable — rest of restore still succeeds */ }
                 }
@@ -753,7 +765,7 @@ object BackupHelper {
         events: List<WateringEvent>
     ): BackupResult = withContext(Dispatchers.IO) {
         try {
-            val payload = buildBackupPayload(context, plants, paths, events)
+            val payload = buildBackupPayload(context, gardenId, plants, paths, events)
             File(localAutoBackupDir(context, gardenId), "${autoBackupWeekday()}.json").writeText(payload.root.toString())
             BackupResult(true, "Auto-backup complete — ${payload.counts.summary()}")
         } catch (e: Exception) {
@@ -785,7 +797,7 @@ object BackupHelper {
             val file = File(localAutoBackupDir(context, gardenId), "$weekday.json")
             if (!file.exists()) return@withContext RestoreResult(false, "That auto-backup no longer exists")
             val root = JSONObject(file.readText())
-            val counts = applyBackupRoot(context, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
+            val counts = applyBackupRoot(context, gardenId, root, viewModel, pathViewModel, wateringViewModel, forceFresh)
             if (forceFresh) {
                 GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
             }

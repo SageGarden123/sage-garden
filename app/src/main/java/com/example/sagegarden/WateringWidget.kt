@@ -262,7 +262,7 @@ private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLo
     val gardenIds = config.selectedGardenIds.ifEmpty { allKnownGardenIds(context).toSet() }
     val plantDao = AppDatabase.getInstance(context).plantDao()
     val allPlants = gardenIds.flatMap { plantDao.getAllOnceForGarden(it) }
-    val hemisphereByGarden = gardenIds.associateWith { getHemisphereFor(context, it) }
+    val hemisphereByGarden = gardenIds.associateWith { GardenSettings.of(context, it).hemisphere }
     // Only worth labelling rows by garden when more than one is actually in scope — a single-garden
     // widget (or one explicitly narrowed to one garden) renders exactly as it always did.
     val gardenNameById = if (gardenIds.size > 1) knownGardensIncludingOwn(context).associate { it.gardenId to it.name } else emptyMap()

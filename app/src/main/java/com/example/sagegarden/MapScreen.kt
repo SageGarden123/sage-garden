@@ -81,8 +81,8 @@ fun MapScreen(
     val categoryFilteredPlants = remember(plants, mapCategoryFilter) {
         if (mapCategoryFilter == "All") plants else plants.filter { it.category == mapCategoryFilter }
     }
-    val gardenLatLng = remember { getGardenLatLng(context) }
-    val savedCamera = remember { getMapCameraPosition(context) }
+    val gardenLatLng = remember { GardenSettings.active(context).latLng }
+    val savedCamera = remember { GardenSettings.active(context).mapCameraPosition }
     val cameraPositionState = rememberCameraPositionState {
         position = when {
             savedCamera != null -> CameraPosition.fromLatLngZoom(LatLng(savedCamera.first, savedCamera.second), savedCamera.third)
@@ -114,7 +114,7 @@ fun MapScreen(
         if (!cameraPositionState.isMoving) {
             if (hasSettledOnce) {
                 val pos = cameraPositionState.position
-                setMapCameraPosition(context, pos.target.latitude, pos.target.longitude, pos.zoom)
+                GardenSettings.active(context).setMapCameraPosition(pos.target.latitude, pos.target.longitude, pos.zoom)
             } else {
                 hasSettledOnce = true
             }
@@ -345,7 +345,7 @@ fun MapTabScreen(
     // garden — showing them while viewing a garden you don't own would just surface YOUR OWN
     // unrelated drawing/zones, not the owner's, so they're hidden entirely for a non-owner.
     val canManageMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) } && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)
-    val hasCustomMap = canManageMap && remember(ActiveGardenState.activeGardenId) { getCustomMapUri(context) != null }
+    val hasCustomMap = canManageMap && remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).customMapUri != null }
     var showingCustom by remember { mutableStateOf(startOnCustom && hasCustomMap) }
 
     Column(Modifier.fillMaxSize()) {
@@ -509,7 +509,7 @@ fun CustomMapScreen(
     val scope = rememberCoroutineScope()
     val plants by viewModel.filteredPlants.collectAsState()
     val paths by pathViewModel.paths.collectAsState()
-    val mapUri = remember { getCustomMapUri(context) }
+    val mapUri = remember { GardenSettings.active(context).customMapUri }
     var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val density = LocalDensity.current
 
@@ -734,7 +734,7 @@ fun CustomMapScreen(
                     translationX = panOffset.x, translationY = panOffset.y
                 )
         ) {
-            val mapRotation = remember { getCustomMapRotation(context) }
+            val mapRotation = remember { GardenSettings.active(context).customMapRotation }
             AsyncImage(
                 model = ImageRequest.Builder(context).data(mapUri).transformations(RotateTransformation(mapRotation.toFloat())).build(),
                 contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit

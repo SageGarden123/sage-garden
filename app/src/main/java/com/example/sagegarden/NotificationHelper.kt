@@ -91,7 +91,7 @@ object NotificationHelper {
     }
 
     private fun postCareNotification(context: Context, notificationId: Int, title: String, body: String, type: String) {
-        val style = getNotificationStyle(context)
+        val style = deviceReminderSettings(context).notificationStyle
         val channelId = if (style == "popup" || style == "both") CHANNEL_POPUP else CHANNEL_LOCKSCREEN
 
         val openIntent = Intent(context, MainActivity::class.java).apply {

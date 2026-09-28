@@ -288,7 +288,7 @@ fun GardenMapperApp() {
                     onMarkerClick = { id -> navController.navigate("form_edit/$id") },
                     onAddPlantAtLatLng = { lat, lng -> navController.navigate("form_new?lat=$lat&lng=$lng") },
                     onAddPlantAtFraction = { x, y -> navController.navigate("form_new?mapX=$x&mapY=$y") },
-                    startOnCustom = isUsingCustomMap(context),
+                    startOnCustom = GardenSettings.active(context).usingCustomMap,
                     onOpenSunMap = { navController.navigate("sunmap") },
                     onNavigateToHelp = { navController.navigate("help") }
                 )

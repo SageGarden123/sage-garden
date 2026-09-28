@@ -535,7 +535,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             Spacer(Modifier.height(10.dp))
 
             if (filtered.isEmpty()) {
-                val irrigationSystemName = when (getIrrigationSystem(context)) {
+                val irrigationSystemName = when (GardenSettings.active(context).irrigationSystem) {
                     IrrigationSystem.RACHIO -> "Rachio"
                     else -> "Tuya"
                 }

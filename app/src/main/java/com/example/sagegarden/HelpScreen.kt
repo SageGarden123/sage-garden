@@ -157,13 +157,13 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                                     val latLng = response.place.location
                                     if (latLng != null) {
                                         gardenCoords = latLng.latitude to latLng.longitude
-                                        setGardenLatLng(context, latLng.latitude, latLng.longitude)
+                                        GardenSettings.active(context).setLatLng(latLng.latitude, latLng.longitude)
                                         scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
                                     }
                                 }
                                 gardenSessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
                                 gardenAddressQuery = prediction.getFullText(null).toString()
-                                setGardenAddress(context, gardenAddressQuery); GardenSettingsEdits.count++
+                                GardenSettings.active(context).address = gardenAddressQuery; GardenSettingsEdits.count++
                                 gardenAddressEditedByUser = false
                                 gardenPredictions = emptyList()
                             }.padding(12.dp),
@@ -176,9 +176,9 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                             text = address.getAddressLine(0) ?: "Unknown address",
                             modifier = Modifier.fillMaxWidth().clickable {
                                 gardenCoords = address.latitude to address.longitude
-                                setGardenLatLng(context, address.latitude, address.longitude)
+                                GardenSettings.active(context).setLatLng(address.latitude, address.longitude)
                                 gardenAddressQuery = address.getAddressLine(0) ?: ""
-                                setGardenAddress(context, gardenAddressQuery); GardenSettingsEdits.count++
+                                GardenSettings.active(context).address = gardenAddressQuery; GardenSettingsEdits.count++
                                 gardenAddressEditedByUser = false
                                 gardenGeocoderPredictions = emptyList()
                                 scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
@@ -196,7 +196,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
             OutlinedButton(
                 onClick = {
                     val coords = gardenCoords!!
-                    setMapCameraPosition(context, coords.first, coords.second, 20f)
+                    GardenSettings.active(context).setMapCameraPosition(coords.first, coords.second, 20f)
                     scope.launch { snackbarHostState.showSnackbar("Map position reset — reopen the Map tab to see it") }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -220,14 +220,14 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
             Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = Color.Gray)
             Spacer(Modifier.height(6.dp))
         }
-        var gardenLocations by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getOrSeedGardenLocations(context, plants)) }
+        var gardenLocations by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).getOrSeedLocations(plants)) }
         var newLocationText by remember { mutableStateOf("") }
         var renamingIndex by remember { mutableStateOf(-1) }
         var renameText by remember { mutableStateOf("") }
 
         // Same reactive-staleness fix as GardenAddressSection above — picks up a sync landing after
         // this section already composed with a stale/seeded snapshot. Harmless for the owner too:
-        // their own add/rename/remove already calls setGardenLocations synchronously, so this just
+        // their own add/rename/remove already writes GardenSettings.locations synchronously, so this just
         // echoes back the value they set.
         LaunchedEffect(GardenAddressState.locations) {
             GardenAddressState.locations?.let { gardenLocations = it }
@@ -240,7 +240,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                     TextButton(onClick = {
                         if (renameText.isNotBlank()) {
                             gardenLocations = gardenLocations.toMutableList().also { it[index] = renameText.trim() }
-                            setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
+                            GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
                         }
                         renamingIndex = -1
                     }) { Text("Save") }
@@ -253,7 +253,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                         TextButton(onClick = { renamingIndex = index; renameText = loc }) { Text("Rename", fontSize = 11.sp) }
                         TextButton(onClick = {
                             gardenLocations = gardenLocations.filterIndexed { i, _ -> i != index }
-                            setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
+                            GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
                         }) { Text("Remove", fontSize = 11.sp, color = Color(0xFFB23B3B)) }
                     }
                 }
@@ -274,7 +274,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                 val trimmed = newLocationText.trim()
                 if (trimmed.isNotBlank() && trimmed !in gardenLocations) {
                     gardenLocations = gardenLocations + trimmed
-                    setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
+                    GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
                 }
                 newLocationText = ""
             }) { Text("Add") }
@@ -893,7 +893,7 @@ fun HelpScreen(
         mutableStateListOf(*(if (initial.isEmpty()) listOf(Triple("", "", "1")) else initial).toTypedArray())
     }
     val rachioZoneRows = remember(ActiveGardenState.activeGardenId) {
-        val initial = getRachioZoneMappings(context).map { Triple(it.zone, it.deviceId, it.zoneId) }
+        val initial = GardenSettings.active(context).rachioZoneMappings.map { Triple(it.zone, it.deviceId, it.zoneId) }
         mutableStateListOf(*(if (initial.isEmpty()) listOf(Triple("", "", "")) else initial).toTypedArray())
     }
     val irrigationEvents by wateringViewModel.events.collectAsState()
@@ -1040,11 +1040,11 @@ fun HelpScreen(
             Text("Get reminded when your plants require care.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
 
-            var notifsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getNotificationsEnabled(context)) }
-            var notifStyle by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getNotificationStyle(context)) }
-            var notifOffsets by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getNotificationOffsets(context)) }
-            var notifHour by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getNotificationHour(context)) }
-            var notifMinute by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getNotificationMinute(context)) }
+            var notifsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).notificationsEnabled) }
+            var notifStyle by remember { mutableStateOf(deviceReminderSettings(context).notificationStyle) }
+            var notifOffsets by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).notificationOffsets) }
+            var notifHour by remember { mutableStateOf(deviceReminderSettings(context).notificationHour) }
+            var notifMinute by remember { mutableStateOf(deviceReminderSettings(context).notificationMinute) }
             var hasNotifPermission by remember {
                 mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
             }
@@ -1058,7 +1058,7 @@ fun HelpScreen(
                 Text("Enable notifications", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = notifsEnabled, onCheckedChange = { checked ->
                     notifsEnabled = checked
-                    setNotificationsEnabled(context, checked)
+                    GardenSettings.active(context).notificationsEnabled = checked
                     if (checked) {
                         scheduleWateringReminders(context)
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
@@ -1095,7 +1095,7 @@ fun HelpScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("lockscreen" to "Lock screen", "popup" to "Pop-up", "both" to "Both").forEach { (key, label) ->
                         Button(
-                            onClick = { notifStyle = key; setNotificationStyle(context, key) },
+                            onClick = { notifStyle = key; deviceReminderSettings(context).notificationStyle = key },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (notifStyle == key) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                                 contentColor = if (notifStyle == key) Color.White else Color.Black
@@ -1114,12 +1114,12 @@ fun HelpScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().clickable {
                             val updated = (if (checked) notifOffsets - days else notifOffsets + days).ifEmpty { setOf(0) }
-                            notifOffsets = updated; setNotificationOffsets(context, updated)
+                            notifOffsets = updated; GardenSettings.active(context).notificationOffsets = updated
                         }.padding(vertical = 4.dp)
                     ) {
                         Checkbox(checked = checked, onCheckedChange = {
                             val updated = (if (checked) notifOffsets - days else notifOffsets + days).ifEmpty { setOf(0) }
-                            notifOffsets = updated; setNotificationOffsets(context, updated)
+                            notifOffsets = updated; GardenSettings.active(context).notificationOffsets = updated
                         })
                         Text(label, fontSize = 13.sp)
                     }
@@ -1130,12 +1130,12 @@ fun HelpScreen(
                 Spacer(Modifier.height(12.dp))
                 Text("Overdue repeat reminders", fontSize = 12.sp, color = Color.Gray)
                 Spacer(Modifier.height(6.dp))
-                var overdueRepeatEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getOverdueRepeatEnabled(context)) }
-                var overdueRepeatDaysText by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getOverdueRepeatDays(context).toString()) }
+                var overdueRepeatEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatEnabled) }
+                var overdueRepeatDaysText by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatDays.toString()) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Keep reminding while overdue", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = overdueRepeatEnabled, onCheckedChange = {
-                        overdueRepeatEnabled = it; setOverdueRepeatEnabled(context, it)
+                        overdueRepeatEnabled = it; GardenSettings.active(context).overdueRepeatEnabled = it
                     })
                 }
                 if (overdueRepeatEnabled) {
@@ -1144,7 +1144,7 @@ fun HelpScreen(
                         value = overdueRepeatDaysText,
                         onValueChange = { new ->
                             overdueRepeatDaysText = new.filter { it.isDigit() }
-                            overdueRepeatDaysText.toIntOrNull()?.let { setOverdueRepeatDays(context, it) }
+                            overdueRepeatDaysText.toIntOrNull()?.let { GardenSettings.active(context).overdueRepeatDays = it }
                         },
                         label = { Text("Repeat every (days)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1156,25 +1156,25 @@ fun HelpScreen(
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
-                var fertiliseReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFertiliseRemindersEnabled(context)) }
-                var pruneReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getPruneRemindersEnabled(context)) }
-                var feedReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFeedRemindersEnabled(context)) }
-                var progressPhotoReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getProgressPhotoRemindersEnabled(context)) }
+                var fertiliseReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).fertiliseRemindersEnabled) }
+                var pruneReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).pruneRemindersEnabled) }
+                var feedReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).feedRemindersEnabled) }
+                var progressPhotoReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).progressPhotoRemindersEnabled) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Include fertilising reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = fertiliseReminders, onCheckedChange = { fertiliseReminders = it; setFertiliseRemindersEnabled(context, it) })
+                    Switch(checked = fertiliseReminders, onCheckedChange = { fertiliseReminders = it; GardenSettings.active(context).fertiliseRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Include pruning reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = pruneReminders, onCheckedChange = { pruneReminders = it; setPruneRemindersEnabled(context, it) })
+                    Switch(checked = pruneReminders, onCheckedChange = { pruneReminders = it; GardenSettings.active(context).pruneRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Include feeding reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = feedReminders, onCheckedChange = { feedReminders = it; setFeedRemindersEnabled(context, it) })
+                    Switch(checked = feedReminders, onCheckedChange = { feedReminders = it; GardenSettings.active(context).feedRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Remind me to add progress photos (every 3 months per zone)", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = progressPhotoReminders, onCheckedChange = { progressPhotoReminders = it; setProgressPhotoRemindersEnabled(context, it) })
+                    Switch(checked = progressPhotoReminders, onCheckedChange = { progressPhotoReminders = it; GardenSettings.active(context).progressPhotoRemindersEnabled = it })
                 }
 
                 Spacer(Modifier.height(10.dp))
@@ -1196,7 +1196,7 @@ fun HelpScreen(
                                     Button(
                                         onClick = {
                                             notifHour = timeState.hour; notifMinute = timeState.minute
-                                            setNotificationTime(context, notifHour, notifMinute)
+                                            deviceReminderSettings(context).setNotificationTime(notifHour, notifMinute)
                                             scheduleWateringReminders(context)
                                             showTimeDialog = false
                                         },
@@ -1213,22 +1213,22 @@ fun HelpScreen(
             ExpandableSection(title = "Hemisphere") {
             Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
-            val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { getGardenLatLng(context) != null }
+            val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).latLng != null }
             if (gardenHasAddress) {
-                val hemisphere = remember(ActiveGardenState.activeGardenId) { getHemisphere(context) }
+                val hemisphere = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).hemisphere }
                 Text(
                     "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3A5A40)
                 )
                 Text("Set a different garden address above to change this.", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
             } else {
-                var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getHemisphere(context)) }
+                var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).hemisphere) }
                 Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = Color.Gray)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
                         Button(
-                            onClick = { hemisphere = value; setHemisphere(context, value) },
+                            onClick = { hemisphere = value; GardenSettings.active(context).hemisphereFallback = value },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (hemisphere == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                                 contentColor = if (hemisphere == value) Color.White else Color.Black
@@ -1245,22 +1245,22 @@ fun HelpScreen(
             Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
 
-            var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getWeatherSkipEnabled(context)) }
-            var rainThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRainProbabilityThreshold(context)) }
-            val hasGardenAddress = remember(ActiveGardenState.activeGardenId, GardenAddressState.latLng) { getGardenLatLng(context) != null }
+            var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).weatherSkipEnabled) }
+            var rainThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rainProbabilityThreshold) }
+            val hasGardenAddress = remember(ActiveGardenState.activeGardenId, GardenAddressState.latLng) { GardenSettings.active(context).latLng != null }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; setWeatherSkipEnabled(context, it) })
+                Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; GardenSettings.active(context).weatherSkipEnabled = it })
             }
             if (!hasGardenAddress) {
                 Text("Set your garden address above (Garden address) to use this.", fontSize = 11.sp, color = Color.Gray)
             }
-            var frostWarningsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFrostWarningsEnabled(context)) }
-            var frostThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getFrostTempThreshold(context).toFloat()) }
+            var frostWarningsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostWarningsEnabled) }
+            var frostThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostTempThreshold.toFloat()) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Warn about frost risk for tender outdoor plants", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Switch(checked = frostWarningsEnabled, onCheckedChange = { frostWarningsEnabled = it; setFrostWarningsEnabled(context, it) })
+                Switch(checked = frostWarningsEnabled, onCheckedChange = { frostWarningsEnabled = it; GardenSettings.active(context).frostWarningsEnabled = it })
             }
             if (frostWarningsEnabled) {
                 Spacer(Modifier.height(8.dp))
@@ -1268,7 +1268,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(4.dp))
                 Slider(
                     value = frostThreshold, onValueChange = { frostThreshold = it },
-                    onValueChangeFinished = { setFrostTempThreshold(context, frostThreshold.toDouble()) },
+                    onValueChangeFinished = { GardenSettings.active(context).frostTempThreshold = frostThreshold.toDouble() },
                     valueRange = -5f..8f, steps = 12
                 )
             }
@@ -1279,12 +1279,12 @@ fun HelpScreen(
                     Spacer(Modifier.height(4.dp))
                     Slider(
                         value = rainThreshold.toFloat(), onValueChange = { rainThreshold = it.toInt() },
-                        onValueChangeFinished = { setRainProbabilityThreshold(context, rainThreshold) },
+                        onValueChangeFinished = { GardenSettings.active(context).rainProbabilityThreshold = rainThreshold },
                         valueRange = 10f..100f, steps = 8
                     )
 
                     Spacer(Modifier.height(8.dp))
-                    var rainAmountThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRainAmountThreshold(context)) }
+                    var rainAmountThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rainAmountThresholdMm) }
                     Text(
                         "And at least ${"%.1f".format(rainAmountThreshold)}mm forecast (filters out high-probability drizzle)",
                         fontSize = 12.sp, color = Color.Gray
@@ -1292,7 +1292,7 @@ fun HelpScreen(
                     Spacer(Modifier.height(4.dp))
                     Slider(
                         value = rainAmountThreshold, onValueChange = { rainAmountThreshold = it },
-                        onValueChangeFinished = { setRainAmountThreshold(context, rainAmountThreshold) },
+                        onValueChangeFinished = { GardenSettings.active(context).rainAmountThresholdMm = rainAmountThreshold },
                         valueRange = 0f..20f, steps = 39
                     )
                 }
@@ -1437,13 +1437,13 @@ fun HelpScreen(
         // Also device-wide/owner-only, same reasoning as Photos & cloud storage above.
         if (isGardenOwner && FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
         ExpandableSection(title = "Irrigation") {
-            var irrigationSystem by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getIrrigationSystem(context)) }
+            var irrigationSystem by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).irrigationSystem) }
             Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(IrrigationSystem.NONE to "None", IrrigationSystem.TUYA to "Tuya", IrrigationSystem.RACHIO to "Rachio").forEach { (value, label) ->
                     Button(
-                        onClick = { irrigationSystem = value; setIrrigationSystem(context, value) },
+                        onClick = { irrigationSystem = value; GardenSettings.active(context).irrigationSystem = value },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (irrigationSystem == value) Color(0xFF3A5A40) else Color(0xFFE3DDCF),
                             contentColor = if (irrigationSystem == value) Color.White else Color.Black
@@ -1458,10 +1458,10 @@ fun HelpScreen(
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             if (irrigationSystem == IrrigationSystem.TUYA) {
-            var tuyaClientId by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getTuyaClientId(context)) }
-            var tuyaClientSecret by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getTuyaClientSecret(context)) }
+            var tuyaClientId by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).tuyaClientId) }
+            var tuyaClientSecret by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).tuyaClientSecret) }
             var tuyaSecretVisible by remember { mutableStateOf(false) }
-            var tuyaEditing by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getTuyaClientId(context).isBlank() || getTuyaClientSecret(context).isBlank()) }
+            var tuyaEditing by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).tuyaClientId.isBlank() || GardenSettings.active(context).tuyaClientSecret.isBlank()) }
 
             Text("Tuya connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
@@ -1501,8 +1501,8 @@ fun HelpScreen(
             if (tuyaEditing) {
                 Button(
                     onClick = {
-                        setTuyaClientId(context, tuyaClientId)
-                        setTuyaClientSecret(context, tuyaClientSecret)
+                        GardenSettings.active(context).tuyaClientId = tuyaClientId
+                        GardenSettings.active(context).tuyaClientSecret = tuyaClientSecret
                         TuyaClient.invalidateToken()
                         tuyaEditing = false
                     },
@@ -1545,7 +1545,7 @@ fun HelpScreen(
                 Button(
                     onClick = {
                         val mappings = zoneRows.filter { it.first.isNotBlank() && it.second.isNotBlank() }.map { TuyaZoneMapping(it.first, it.second, it.third) }
-                        setTuyaZoneMappings(context, mappings)
+                        GardenSettings.active(context).tuyaZoneMappings = mappings
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -1553,7 +1553,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
-                        zoneRows.clear(); zoneRows.add(Triple("", "", "1")); setTuyaZoneMappings(context, emptyList())
+                        zoneRows.clear(); zoneRows.add(Triple("", "", "1")); GardenSettings.active(context).tuyaZoneMappings = emptyList()
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -1563,9 +1563,9 @@ fun HelpScreen(
             }
 
             if (irrigationSystem == IrrigationSystem.RACHIO) {
-            var rachioApiToken by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRachioApiToken(context)) }
+            var rachioApiToken by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rachioApiToken) }
             var rachioTokenVisible by remember { mutableStateOf(false) }
-            var rachioEditing by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getRachioApiToken(context).isBlank()) }
+            var rachioEditing by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rachioApiToken.isBlank()) }
             var rachioTesting by remember { mutableStateOf(false) }
             var rachioTestResult by remember { mutableStateOf<String?>(null) }
 
@@ -1598,7 +1598,7 @@ fun HelpScreen(
             if (rachioEditing) {
                 Button(
                     onClick = {
-                        setRachioApiToken(context, rachioApiToken)
+                        GardenSettings.active(context).rachioApiToken = rachioApiToken
                         rachioEditing = false
                         rachioTestResult = null
                     },
@@ -1657,7 +1657,7 @@ fun HelpScreen(
                 Button(
                     onClick = {
                         val mappings = rachioZoneRows.filter { it.first.isNotBlank() && it.second.isNotBlank() && it.third.isNotBlank() }.map { RachioZoneMapping(it.first, it.second, it.third) }
-                        setRachioZoneMappings(context, mappings)
+                        GardenSettings.active(context).rachioZoneMappings = mappings
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -1665,7 +1665,7 @@ fun HelpScreen(
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
-                        rachioZoneRows.clear(); rachioZoneRows.add(Triple("", "", "")); setRachioZoneMappings(context, emptyList())
+                        rachioZoneRows.clear(); rachioZoneRows.add(Triple("", "", "")); GardenSettings.active(context).rachioZoneMappings = emptyList()
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping cleared") }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -1721,7 +1721,7 @@ fun HelpScreen(
             Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync watering history") }
             syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
             // Re-read whenever a manual sync finishes (syncing flips back to false) or the garden changes.
-            val lastIrrigationSyncAt = remember(ActiveGardenState.activeGardenId, syncing) { getLastIrrigationSyncAt(context, effectiveGardenId(context)) }
+            val lastIrrigationSyncAt = remember(ActiveGardenState.activeGardenId, syncing) { GardenSettings.of(context, effectiveGardenId(context)).lastIrrigationSyncAt }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Also syncs automatically every $IRRIGATION_AUTO_SYNC_DAYS days in the background." +
@@ -1862,12 +1862,12 @@ fun HelpScreen(
             Text("Upload a hand-drawn or custom image of your garden instead of using the real-world map.", fontSize = 12.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
 
-            var customMapUri by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getCustomMapUri(context)) }
-            var useCustomMap by remember(ActiveGardenState.activeGardenId) { mutableStateOf(isUsingCustomMap(context)) }
+            var customMapUri by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapUri) }
+            var useCustomMap by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).usingCustomMap) }
             val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
                     try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-                    setCustomMapUri(context, uri); customMapUri = uri
+                    GardenSettings.active(context).customMapUri = uri; customMapUri = uri
                 }
             }
             OutlinedButton(onClick = { mapImageLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
@@ -1877,16 +1877,16 @@ fun HelpScreen(
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Use custom map instead of real-world map", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = useCustomMap, onCheckedChange = { useCustomMap = it; setUsingCustomMap(context, it) })
+                    Switch(checked = useCustomMap, onCheckedChange = { useCustomMap = it; GardenSettings.active(context).usingCustomMap = it })
                 }
                 Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(10.dp))
-                var mapRotationDeg by remember(ActiveGardenState.activeGardenId) { mutableStateOf(getCustomMapRotation(context)) }
+                var mapRotationDeg by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapRotation) }
                 Text("Orientation", fontSize = 12.sp, color = Color.Gray)
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = {
                         mapRotationDeg = (mapRotationDeg + 90) % 360
-                        setCustomMapRotation(context, mapRotationDeg)
+                        GardenSettings.active(context).customMapRotation = mapRotationDeg
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Rotate 90° (currently ${mapRotationDeg}°)") }
@@ -1896,7 +1896,7 @@ fun HelpScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
-                    onClick = { setCustomMapUri(context, null); setUsingCustomMap(context, false); customMapUri = null; useCustomMap = false },
+                    onClick = { GardenSettings.active(context).customMapUri = null; GardenSettings.active(context).usingCustomMap = false; customMapUri = null; useCustomMap = false },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB23B3B))
                 ) { Text("Clear custom map") }

@@ -23,24 +23,3 @@ fun setPhotoStorageMode(context: Context, mode: String) {
     prefs.edit().putString("photo_storage_mode", mode).apply()
 }
 
-/**
- * Which map image/rotation/on-off-toggle is in effect — per-garden, via the same
- * gardenScopedString/Boolean/Int helpers (defined below) used for hemisphere/notification settings,
- * so switching gardens in Help swaps to that garden's own drawing instead of showing garden A's
- * custom map while looking at garden B's plants.
- */
-fun getCustomMapUri(context: Context): Uri? {
-    val raw = gardenScopedString(context, "custom_map_uri", "")
-    return raw.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-}
-fun setCustomMapUri(context: Context, uri: Uri?) {
-    setGardenScopedString(context, "custom_map_uri", uri?.toString() ?: "")
-}
-fun isUsingCustomMap(context: Context): Boolean = gardenScopedBoolean(context, "use_custom_map", false)
-fun getCustomMapRotation(context: Context): Int = gardenScopedInt(context, "custom_map_rotation", 0)
-fun setCustomMapRotation(context: Context, degrees: Int) {
-    setGardenScopedInt(context, "custom_map_rotation", ((degrees % 360) + 360) % 360)
-}
-fun setUsingCustomMap(context: Context, value: Boolean) {
-    setGardenScopedBoolean(context, "use_custom_map", value)
-}

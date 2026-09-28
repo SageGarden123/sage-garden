@@ -42,7 +42,7 @@ data class WateringStatus(val nextDueMillis: Long?, val label: String) {
  * Dec/Jan/Feb = summer + Jun/Jul/Aug = winter for a Southern-hemisphere garden, flipped for a
  * Northern-hemisphere one (Help → Weather-aware reminders); else base frequency. [hemisphere]
  * defaults to the live [HemisphereState] singleton, which is correct for any Compose call site —
- * a background caller with no composition (the reminder worker) should pass [getHemisphere]'s
+ * a background caller with no composition (the reminder worker) should pass GardenSettings.of(context, gardenId).hemisphere's
  * result explicitly instead, since the singleton may not be synced yet in a cold-started process.
  */
 fun effectiveWateringFrequencyDays(plant: PlantEntity, nowMillis: Long = System.currentTimeMillis(), hemisphere: Hemisphere = HemisphereState.value): Int? {
@@ -112,11 +112,33 @@ fun dueProgressPhotoZones(plants: List<PlantEntity>, photos: List<LocationPhotoE
     }.sorted()
 }
 
-fun getFrostWarningsEnabled(context: Context): Boolean = gardenScopedBoolean(context, "frost_warnings_enabled", true)
-fun setFrostWarningsEnabled(context: Context, value: Boolean) = setGardenScopedBoolean(context, "frost_warnings_enabled", value)
-fun getFrostWarningsEnabledFor(context: Context, gardenId: String): Boolean =
-    gardenScopedBoolean(context, "frost_warnings_enabled", true, gardenIdOverride = gardenId)
-fun getFrostTempThreshold(context: Context): Double = gardenScopedFloat(context, "frost_temp_threshold", 2.0f).toDouble()
-fun setFrostTempThreshold(context: Context, value: Double) = setGardenScopedFloat(context, "frost_temp_threshold", value.toFloat())
-fun getFrostTempThresholdFor(context: Context, gardenId: String): Double =
-    gardenScopedFloat(context, "frost_temp_threshold", 2.0f, gardenIdOverride = gardenId).toDouble()
+/**
+ * Which due zones should actually trigger a notification TODAY — as opposed to [dueProgressPhotoZones],
+ * which lists everything currently due (for the details screen). Without this, a due zone notified
+ * every single day until a photo was taken. Now each zone notifies on the day it becomes due, then
+ * again only on the garden's own overdue-repeat cadence ("remind me again every N days"), or never
+ * again if overdue repeats are off — the same rule watering reminders follow.
+ *
+ * A zone that has never had a progress photo becomes due on [enabledAt] (when reminders were switched
+ * on), so enabling the feature gives one prompt per zone rather than a daily one. [enabledAt] of 0
+ * means it was enabled before that was recorded; the caller stamps it on first use.
+ */
+fun progressPhotoZonesToNotify(
+    plants: List<PlantEntity>,
+    photos: List<LocationPhotoEntity>,
+    now: Long,
+    enabledAt: Long,
+    overdueRepeatEnabled: Boolean,
+    overdueRepeatDays: Int
+): List<String> {
+    val dayMs = 86_400_000L
+    val zones = plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+    val lastPhotoByZone = photos.groupBy { it.location }.mapValues { (_, entries) -> entries.maxOf { it.takenAt } }
+    return zones.filter { zone ->
+        val dueAt = lastPhotoByZone[zone]?.let { it + PROGRESS_PHOTO_REMINDER_DAYS * dayMs } ?: enabledAt
+        if (now < dueAt) return@filter false
+        val daysOverdue = ((now - dueAt) / dayMs).toInt()
+        daysOverdue == 0 || (overdueRepeatEnabled && daysOverdue % overdueRepeatDays.coerceAtLeast(1) == 0)
+    }.sorted()
+}
+

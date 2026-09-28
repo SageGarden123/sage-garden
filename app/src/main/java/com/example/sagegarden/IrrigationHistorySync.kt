@@ -26,21 +26,21 @@ const val IRRIGATION_AUTO_SYNC_DAYS = 5L
 private fun vendorSyncConfig(context: Context, gardenId: String, system: IrrigationSystem): VendorSyncConfig =
     if (system == IrrigationSystem.TUYA) {
         VendorSyncConfig(
-            mappings = getTuyaZoneMappingsFor(context, gardenId).map { VendorZoneMapping(it.zone, it.deviceId, it.outlet) },
-            missingCredentialMessage = if (getTuyaClientIdFor(context, gardenId).isBlank() || getTuyaClientSecretFor(context, gardenId).isBlank())
+            mappings = GardenSettings.of(context, gardenId).tuyaZoneMappings.map { VendorZoneMapping(it.zone, it.deviceId, it.outlet) },
+            missingCredentialMessage = if (GardenSettings.of(context, gardenId).tuyaClientId.isBlank() || GardenSettings.of(context, gardenId).tuyaClientSecret.isBlank())
                 "Tuya isn't connected — add your Client ID and Secret in Help first." else null
         ) { mapping, start, end -> TuyaClient.fetchWateringEvents(context, mapping.deviceId, mapping.zone, mapping.key, start, end, gardenId) }
     } else {
         VendorSyncConfig(
-            mappings = getRachioZoneMappingsFor(context, gardenId).map { VendorZoneMapping(it.zone, it.deviceId, it.zoneId) },
-            missingCredentialMessage = if (getRachioApiTokenFor(context, gardenId).isBlank())
+            mappings = GardenSettings.of(context, gardenId).rachioZoneMappings.map { VendorZoneMapping(it.zone, it.deviceId, it.zoneId) },
+            missingCredentialMessage = if (GardenSettings.of(context, gardenId).rachioApiToken.isBlank())
                 "Rachio isn't connected — add your API token in Help first." else null
         ) { mapping, start, end -> RachioClient.fetchWateringEvents(context, mapping.deviceId, mapping.key, mapping.zone, start, end, gardenId) }
     }
 
 /** Whether [gardenId] has everything a sync needs on THIS device (vendor chosen, zones mapped, credentials entered) — irrigation setup is device-local, so a garden you're only a member of usually won't. */
 fun isIrrigationSyncConfigured(context: Context, gardenId: String): Boolean {
-    val system = getIrrigationSystemFor(context, gardenId)
+    val system = GardenSettings.of(context, gardenId).irrigationSystem
     if (system == IrrigationSystem.NONE) return false
     val config = vendorSyncConfig(context, gardenId, system)
     return config.mappings.isNotEmpty() && config.missingCredentialMessage == null
@@ -54,7 +54,7 @@ fun isIrrigationSyncConfigured(context: Context, gardenId: String): Boolean {
  * garden's, since the worker runs for gardens that aren't on screen.
  */
 suspend fun syncIrrigationHistory(context: Context, gardenId: String): String {
-    val system = getIrrigationSystemFor(context, gardenId)
+    val system = GardenSettings.of(context, gardenId).irrigationSystem
     if (system == IrrigationSystem.NONE) return "Select an irrigation system in Help first."
 
     val config = vendorSyncConfig(context, gardenId, system)
@@ -80,7 +80,7 @@ suspend fun syncIrrigationHistory(context: Context, gardenId: String): String {
     }
     // Only a fully clean pull resets the auto-sync clock — if any zone failed, the worker retries it
     // on its next daily check instead of waiting another 5 days and risking Tuya's retention window.
-    if (errorZones.isEmpty()) setLastIrrigationSyncAt(context, gardenId, end)
+    if (errorZones.isEmpty()) GardenSettings.of(context, gardenId).lastIrrigationSyncAt = end
 
     val usingCloud = getPhotoStorageMode(context) == "cloud"
     // saveIrrigationCsvLocal/Dropbox both fail silently (return false, write nothing) when
@@ -122,7 +122,7 @@ class IrrigationHistorySyncWorker(context: Context, params: WorkerParameters) : 
         val dueAfterMillis = TimeUnit.DAYS.toMillis(IRRIGATION_AUTO_SYNC_DAYS)
         for (gardenId in allKnownGardenIds(applicationContext)) {
             if (!isIrrigationSyncConfigured(applicationContext, gardenId)) continue
-            if (now - getLastIrrigationSyncAt(applicationContext, gardenId) < dueAfterMillis) continue
+            if (now - GardenSettings.of(applicationContext, gardenId).lastIrrigationSyncAt < dueAfterMillis) continue
             val summary = try {
                 syncIrrigationHistory(applicationContext, gardenId)
             } catch (e: Exception) {

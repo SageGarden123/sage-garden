@@ -226,9 +226,9 @@ object GardenSyncClient {
                 // reading the active garden's address here pushed a shared garden's address up as the
                 // owner's own garden's address whenever the shared garden happened to be on screen.
                 if (isOwnerOfGarden(context, gardenId)) {
-                    getGardenAddressFor(context, gardenId).takeIf { it.isNotBlank() }?.let { put("gardenAddress", it) }
-                    getGardenLatLngFor(context, gardenId)?.let { (lat, lng) -> put("gardenLat", lat); put("gardenLng", lng) }
-                    getGardenLocationsFor(context, gardenId)?.let { locs -> put("gardenLocations", JSONArray(locs)) }
+                    GardenSettings.of(context, gardenId).address.takeIf { it.isNotBlank() }?.let { put("gardenAddress", it) }
+                    GardenSettings.of(context, gardenId).latLng?.let { (lat, lng) -> put("gardenLat", lat); put("gardenLng", lng) }
+                    GardenSettings.of(context, gardenId).locations?.let { locs -> put("gardenLocations", JSONArray(locs)) }
                 }
             }
             // Lets the server grant this device realtime change signals for the garden — see RealtimeGardenSync.
@@ -296,17 +296,17 @@ object GardenSyncClient {
                 GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
                 GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
 
-                // Written to [gardenId]'s own keys, NOT the active garden's — see setGardenLatLngFor.
-                json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { setGardenAddressFor(context, gardenId, it) }
+                // Written to [gardenId]'s own keys, NOT the active garden's — see GardenSettings' doc comment.
+                json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { GardenSettings.of(context, gardenId).address = it }
                 if (!json.isNull("gardenLat") && !json.isNull("gardenLng")) {
-                    setGardenLatLngFor(context, gardenId, json.getDouble("gardenLat"), json.getDouble("gardenLng"))
+                    GardenSettings.of(context, gardenId).setLatLng(json.getDouble("gardenLat"), json.getDouble("gardenLng"))
                 }
                 // null (vs an empty array) means no garden member has ever explicitly set zones yet —
-                // leave this device's own getOrSeedGardenLocations fallback alone in that case, rather
+                // leave this device's own GardenSettings.getOrSeedLocations fallback alone in that case, rather
                 // than locking in a premature empty list.
                 if (!json.isNull("gardenLocations")) {
                     val arr = json.getJSONArray("gardenLocations")
-                    setGardenLocationsFor(context, gardenId, (0 until arr.length()).map { arr.getString(it) })
+                    GardenSettings.of(context, gardenId).locations = (0 until arr.length()).map { arr.getString(it) }
                 }
 
                 // Absent from older server versions — only trust the grant once the server confirms it understands signals.

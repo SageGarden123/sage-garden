@@ -45,7 +45,7 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
     }
     val plants = remember(gardenPlants) { gardenPlants.flatMap { it.second } }
     val hemisphereByGarden = remember(gardenPlants) {
-        gardenPlants.associate { (gardenId, _) -> gardenId to getHemisphereFor(context, gardenId) }
+        gardenPlants.associate { (gardenId, _) -> gardenId to GardenSettings.of(context, gardenId).hemisphere }
     }
     // Only worth labelling rows by garden when more than one is actually in scope — a single-garden
     // device renders exactly as it always did.

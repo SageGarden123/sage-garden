@@ -47,18 +47,10 @@ object GardenMembershipStore {
     fun setActiveGardenId(context: Context, gardenId: String?) {
         prefs(context).edit().putString(KEY_ACTIVE_GARDEN_ID, gardenId).apply()
         ActiveGardenState.activeGardenId = gardenId
-        // HemisphereState is read from screens other than Help (e.g. watering-due calculations on
-        // Dashboard/List/Irrigation) that won't otherwise notice the newly-active garden's own
-        // hemisphere setting until this singleton itself is refreshed — see
-        // feedback-compose-reactive-staleness for why a raw prefs read isn't enough here.
-        HemisphereState.value = getHemisphere(context)
-        // Same reasoning as HemisphereState above — GardenAddressSection/GardenZonesSection must see
-        // the newly-active garden's own address/zones immediately, not whatever this device last had
-        // loaded for the previous garden.
-        GardenAddressState.address = getGardenAddress(context)
-        GardenAddressState.latLng = getGardenLatLng(context)
-        GardenAddressState.locations = getGardenLocations(context)
-        TuyaZoneMappingState.mappings = getTuyaZoneMappings(context)
+        // Screens read the active garden's hemisphere/address/zones through Compose-observable
+        // mirrors, which must switch to the new garden's values immediately.
+        ActiveGardenSettingsObserver.refresh(context)
+        TuyaZoneMappingState.mappings = GardenSettings.active(context).tuyaZoneMappings
     }
 
     fun getKnownGardens(context: Context): List<KnownGarden> {
@@ -142,7 +134,7 @@ object ActiveGardenState {
  * snapshot (the normal case: switching garden fires an async network call, but the Help screen may
  * already be composed and reading stale prefs before the response comes back) never refreshed it, so
  * a member could be looking at their own device's blank/stale value indefinitely, only fixed by
- * navigating away and back. Refreshed by setGardenAddress/setGardenLatLng/setGardenLocations
+ * navigating away and back. Refreshed automatically by ActiveGardenSettingsObserver whenever the active garden's prefs change
  * (whether from a local edit or a sync pull) and by GardenMembershipStore.setActiveGardenId on
  * garden switch.
  */

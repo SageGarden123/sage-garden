@@ -195,7 +195,7 @@ fun FormScreen(
             showNotificationHint = true
             return
         }
-        val customMapExists = getCustomMapUri(context) != null
+        val customMapExists = GardenSettings.active(context).customMapUri != null
         val hasReal = plant.lat != null && plant.lng != null
         val hasCustom = plant.mapX != null && plant.mapY != null
 
@@ -522,7 +522,7 @@ fun FormScreen(
         Spacer(Modifier.height(14.dp))
 
         val locationOptions = remember(allPlants) {
-            (getOrSeedGardenLocations(context, allPlants) + allPlants.map { it.location }.filter { it.isNotBlank() })
+            (GardenSettings.active(context).getOrSeedLocations(allPlants) + allPlants.map { it.location }.filter { it.isNotBlank() })
                 .distinct().sorted()
         }
         DropdownField(
@@ -784,7 +784,7 @@ fun FormScreen(
         if (displayId.isNotBlank() && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
             val hasReal = lat.toDoubleOrNull() != null && lng.toDoubleOrNull() != null
             val hasCustom = mapX != null && mapY != null
-            val customMapExists = remember { getCustomMapUri(context) != null }
+            val customMapExists = remember { GardenSettings.active(context).customMapUri != null }
             if (customMapExists) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
