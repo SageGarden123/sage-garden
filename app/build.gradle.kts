@@ -66,6 +66,9 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -89,6 +92,8 @@ dependencies {
     implementation("com.dropbox.core:dropbox-android-sdk:8.0.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.6.1")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
