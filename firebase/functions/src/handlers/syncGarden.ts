@@ -3,6 +3,7 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { emptyGardenDoc, mergeGarden, GardenDoc, GardenPayload, SyncRecord, Tombstone } from "../gardenSync";
 import { DeviceGardensDoc, emptyDeviceGardensDoc, generateMemberToken, MemberDoc, MemberPermission, MemberRole } from "../gardenMembers";
 import { GardenSignalDoc, readerRef, signalRef, verifiedListenerUid } from "../gardenSignals";
+import { hasInlineThumbs, joinThumbs, splitThumbs, thumbBucketRef, ThumbBuckets } from "../gardenThumbs";
 
 // Generous ceiling for a personal garden — guards against a malformed/oversized payload, not a
 // real multi-tenant quota. A single Firestore document tops out at 1MB, which comfortably fits
@@ -121,6 +122,14 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
     const outcome = await db.runTransaction(async (tx) => {
       const [gardenSnap, memberSnap, deviceGardensSnap, signalSnap] = await Promise.all([tx.get(gardenRef), tx.get(memberRef), tx.get(deviceGardensRef), tx.get(gardenSignalRef)]);
       const existingMeta = gardenSnap.exists ? (gardenSnap.data() as Record<string, unknown>) : undefined;
+      // Thumbnail buckets (see gardenThumbs.ts) — read up front, since a transaction must do every
+      // read before its first write, and the membership branches below can write.
+      const usedBuckets = Array.isArray(existingMeta?.thumbBuckets) ? (existingMeta!.thumbBuckets as number[]) : [];
+      const bucketSnaps = usedBuckets.length ? await tx.getAll(...usedBuckets.map((n) => thumbBucketRef(db, gardenId, n))) : [];
+      const storedBuckets: ThumbBuckets = {};
+      bucketSnaps.forEach((snap, i) => {
+        storedBuckets[usedBuckets[i]] = snap.exists ? ((snap.data() as { thumbs?: Record<string, string> }).thumbs ?? {}) : {};
+      });
 
       let permission: MemberPermission;
       let role: MemberRole = "member";
@@ -172,9 +181,13 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       }
 
       const stored: GardenDoc = gardenSnap.exists ? (gardenSnap.data() as GardenDoc) : emptyGardenDoc();
+      const migratingInlineThumbs = hasInlineThumbs(stored.plants);
+      stored.plants = joinThumbs(stored.plants, storedBuckets);
       const result = mergeGarden(stored, permission === "read" ? emptyPayload : incoming);
+      const split = splitThumbs(result.plants);
+      const newBucketIds = Object.keys(split.buckets).map(Number).sort((a, b) => a - b);
 
-      const toWrite: Record<string, unknown> = { ...result };
+      const toWrite: Record<string, unknown> = { ...result, plants: split.plants, thumbBuckets: newBucketIds };
       if (needsMetaStamp) {
         toWrite.ownerDeviceId = gardenId;
         toWrite.createdAt = existingMeta?.createdAt ?? Date.now();
@@ -209,12 +222,11 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
         toWrite.gardenLocations = incomingGardenLocations;
         responseGardenLocations = incomingGardenLocations;
       }
-      // MAX_ITEMS above only caps item *count* — now that plants can carry an embedded photo
-      // thumbnail (see photoThumbnail on the Android/desktop clients), a garden with many photographed
-      // plants could otherwise approach Firestore's 1MB-per-document ceiling. Reject before writing
-      // rather than letting Firestore itself throw partway through, which would look like a generic
-      // sync failure to the client.
-      if (Buffer.byteLength(JSON.stringify(toWrite), "utf8") > 900_000) {
+      // Firestore caps each document at 1MB. Thumbnails are bucketed out of the main doc (see
+      // gardenThumbs.ts), so this now only trips for a truly enormous garden — reject cleanly before
+      // writing rather than letting Firestore throw partway through as a generic sync failure.
+      if (Buffer.byteLength(JSON.stringify(toWrite), "utf8") > 900_000 ||
+          Object.values(split.buckets).some((b) => Buffer.byteLength(JSON.stringify(b), "utf8") > 900_000)) {
         throw new SyncTooLargeError();
       }
 
@@ -224,7 +236,8 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       // so an unchanged merge serializes identically; a false "changed" only costs one extra write
       // and one extra signal, never a missed change.
       const storedData = { plants: stored.plants, plantTombstones: stored.plantTombstones, careLog: stored.careLog, careLogTombstones: stored.careLogTombstones };
-      const changed = !gardenSnap.exists || needsMetaStamp ||
+      const changed = !gardenSnap.exists || needsMetaStamp || migratingInlineThumbs ||
+        JSON.stringify(newBucketIds) !== JSON.stringify(usedBuckets) ||
         JSON.stringify(result) !== JSON.stringify(storedData) ||
         responseGardenAddress !== ((existingMeta?.gardenAddress as string | undefined) ?? "") ||
         responseGardenLat !== ((existingMeta?.gardenLat as number | undefined) ?? null) ||
@@ -234,7 +247,16 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       const currentRev = signalSnap.exists ? ((signalSnap.data() as GardenSignalDoc).rev ?? 0) : 0;
       const signalRev = changed ? currentRev + 1 : currentRev;
       if (changed) {
-        tx.set(gardenRef, toWrite, { merge: true });
+        // mergeFields (not merge: true): each top-level field is REPLACED. merge: true deep-merges
+        // map fields, so plants removed from the map (and thumbnails moved out of records) were
+        // never actually removed from the stored document — it only ever grew.
+        tx.set(gardenRef, toWrite, { mergeFields: Object.keys(toWrite) });
+        for (const n of new Set([...usedBuckets, ...newBucketIds])) {
+          const next = split.buckets[n] ?? {};
+          if (JSON.stringify(next) === JSON.stringify(storedBuckets[n] ?? {})) continue;
+          if (Object.keys(next).length === 0) tx.delete(thumbBucketRef(db, gardenId, n));
+          else tx.set(thumbBucketRef(db, gardenId, n), { thumbs: next });
+        }
         tx.set(gardenSignalRef, { rev: signalRev, updatedAt: Date.now() }, { merge: true });
       }
 

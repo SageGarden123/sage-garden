@@ -10,7 +10,8 @@
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "firebase deploy --only functions",
-    "test": "npm run build && node --test \"test/*.test.js\""
+    "test": "npm run build && node --test \"test/*.test.js\"",
+    "test:integration": "firebase emulators:exec --only functions,firestore --project demo-sage \"node functions/test/integration/syncGarden.emulator.js\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
