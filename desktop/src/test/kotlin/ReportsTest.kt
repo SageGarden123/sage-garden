@@ -85,6 +85,34 @@ class ReportsTest {
         File(out, "garden-report-noplan.pdf").also { writePdf(gardenReportXhtml(noPlan), it); renderPages(it) }
     }
 
+    private fun fakeSatellite(view: SatelliteView): SatelliteImage {
+        val img = BufferedImage(view.width * view.scale, view.height * view.scale, BufferedImage.TYPE_INT_RGB)
+        val g = img.createGraphics()
+        g.color = Color(0x4E6B3A); g.fillRect(0, 0, img.width, img.height)
+        g.color = Color(0x6F8F55); for (i in 0 until img.width step 80) g.fillRect(i, 0, 40, img.height)
+        g.color = Color.WHITE; g.drawString("Google", 10, img.height - 10)
+        g.dispose()
+        val out = java.io.ByteArrayOutputStream(); ImageIO.write(img, "jpg", out)
+        return SatelliteImage(view, out.toByteArray())
+    }
+
+    @Test fun satelliteMapsPlaceMarkersWhereGoogleWould() {
+        val base = input()
+        val placed = base.plants.mapIndexed { i, p -> p.copy(lat = -33.87 + (i % 4) * 0.00008, lng = 151.2 + (i / 4) * 0.00012) }
+        val noSat = base.copy(plants = placed)
+        val view = satelliteViewFor(noSat)!!
+        val (cx, cy) = satelliteFraction(view, view.lat, view.lng)
+        assertTrue(kotlin.math.abs(cx - 0.5) < 1e-9 && kotlin.math.abs(cy - 0.5) < 1e-9, "view centre maps to image centre")
+        placed.forEach { p ->
+            val (fx, fy) = satelliteFraction(view, p.lat!!, p.lng!!)
+            assertTrue(fx in 0.05..0.95 && fy in 0.05..0.95, "${p.name} fits inside the view with a margin")
+        }
+        val withSat = noSat.copy(satellite = fakeSatellite(view))
+        val both = listOf(MapKind.PLAN, MapKind.SATELLITE)
+        File(out, "garden-report-both.pdf").also { writePdf(gardenReportXhtml(withSat, both), it); renderPages(it) }
+        File(out, "map-both.pdf").also { writePdf(mapExportXhtml(withSat, MapOptions(width = 1400), both), it); renderPages(it) }
+    }
+
     @Test fun seasonsFollowTheHemisphere() {
         val oct = java.util.Calendar.getInstance().apply { set(2026, java.util.Calendar.OCTOBER, 5) }.timeInMillis
         assertTrue(seasonFor(oct, southern = true).name.endsWith("spring"))

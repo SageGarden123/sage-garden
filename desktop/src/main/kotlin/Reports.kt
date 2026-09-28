@@ -33,7 +33,53 @@ data class ReportInput(
     val plan: GardenPlan?,
     val planImage: File?,
     val now: Long = System.currentTimeMillis(),
+    val satellite: SatelliteImage? = null,
 )
+
+/** Which base map a map is drawn on. */
+enum class MapKind(val label: String) {
+    /** The owner's uploaded garden map — the only one with irrigation lines and zones. */
+    PLAN("Your garden map"),
+    /** Google satellite imagery with plant markers and a plant legend only. */
+    SATELLITE("Satellite map"),
+    /** No imagery: plants drawn to scale from their coordinates. */
+    POSITIONS("Plant positions"),
+}
+
+fun ReportInput.hasPlanImage() = planImage?.exists() == true && plan?.imageWidth != null && plan.imageHeight != null
+
+// ---- Satellite (Web Mercator, matching Google's Static Maps) ----------------------------------
+
+/** A Static Maps request: centre, zoom and logical size in pixels (Google returns it at [scale]x). */
+data class SatelliteView(val lat: Double, val lng: Double, val zoom: Int, val width: Int = 640, val height: Int = 480, val scale: Int = 2)
+class SatelliteImage(val view: SatelliteView, val jpeg: ByteArray)
+
+private fun mercatorX(lng: Double, zoom: Int) = (lng + 180.0) / 360.0 * 256.0 * Math.pow(2.0, zoom.toDouble())
+private fun mercatorY(lat: Double, zoom: Int): Double {
+    val s = kotlin.math.sin(Math.toRadians(lat))
+    return (0.5 - kotlin.math.ln((1 + s) / (1 - s)) / (4 * Math.PI)) * 256.0 * Math.pow(2.0, zoom.toDouble())
+}
+
+/** The tightest satellite view that fits every placed plant with a margin, or the garden's address if none are placed. */
+fun satelliteViewFor(input: ReportInput): SatelliteView? {
+    val placed = input.plants.filter { it.lat != null && it.lng != null }
+    if (placed.isEmpty()) {
+        val lat = input.meta.lat ?: return null; val lng = input.meta.lng ?: return null
+        return SatelliteView(lat, lng, 19)
+    }
+    val minLat = placed.minOf { it.lat!! }; val maxLat = placed.maxOf { it.lat!! }
+    val minLng = placed.minOf { it.lng!! }; val maxLng = placed.maxOf { it.lng!! }
+    val v = SatelliteView((minLat + maxLat) / 2, (minLng + maxLng) / 2, 20)
+    val zoom = (20 downTo 3).firstOrNull { z ->
+        mercatorX(maxLng, z) - mercatorX(minLng, z) <= v.width * 0.8 && mercatorY(minLat, z) - mercatorY(maxLat, z) <= v.height * 0.8
+    } ?: 3
+    return v.copy(zoom = zoom)
+}
+
+/** Where [lat]/[lng] falls on the satellite image, as a fraction (0..1) of its width and height. */
+internal fun satelliteFraction(view: SatelliteView, lat: Double, lng: Double): Pair<Double, Double> =
+    (0.5 + (mercatorX(lng, view.zoom) - mercatorX(view.lng, view.zoom)) / view.width) to
+        (0.5 + (mercatorY(lat, view.zoom) - mercatorY(view.lat, view.zoom)) / view.height)
 
 private const val DAY = 86_400_000L
 private val dateFmt get() = SimpleDateFormat("d MMM yyyy", Locale.getDefault())
@@ -119,6 +165,7 @@ fun numberedPlants(plants: List<Plant>): List<Plant> =
     plants.sortedWith(compareBy({ it.location.ifBlank { "￿" }.lowercase() }, { it.name.lowercase() }))
 
 data class MapOptions(
+    val kind: MapKind = MapKind.PLAN,
     val width: Int = 1000,
     val numbered: Boolean = true,
     val showIrrigation: Boolean = true,
@@ -134,7 +181,8 @@ data class MapOptions(
  */
 fun mapSvg(input: ReportInput, o: MapOptions): String {
     val w = o.width.toDouble()
-    val image = input.planImage?.takeIf { it.exists() && input.plan?.imageWidth != null && input.plan.imageHeight != null }
+    val image = input.planImage?.takeIf { o.kind == MapKind.PLAN && input.hasPlanImage() }
+    val satellite = input.satellite?.takeIf { o.kind == MapKind.SATELLITE }
     val plants = numberedPlants(input.plants)
     val numbers = plants.withIndex().associate { (i, p) -> p.id to i + 1 }
     val body = StringBuilder()
@@ -149,7 +197,19 @@ fun mapSvg(input: ReportInput, o: MapOptions): String {
         }
     }
 
-    if (image != null) {
+    if (satellite != null) {
+        val view = satellite.view
+        mapH = w * view.height / view.width
+        val data = Base64.getEncoder().encodeToString(satellite.jpeg)
+        body.append("""<image x="0" y="$titleH" width="$w" height="$mapH" preserveAspectRatio="none" xlink:href="data:image/jpeg;base64,$data"/>""")
+        plants.forEach { p ->
+            val la = p.lat; val ln = p.lng
+            if (la != null && ln != null) {
+                val (fx, fy) = satelliteFraction(view, la, ln)
+                if (fx in 0.0..1.0 && fy in 0.0..1.0) marker(fx * w, titleH + fy * mapH, p)
+            }
+        }
+    } else if (image != null) {
         val iw = input.plan!!.imageWidth!!.toDouble(); val ih = input.plan.imageHeight!!.toDouble()
         mapH = w * ih / iw
         val data = Base64.getEncoder().encodeToString(image.readBytes())
@@ -237,8 +297,9 @@ private fun legendSvg(input: ReportInput, o: MapOptions, plants: List<Plant>, to
     val columns = mutableListOf<Double>()
     // Column 1: irrigation symbols (only when the plan has any).
     val plan = input.plan
+    val irrigation = o.showIrrigation && o.kind == MapKind.PLAN && input.hasPlanImage()
     var col = 0
-    if (o.showIrrigation && plan != null && plan.paths.isNotEmpty()) {
+    if (irrigation && plan != null && plan.paths.isNotEmpty()) {
         val x = col * colW; var yy = y
         heading("Irrigation", x, yy); yy += rowH
         val grey = "#4A4739"
@@ -255,7 +316,7 @@ private fun legendSvg(input: ReportInput, o: MapOptions, plants: List<Plant>, to
     // Column 2: irrigation zones by colour.
     val zones = ((plan?.paths?.map { it.zone } ?: emptyList()) + (plan?.irrigationZones ?: emptyList()))
         .map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted()
-    if (o.showIrrigation && zones.isNotEmpty()) {
+    if (irrigation && zones.isNotEmpty()) {
         val x = col * colW; var yy = y
         heading("Irrigation zones", x, yy); yy += rowH
         zones.forEach { z ->
@@ -274,7 +335,7 @@ private fun legendSvg(input: ReportInput, o: MapOptions, plants: List<Plant>, to
             sb.append("""<circle cx="${x + w * 0.012}" cy="$yy" r="${fs * 0.55}" fill="${categoryColor(c)}" stroke="#FFFFFF" stroke-width="1"/>""")
             label(c, x + w * 0.045, yy + fs * 0.35); yy += rowH
         }
-        if (o.showSunZones && plan != null && plan.sunZones.isNotEmpty()) {
+        if (o.showSunZones && o.kind == MapKind.PLAN && input.hasPlanImage() && plan != null && plan.sunZones.isNotEmpty()) {
             yy += rowH * 0.3
             heading("Sun zones", x, yy); yy += rowH
             plan.sunZones.map { it.category }.distinct().forEach { cat ->
@@ -284,6 +345,10 @@ private fun legendSvg(input: ReportInput, o: MapOptions, plants: List<Plant>, to
             }
         }
         columns += yy
+    }
+    if (o.kind == MapKind.SATELLITE && input.satellite != null) {
+        label("Satellite imagery © Google", 0.0, (columns.maxOrNull() ?: y) + fs)
+        columns += (columns.maxOrNull() ?: y) + fs * 1.5
     }
     return sb.toString() to ((columns.maxOrNull() ?: y) + fs)
 }
@@ -362,7 +427,8 @@ private fun embedSvg(svg: String, widthCss: String, pixelWidth: Float = 2200f): 
 }
 
 /** The holistic garden report: at a glance, garden health, and the full garden map with its index. */
-fun gardenReportXhtml(input: ReportInput): String {
+fun gardenReportXhtml(input: ReportInput, kinds: List<MapKind> = listOf(MapKind.PLAN)): String {
+    val mapKinds = kinds.ifEmpty { listOf(MapKind.POSITIONS) }
     val plants = input.plants
     val now = input.now
     val tasks = careTasks(input, horizonDays = 7)
@@ -381,7 +447,7 @@ fun gardenReportXhtml(input: ReportInput): String {
         return tile(countFor(action), label, if (od > 0) "$od overdue" else "")
     }
 
-    val thumb = mapSvg(input, MapOptions(width = 600, numbered = false, showLegend = false))
+    val thumb = mapSvg(input, MapOptions(kind = mapKinds.first(), width = 600, numbered = false, showLegend = false))
     val glance = """<table><tr><td style="width: 62%; vertical-align: top; padding-right: 8pt;">
 <table class="tiles2"><tr>${tile(plants.size, "Unique plants")}${tile(plants.sumOf { max(it.qty, 1) }, "Individual plants")}</tr>
 <tr>${tile(varieties, "Varieties")}${tile(zones.size, "Garden zones")}</tr>
@@ -405,7 +471,10 @@ fun gardenReportXhtml(input: ReportInput): String {
             issues.joinToString("") { """<tr><td><b>${esc(it.title)}</b></td><td style="text-align: right;">${it.count}</td><td class="muted">${esc(it.explanation)}</td></tr>""" }
         }</table>"""
 
-    val fullMap = mapSvg(input, MapOptions(width = 1000, numbered = true, showLegend = true, showSunZones = false))
+    val mapPages = mapKinds.joinToString("") { kind ->
+        """<div class="break"></div><div class="eyebrow">${esc(kind.label)}</div><h1>${esc(input.gardenName)}</h1>""" +
+            embedSvg(mapSvg(input, MapOptions(kind = kind, width = 1000, numbered = true, showLegend = true)), "100%")
+    }
     val index = numberedPlants(plants).withIndex().joinToString("") { (i, p) ->
         val status = computeWateringStatus(p, now, input.meta.southernHemisphere)?.label ?: "—"
         """<tr><td><b>${i + 1}</b></td><td>${esc(p.name)}${if (p.sci.isNotBlank()) "<br/><span class=\"sci\">${esc(p.sci)}</span>" else ""}</td><td>${esc(p.location.ifBlank { "—" })}</td><td>${esc(p.category.ifBlank { "—" })}</td><td>${esc(p.water.ifBlank { "—" })}</td><td>${esc(status)}</td></tr>"""
@@ -418,8 +487,7 @@ fun gardenReportXhtml(input: ReportInput): String {
         breakdown("Plants by category", plants.groupingBy { it.category.ifBlank { "Uncategorised" } }.eachCount()) +
         breakdown("Plants by zone", plants.groupingBy { it.location.ifBlank { "No zone" } }.eachCount()) +
         """<div class="avoid"><h3>Garden check</h3>$issuesHtml</div>""" +
-        """<div class="break"></div><div class="eyebrow">Garden map</div><h1>${esc(input.gardenName)}</h1>""" +
-        embedSvg(fullMap, "100%") + placedNote +
+        mapPages + placedNote +
         """<h2>Plant index</h2><table class="grid"><tr><th>No.</th><th>Plant</th><th>Zone</th><th>Category</th><th>Water need</th><th>Watering</th></tr>$index</table>"""
     return page("${input.gardenName} — Garden report", body)
 }
@@ -452,13 +520,18 @@ fun careReportXhtml(input: ReportInput, horizonDays: Int = 14): String {
 }
 
 /** A one-page map export (landscape A4): title, map and legend. */
-fun mapExportXhtml(input: ReportInput, options: MapOptions): String {
+fun mapExportXhtml(input: ReportInput, options: MapOptions, kinds: List<MapKind> = listOf(options.kind)): String {
+    val pages = kinds.ifEmpty { listOf(MapKind.POSITIONS) }.mapIndexed { i, kind -> mapExportPage(input, options.copy(kind = kind), i > 0) }
+    return page("${input.gardenName} — Garden map", pages.joinToString(""), landscape = true)
+}
+
+private fun mapExportPage(input: ReportInput, options: MapOptions, pageBreak: Boolean): String {
     val svg = mapSvg(input, options.copy(title = null))
     // Fit map + legend on one landscape page: about 265mm wide by 145mm tall below the heading.
     val w = Regex("""width="(\d+)"""").find(svg)?.groupValues?.get(1)?.toDouble() ?: 1000.0
     val h = Regex("""height="(\d+)"""").find(svg)?.groupValues?.get(1)?.toDouble() ?: 1000.0
     val widthMm = min(265.0, 145.0 * w / h)
-    val body = """<div class="eyebrow">Garden map</div><h1>${esc(input.gardenName)}</h1><div class="sub">${esc(dateFmt.format(Date(input.now)))}</div>""" +
+    return (if (pageBreak) """<div class="break"></div>""" else "") +
+        """<div class="eyebrow">${esc(options.kind.label)}</div><h1>${esc(input.gardenName)}</h1><div class="sub">${esc(dateFmt.format(Date(input.now)))}</div>""" +
         """<div style="text-align: center;">${embedSvg(svg, "${"%.1f".format(Locale.US, widthMm)}mm")}</div>"""
-    return page("${input.gardenName} — Garden map", body, landscape = true)
 }

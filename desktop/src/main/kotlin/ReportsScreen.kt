@@ -38,24 +38,59 @@ private fun chooseSaveFile(suggestedName: String, description: String, extension
     return if (f.name.lowercase().endsWith(".$extension")) f else File(f.parentFile, "${f.name}.$extension")
 }
 
+/** Writes one file per map: the first to [target], others alongside with the map type in the name. */
+private fun eachMapFile(target: File, kinds: List<MapKind>, write: (MapKind, File) -> Unit) {
+    kinds.forEachIndexed { i, kind ->
+        val file = if (i == 0) target else File(target.parentFile, "${target.nameWithoutExtension} - ${kind.label}.${target.extension}")
+        write(kind, file)
+    }
+}
+
 private fun fileSafe(name: String) = name.replace(Regex("[\\\\/:*?\"<>|]"), "").trim().ifBlank { "Garden" }
 
 @Composable
-fun ReportsScreen(input: ReportInput, planStatus: String?, onMessage: (String) -> Unit) {
+fun ReportsScreen(
+    input: ReportInput,
+    fetchSatellite: suspend (SatelliteView) -> CloudResult<SatelliteImage>,
+    planStatus: String?,
+    onMessage: (String) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf<String?>(null) }
     var showSunZones by remember { mutableStateOf(false) }
     var numbered by remember { mutableStateOf(true) }
-    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    val hasPlan = input.hasPlanImage()
+    val satelliteView = remember(input.plants, input.meta) { satelliteViewFor(input) }
+    var includePlan by remember(hasPlan) { mutableStateOf(hasPlan) }
+    var includeSatellite by remember { mutableStateOf(false) }
+    var satellite by remember { mutableStateOf<SatelliteImage?>(null) }
+    var satelliteStatus by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(includeSatellite, satelliteView) {
+        if (!includeSatellite || satelliteView == null || satellite?.view == satelliteView) return@LaunchedEffect
+        satelliteStatus = "Fetching satellite imagery…"
+        when (val r = fetchSatellite(satelliteView)) {
+            is CloudResult.Ok -> { satellite = r.value; satelliteStatus = null }
+            is CloudResult.Failed -> { satelliteStatus = r.reason; includeSatellite = false }
+            is CloudResult.NotAuthorized -> { satelliteStatus = "Not authorised for this garden."; includeSatellite = false }
+        }
+    }
+    val kinds = buildList {
+        if (includePlan && hasPlan) add(MapKind.PLAN)
+        if (includeSatellite && satellite != null) add(MapKind.SATELLITE)
+    }.ifEmpty { listOf(MapKind.POSITIONS) }
+    val exportInput = input.copy(satellite = satellite)
+    var previews by remember { mutableStateOf<List<Pair<MapKind, ImageBitmap>>>(emptyList()) }
     val stamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(input.now))
     val base = fileSafe(input.gardenName)
     val mapOptions = MapOptions(width = 1400, numbered = numbered, showSunZones = showSunZones, showLegend = true)
 
-    LaunchedEffect(input, showSunZones, numbered) {
-        preview = withContext(Dispatchers.Default) {
-            runCatching {
-                org.jetbrains.skia.Image.makeFromEncoded(renderPngBytes(mapSvg(input, mapOptions), 1100f)).toComposeImageBitmap()
-            }.getOrNull()
+    LaunchedEffect(input, satellite, kinds, showSunZones, numbered) {
+        previews = withContext(Dispatchers.Default) {
+            kinds.mapNotNull { kind ->
+                runCatching {
+                    kind to org.jetbrains.skia.Image.makeFromEncoded(renderPngBytes(mapSvg(exportInput, mapOptions.copy(kind = kind)), 1100f)).toComposeImageBitmap()
+                }.getOrNull()
+            }
         }
     }
 
@@ -91,7 +126,7 @@ fun ReportsScreen(input: ReportInput, planStatus: String?, onMessage: (String) -
                 Icons.Outlined.Summarize, "Garden report",
                 "At a glance, garden health and a full-page map with a numbered plant index.",
                 busy == "garden", Modifier.weight(1f)
-            ) { export("garden", "$base - Garden report - $stamp.pdf", "PDF", "pdf") { writePdf(gardenReportXhtml(input), it) } }
+            ) { export("garden", "$base - Garden report - $stamp.pdf", "PDF", "pdf") { writePdf(gardenReportXhtml(exportInput, kinds), it) } }
             ReportCard(
                 Icons.Outlined.Checklist, "Plant care checklist",
                 "What to water, prune, fertilise and feed over the next 2 weeks — grouped by zone, with tick boxes.",
@@ -103,27 +138,43 @@ fun ReportsScreen(input: ReportInput, planStatus: String?, onMessage: (String) -
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Map, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
-            Text("Garden map", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("Maps", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = numbered, onCheckedChange = { numbered = it }); Text("Number plants")
                 Spacer(Modifier.width(12.dp))
-                Checkbox(checked = showSunZones, onCheckedChange = { showSunZones = it }); Text("Show sun zones")
+                Checkbox(checked = showSunZones, onCheckedChange = { showSunZones = it }, enabled = includePlan && hasPlan); Text("Show sun zones")
             }
+        }
+        Text("Choose which maps go into the garden report and map exports:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = includePlan && hasPlan, onCheckedChange = { includePlan = it }, enabled = hasPlan)
+            Text(if (hasPlan) "Your garden map — with irrigation lines and zones" else "Your garden map — none uploaded yet")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = includeSatellite, onCheckedChange = { includeSatellite = it; satelliteStatus = null }, enabled = satelliteView != null)
+            Text(if (satelliteView != null) "Satellite map (Google) — plants and legend only" else "Satellite map — place plants on the map or set the garden's address first")
+        }
+        satelliteStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 12.dp)) }
+        if (!(includePlan && hasPlan) && satellite == null) {
+            Text("With neither selected, maps show plant positions drawn to scale.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { export("map-pdf", "$base - Map - $stamp.pdf", "PDF", "pdf") { writePdf(mapExportXhtml(input, mapOptions), it) } }, enabled = busy == null) { Text("Export PDF") }
-            OutlinedButton(onClick = { export("map-png", "$base - Map - $stamp.png", "PNG image", "png") { writePng(mapSvg(input, mapOptions), it) } }, enabled = busy == null) { Text("Export PNG") }
-            OutlinedButton(onClick = { export("map-svg", "$base - Map - $stamp.svg", "SVG image", "svg") { writeSvg(mapSvg(input, mapOptions), it) } }, enabled = busy == null) { Text("Export SVG") }
+            Button(onClick = { export("map-pdf", "$base - Map - $stamp.pdf", "PDF", "pdf") { writePdf(mapExportXhtml(exportInput, mapOptions, kinds), it) } }, enabled = busy == null) { Text("Export PDF") }
+            // Image formats hold one map each: the first chosen map is saved under the chosen name,
+            // any other as a sibling file with the map type added (e.g. "… - Satellite map.png").
+            OutlinedButton(onClick = { export("map-png", "$base - Map - $stamp.png", "PNG image", "png") { f -> eachMapFile(f, kinds) { k, t -> writePng(mapSvg(exportInput, mapOptions.copy(kind = k)), t) } } }, enabled = busy == null) { Text("Export PNG") }
+            OutlinedButton(onClick = { export("map-svg", "$base - Map - $stamp.svg", "SVG image", "svg") { f -> eachMapFile(f, kinds) { k, t -> writeSvg(mapSvg(exportInput, mapOptions.copy(kind = k)), t) } } }, enabled = busy == null) { Text("Export SVG") }
             if (busy != null) CircularProgressIndicator(modifier = Modifier.size(24.dp).align(Alignment.CenterVertically))
         }
         Spacer(Modifier.height(12.dp))
-        val image = preview
-        if (image == null) {
+        if (previews.isEmpty()) {
             Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else {
+        }
+        previews.forEach { (kind, image) ->
+            Text(kind.label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
             Image(
-                image, contentDescription = "Preview of the garden map with legend",
+                image, contentDescription = "Preview: ${kind.label} with legend",
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant)
             )

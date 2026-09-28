@@ -304,6 +304,20 @@ class GardenAppState {
         if (pendingRequests.isNotEmpty()) refreshGardens()
     }
 
+    private val satelliteCache = mutableMapOf<Pair<String, SatelliteView>, ByteArray>()
+
+    /** Satellite imagery for the open garden, kept in memory for this session so re-exporting doesn't re-fetch. */
+    fun fetchSatellite(view: SatelliteView): CloudResult<SatelliteImage> {
+        val gardenId = activeGardenId ?: return CloudResult.Failed("Open a garden first.")
+        satelliteCache[gardenId to view]?.let { return CloudResult.Ok(SatelliteImage(view, it)) }
+        val token = GardenSyncSettings.getMemberToken(gardenId) ?: return CloudResult.Failed("Sync this garden first.")
+        return when (val r = Cloud.satelliteImage(ownDeviceId, gardenId, token, view)) {
+            is CloudResult.Ok -> { satelliteCache[gardenId to view] = r.value; CloudResult.Ok(SatelliteImage(view, r.value)) }
+            is CloudResult.NotAuthorized -> r
+            is CloudResult.Failed -> r
+        }
+    }
+
     fun reportInput() = ReportInput(
         gardenName = activeGardenName, meta = meta, plants = plants.toList(), plan = plan,
         planImage = activeGardenId?.let { GardenPlanCache.imageFile(it) },
@@ -433,6 +447,7 @@ fun App() {
                         is Screen.GardenCheck -> GardenCheckScreen(appState.plants)
                         is Screen.Reports -> ReportsScreen(
                             input = appState.reportInput(),
+                            fetchSatellite = { view -> withContext(Dispatchers.IO) { appState.fetchSatellite(view) } },
                             planStatus = if (appState.plan == null)
                                 "Your garden map and irrigation layout will appear here once the garden's owner has opened Sage Garden 1.7.1 or later on their phone (it uploads them automatically). Until then, maps use plant positions only."
                             else null,

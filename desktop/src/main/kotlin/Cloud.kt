@@ -79,6 +79,19 @@ object Cloud {
         }
     } catch (e: Exception) { CloudResult.Failed(e.message ?: "network error") }
 
+    /** Satellite imagery for [view] via the satelliteMap Cloud Function (the Google key stays server-side). */
+    fun satelliteImage(deviceId: String, gardenId: String, memberToken: String, view: SatelliteView): CloudResult<ByteArray> = try {
+        val (code, json) = post("satelliteMap", JSONObject().put("deviceId", deviceId).put("gardenId", gardenId).put("memberToken", memberToken)
+            .put("lat", view.lat).put("lng", view.lng).put("zoom", view.zoom).put("width", view.width).put("height", view.height), 45)
+        when {
+            code == 200 && json != null -> CloudResult.Ok(Base64.getDecoder().decode(json.getString("image")))
+            code == 403 -> CloudResult.NotAuthorized
+            code == 503 || code == 404 -> CloudResult.Failed("Satellite maps aren't set up yet.")
+            code == 429 -> CloudResult.Failed("Today's satellite map limit for this computer has been reached — try again tomorrow.")
+            else -> CloudResult.Failed("Google couldn't provide satellite imagery right now (HTTP $code).")
+        }
+    } catch (e: Exception) { CloudResult.Failed(e.message ?: "network error") }
+
     /** Fetches the owner's garden plan into the local plan cache; the image is only downloaded when it changed. */
     fun pullPlan(deviceId: String, gardenId: String, memberToken: String): CloudResult<GardenPlan?> = try {
         val body = JSONObject().put("deviceId", deviceId).put("gardenId", gardenId).put("memberToken", memberToken)
