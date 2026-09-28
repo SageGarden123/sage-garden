@@ -105,6 +105,21 @@
     <string name="appearance_system_filters">Colour correction, colour inversion, greyscale and bold text are in Android\'s own accessibility settings, and apply to every app.</string>
     <string name="appearance_open_android_accessibility">Open Android accessibility settings</string>
 
+    <!-- Onboarding -->
+    <string name="onboarding_welcome_title">Welcome to Sage Garden</string>
+    <string name="onboarding_welcome_body">Keep track of every plant in your garden, and get a nudge when something needs watering or tending.</string>
+    <string name="onboarding_get_started">Get started</string>
+    <string name="onboarding_mode_title">How would you like to use Sage Garden?</string>
+    <string name="onboarding_mode_basic">Keep it simple</string>
+    <string name="onboarding_mode_basic_desc">Your plants, watering reminders, photos and backups.</string>
+    <string name="onboarding_mode_advanced">Show me everything</string>
+    <string name="onboarding_mode_advanced_desc">Adds garden maps, the sun map, irrigation controllers, weather and frost alerts, garden sharing and more.</string>
+    <string name="onboarding_change_later">You can change this any time in Settings.</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_text_title">Choose a text size</string>
+    <string name="onboarding_text_body">Pick whatever is most comfortable to read.</string>
+    <string name="onboarding_finish">Done</string>
+
     <!-- FAQ -->
     <string name="faq_title">Help &amp; FAQ</string>
     <string name="faq_search_hint">Search help</string>

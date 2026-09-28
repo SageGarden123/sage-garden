@@ -61,10 +61,13 @@ class MainActivity : ComponentActivity() {
             SageGardenTheme {
                 Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
                     var showSplash by remember { mutableStateOf(true) }
-                    if (showSplash) {
-                        SplashScreen(onFinished = { showSplash = false })
-                    } else {
-                        GardenMapperApp()
+                    // Decided while the splash is showing, so there's no flash of the wrong screen.
+                    var needsOnboarding by remember { mutableStateOf<Boolean?>(null) }
+                    LaunchedEffect(Unit) { needsOnboarding = Onboarding.isNeeded(applicationContext) }
+                    when {
+                        showSplash || needsOnboarding == null -> SplashScreen(onFinished = { showSplash = false })
+                        needsOnboarding == true -> OnboardingScreen(onFinished = { needsOnboarding = false })
+                        else -> GardenMapperApp()
                     }
                 }
             }

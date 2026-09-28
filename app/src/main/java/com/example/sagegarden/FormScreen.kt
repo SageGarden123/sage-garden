@@ -466,21 +466,6 @@ fun FormScreen(
         }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(
-            value = displayId,
-            onValueChange = {},
-            readOnly = true,
-            enabled = false,
-            label = { Text("Plant ID") },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                disabledBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        )
-        Spacer(Modifier.height(14.dp))
-
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Plant name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         if (canEdit) {
         Spacer(Modifier.height(6.dp))
@@ -522,9 +507,6 @@ fun FormScreen(
         }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text("Scientific name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
-        Spacer(Modifier.height(14.dp))
-
         val locationOptions = remember(allPlants) {
             (GardenSettings.active(context).getOrSeedLocations(allPlants) + allPlants.map { it.location }.filter { it.isNotBlank() })
                 .distinct().sorted()
@@ -533,6 +515,73 @@ fun FormScreen(
             "Garden location", locationOptions, location, { location = it },
             "Manage zones in Settings → This garden", enabled = canEdit
         )
+        Spacer(Modifier.height(14.dp))
+
+        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true, allowClear = false, enabled = canEdit)
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(
+            value = wateringFrequency, onValueChange = { new ->
+                wateringFrequency = new.filter { it.isDigit() }
+                if (wateringFrequency.isNotBlank() && lastWateredDate.isBlank()) {
+                    lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                }
+            },
+            label = { Text("Watering frequency (days)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = {
+                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 11.sp)
+            },
+            modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
+        )
+        Spacer(Modifier.height(10.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Indoor plant (exempt from rain-based reminder skipping)",
+                fontSize = 13.sp, modifier = Modifier.weight(1f)
+            )
+            Switch(checked = isIndoor, onCheckedChange = { isIndoor = it }, enabled = canEdit)
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (displayId.isNotBlank() && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
+            val hasReal = lat.toDoubleOrNull() != null && lng.toDoubleOrNull() != null
+            val hasCustom = mapX != null && mapY != null
+            val customMapExists = remember { GardenSettings.active(context).customMapUri != null }
+            if (customMapExists) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$displayId") } },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (hasCustom) "📍 Change location on custom map" else "📍 Place on custom map") }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$displayId") } },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (hasReal) "📍 Change location on real-world map" else "📍 Place on real-world map") }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (plantId != null && FeatureVisibility.shouldShow(context, Feature.PLANT_HISTORY)) {
+            OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
+                Text("📋 View watering, fertilising, feeding & pruning history")
+            }
+            Spacer(Modifier.height(14.dp))
+        }
+
+        // Everything beyond the essentials above. Collapsed for a new plant so adding one stays a
+        // quick "photo, name, zone, watering" job; open by default when editing an existing plant.
+        var showMoreDetails by rememberSaveable { mutableStateOf(plantId != null) }
+        OutlinedButton(
+            onClick = { showMoreDetails = !showMoreDetails },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (showMoreDetails) "Hide more details" else "More details — species, conditions, care schedules")
+        }
+        Spacer(Modifier.height(14.dp))
+        if (showMoreDetails) {
+        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text("Scientific name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
         DropdownField("Category", categoryOptions, category, { category = it }, "What kind of plant this is — also picks its icon on the map", enabled = canEdit)
@@ -605,6 +654,21 @@ fun FormScreen(
         }
         Spacer(Modifier.height(14.dp))
 
+        OutlinedTextField(
+            value = displayId,
+            onValueChange = {},
+            readOnly = true,
+            enabled = false,
+            label = { Text("Plant ID") },
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
+        Spacer(Modifier.height(14.dp))
+
         OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Source (e.g. nursery)") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
@@ -621,23 +685,14 @@ fun FormScreen(
         OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text("Watering System") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
-        DatePickerField("Last watered", lastWateredDate, { lastWateredDate = it }, restrictToPastOrToday = true, allowClear = false, enabled = canEdit)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Requires manual watering (not part of a watering system)",
+                fontSize = 13.sp, modifier = Modifier.weight(1f)
+            )
+            Switch(checked = manualWateringOnly, onCheckedChange = { manualWateringOnly = it }, enabled = canEdit)
+        }
         Spacer(Modifier.height(14.dp))
-        OutlinedTextField(
-            value = wateringFrequency, onValueChange = { new ->
-                wateringFrequency = new.filter { it.isDigit() }
-                if (wateringFrequency.isNotBlank() && lastWateredDate.isBlank()) {
-                    lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                }
-            },
-            label = { Text("Watering frequency (days)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            supportingText = {
-                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 11.sp)
-            },
-            modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
-        )
-        Spacer(Modifier.height(10.dp))
 
         if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
@@ -748,31 +803,6 @@ fun FormScreen(
             Spacer(Modifier.height(14.dp))
         }
 
-        if (plantId != null && FeatureVisibility.shouldShow(context, Feature.PLANT_HISTORY)) {
-            OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("📋 View watering, fertilising, feeding & pruning history")
-            }
-            Spacer(Modifier.height(14.dp))
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "Requires manual watering (not part of a watering system)",
-                fontSize = 13.sp, modifier = Modifier.weight(1f)
-            )
-            Switch(checked = manualWateringOnly, onCheckedChange = { manualWateringOnly = it }, enabled = canEdit)
-        }
-        Spacer(Modifier.height(14.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "Indoor plant (exempt from rain-based reminder skipping)",
-                fontSize = 13.sp, modifier = Modifier.weight(1f)
-            )
-            Switch(checked = isIndoor, onCheckedChange = { isIndoor = it }, enabled = canEdit)
-        }
-        Spacer(Modifier.height(14.dp))
-
         if (FeatureVisibility.shouldShow(context, Feature.COORDINATES)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(value = lat, onValueChange = { lat = it }, label = { Text("Latitude") }, modifier = Modifier.weight(1f), readOnly = !canEdit)
@@ -783,24 +813,7 @@ fun FormScreen(
             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
-        if (displayId.isNotBlank() && canEdit && FeatureVisibility.shouldShow(context, Feature.PLACE_ON_MAP)) {
-            val hasReal = lat.toDoubleOrNull() != null && lng.toDoubleOrNull() != null
-            val hasCustom = mapX != null && mapY != null
-            val customMapExists = remember { GardenSettings.active(context).customMapUri != null }
-            if (customMapExists) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$displayId") } },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (hasCustom) "📍 Change location on custom map" else "📍 Place on custom map") }
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$displayId") } },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (hasReal) "📍 Change location on real-world map" else "📍 Place on real-world map") }
         }
-        Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(20.dp))
