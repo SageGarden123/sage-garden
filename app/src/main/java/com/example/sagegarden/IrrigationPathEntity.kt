@@ -23,6 +23,9 @@ interface IrrigationPathDao {
     @Query("SELECT * FROM irrigation_paths WHERE gardenId = :gardenId")
     fun getAll(gardenId: String): Flow<List<IrrigationPathEntity>>
 
+    @Query("SELECT * FROM irrigation_paths WHERE gardenId = :gardenId")
+    suspend fun getAllOnceForGarden(gardenId: String): List<IrrigationPathEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(path: IrrigationPathEntity)
 

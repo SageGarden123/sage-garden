@@ -1928,7 +1928,7 @@ fun SettingsPageScreen(
             val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 if (uri != null) {
                     try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-                    GardenSettings.active(context).customMapUri = uri; customMapUri = uri
+                    GardenSettings.active(context).customMapUri = uri; customMapUri = uri; GardenPlanEdits.count++
                 }
             }
             OutlinedButton(onClick = { mapImageLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
@@ -1948,6 +1948,7 @@ fun SettingsPageScreen(
                     onClick = {
                         mapRotationDeg = (mapRotationDeg + 90) % 360
                         GardenSettings.active(context).customMapRotation = mapRotationDeg
+                        GardenPlanEdits.count++
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_rotate_90_currently, mapRotationDeg)) }
@@ -1957,7 +1958,7 @@ fun SettingsPageScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(
-                    onClick = { GardenSettings.active(context).customMapUri = null; GardenSettings.active(context).usingCustomMap = false; customMapUri = null; useCustomMap = false },
+                    onClick = { GardenSettings.active(context).customMapUri = null; GardenSettings.active(context).usingCustomMap = false; customMapUri = null; useCustomMap = false; GardenPlanEdits.count++ },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text(stringResource(R.string.settings_clear_custom_map)) }

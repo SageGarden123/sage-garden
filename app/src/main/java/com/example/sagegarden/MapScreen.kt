@@ -350,11 +350,13 @@ fun MapTabScreen(
             context.applicationContext as Application
         )
     )
-    // The custom map drawing and sun map are per-device local data that never syncs to a shared
-    // garden — showing them while viewing a garden you don't own would just surface YOUR OWN
-    // unrelated drawing/zones, not the owner's, so they're hidden entirely for a non-owner.
-    val canManageMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) } && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)
-    val hasCustomMap = canManageMap && remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).customMapUri != null }
+    // Only the garden's owner manages the garden map, irrigation paths and sun map. Other members see
+    // a read-only copy of the owner's map once it has synced down (see GardenPlanSync.pull).
+    val isOwner = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+    val canManageMap = isOwner && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)
+    val hasCustomMap = FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP) &&
+        (isOwner || GardenPlanSync.hasPulledPlan(context, effectiveGardenId(context))) &&
+        remember(ActiveGardenState.activeGardenId, GardenPlanEdits.count) { GardenSettings.active(context).customMapUri != null }
     var showingCustom by remember { mutableStateOf(startOnCustom && hasCustomMap) }
 
     Column(Modifier.fillMaxSize()) {
@@ -963,7 +965,7 @@ fun CustomMapScreen(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 if (!editingPaths) {
-                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    if (isOwnerOfActiveGarden(context)) Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                         Button(
                             onClick = { editingPaths = true },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)

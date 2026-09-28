@@ -222,6 +222,22 @@ fun GardenMapperApp() {
     LaunchedEffect(GardenSettingsEdits.count) {
         if (GardenSettingsEdits.count > 0) GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
     }
+    // Garden plan (map image, irrigation paths, sun zones): the owner's phone pushes it whenever it
+    // changes; any other member's phone pulls the owner's copy when opening the garden (and again
+    // whenever the change signal's planRev moves — see RealtimeGardenSync).
+    LaunchedEffect(ActiveGardenState.activeGardenId) {
+        val gardenId = effectiveGardenId(context)
+        if (!isOwnerOfGarden(context, gardenId)) {
+            GardenPlanSync.pull(context, gardenId)
+            return@LaunchedEffect
+        }
+        val db = AppDatabase.getInstance(context)
+        combine(
+            db.irrigationPathDao().getAll(gardenId), db.sunZoneDao().getAll(gardenId), snapshotFlow { GardenPlanEdits.count }
+        ) { paths, zones, edits -> Triple(paths, zones, edits) }
+            .debounce(3_000L)
+            .collect { GardenPlanSync.push(context, gardenId) }
+    }
     LaunchedEffect(ActiveGardenState.activeGardenId) {
         while (true) {
             GardenMembershipClient.refreshKnownGardens(context)

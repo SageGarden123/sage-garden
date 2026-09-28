@@ -92,7 +92,7 @@
     <string name="faq_view_vs_edit_q">What\'s the difference between \"can edit\" and \"view only\"?</string>
     <string name="faq_view_vs_edit_a">Editors can add, change and delete plants and log care. View-only members see everything but can\'t change it. Only the owner can change the garden\'s address, zones and members.</string>
     <string name="faq_what_is_shared_q">What\'s shared, and what stays on my phone?</string>
-    <string name="faq_what_is_shared_a">Shared with everyone in the garden: plants (with a small thumbnail of each plant\'s main photo), care history, and the garden\'s address and zones. Kept on each phone: full-size photos, your own garden map, the sun map, irrigation setup, and reminder settings.</string>
+    <string name="faq_what_is_shared_a">Shared with everyone in the garden: plants (with a small thumbnail of each plant\'s main photo), care history, the garden\'s address and zones, and the owner\'s garden map with its irrigation lines and sun zones. Kept on each phone: full-size photos, irrigation logins and history, and reminder settings.</string>
     <string name="faq_sync_speed_q">How quickly do changes show up on other phones?</string>
     <string name="faq_sync_speed_a">Within a few seconds while both apps are open, otherwise the next time the app is opened.</string>
     <string name="faq_leave_remove_q">How do I leave a garden or remove someone?</string>
@@ -116,7 +116,7 @@
     <string name="faq_reset_garden_q">What does \"Reset garden\" do?</string>
     <string name="faq_reset_garden_a">It deletes every plant in this garden — for everyone it\'s shared with. It can\'t be undone, so back up first.</string>
     <string name="faq_data_stored_q">Where is my data stored?</string>
-    <string name="faq_data_stored_a">On your phone, and in Sage Garden\'s secure cloud (Google Firebase) so your gardens can sync between devices and be shared. The cloud copy holds your plants (with a small thumbnail of each main photo), care history, garden names, address, coordinates and zones, and who has access. Full-size photos stay on your phone or in your own Dropbox. Irrigation logins, reminder settings, your own garden map and the sun map never leave your phone.</string>
+    <string name="faq_data_stored_a">On your phone, and in Sage Garden\'s secure cloud (Google Firebase) so your gardens can sync between devices and be shared. The cloud copy holds your plants (with a small thumbnail of each main photo), care history, garden names, address, coordinates and zones, your uploaded garden map with its irrigation lines and sun zones, and who has access. Full-size photos stay on your phone or in your own Dropbox. Irrigation logins and reminder settings never leave your phone.</string>
     <string name="faq_who_receives_q">Who else receives any of my data?</string>
     <string name="faq_who_receives_a">Only what each feature needs: Google (maps and address search), Open-Meteo (your garden\'s coordinates, for weather and frost alerts), Pl@ntNet (a photo, when you identify a plant), Anthropic (your Sage questions and plant names for suggestions), and Dropbox, Tuya or Rachio only if you connect them. No ads, no tracking, and your data is never sold.</string>
     <string name="faq_account_q">Do I need an account?</string>

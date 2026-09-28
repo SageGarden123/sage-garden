@@ -124,6 +124,10 @@ object RealtimeGardenSync {
                 if (rev > GardenSyncStore.getSignalRev(context, gardenId)) {
                     scope.launch { GardenSyncClient.sync(context, getOrCreateInstallId(context), gardenId) }
                 }
+                val planRev = snapshot?.getLong("planRev") ?: 0L
+                if (planRev > GardenPlanSync.lastSeenPlanRev(context, gardenId) && !isOwnerOfGarden(context, gardenId)) {
+                    scope.launch { GardenPlanSync.pull(context, gardenId) }
+                }
                 val membershipRev = snapshot?.getLong("membershipRev") ?: 0L
                 if (membershipRev > GardenSyncStore.getMembershipRev(context, gardenId)) {
                     GardenSyncStore.setMembershipRev(context, gardenId, membershipRev)
