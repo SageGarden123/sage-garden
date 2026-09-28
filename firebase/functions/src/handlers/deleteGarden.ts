@@ -39,12 +39,13 @@ export const deleteGarden = onRequest({ cors: false }, async (req, res) => {
   const gardenRef = db.collection("gardens").doc(gardenId);
 
   try {
-    const [gardenSnap, membersSnap, joinRequestsSnap, signalReadersSnap, thumbsSnap] = await Promise.all([
+    const [gardenSnap, membersSnap, joinRequestsSnap, signalReadersSnap, thumbsSnap, planSnap] = await Promise.all([
       gardenRef.get(),
       gardenRef.collection("members").get(),
       gardenRef.collection("joinRequests").get(),
       signalRef(db, gardenId).collection("readers").get(),
       gardenRef.collection("thumbs").get(),
+      gardenRef.collection("plan").get(),
     ]);
 
     const batch = db.batch();
@@ -76,6 +77,9 @@ export const deleteGarden = onRequest({ cors: false }, async (req, res) => {
     }
     for (const thumbDoc of thumbsSnap.docs) {
       batch.delete(thumbDoc.ref);
+    }
+    for (const planDoc of planSnap.docs) {
+      batch.delete(planDoc.ref);
     }
     batch.delete(signalRef(db, gardenId));
     batch.delete(gardenRef);

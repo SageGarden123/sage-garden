@@ -20,6 +20,8 @@ import { FieldValue, Firestore, Transaction, WriteBatch } from "firebase-admin/f
 export interface GardenSignalDoc {
   rev: number;
   membershipRev?: number;
+  /** Bumped when the garden plan (map image, irrigation paths, sun zones) changes — see gardenPlan.ts. */
+  planRev?: number;
   updatedAt: number;
 }
 

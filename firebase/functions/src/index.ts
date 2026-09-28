@@ -21,3 +21,4 @@ export { listGardenMembers } from "./handlers/listGardenMembers";
 export { removeMember } from "./handlers/removeMember";
 export { leaveGarden } from "./handlers/leaveGarden";
 export { deleteGarden } from "./handlers/deleteGarden";
+export { syncGardenPlan, getGardenSignal } from "./handlers/gardenPlan";
