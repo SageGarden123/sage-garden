@@ -43,7 +43,31 @@ private fun Color.toArgbInt(): Int =
 fun getLinkedInstallId(context: Context): String =
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_INSTALL_ID, "") ?: ""
 fun setLinkedInstallId(context: Context, id: String) {
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_INSTALL_ID, id).apply()
+    // A different garden means a different membership — drop the old token.
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_INSTALL_ID, id).remove(KEY_MEMBER_TOKEN).apply()
+}
+
+private const val KEY_OWN_DEVICE_ID = "own_device_id"
+private const val KEY_MEMBER_TOKEN = "member_token"
+
+/**
+ * This car display's OWN identity, separate from the phone's Install ID it's linked to. It used to
+ * sync AS the phone (sending the phone's Install ID as its device id, with no token), which the
+ * server treated as the phone having lost its token — so every refresh here silently issued the
+ * phone a new token and broke the phone's owner-only actions until the phone next synced. Now it
+ * joins the phone's garden as its own member and keeps its own token.
+ */
+fun getOwnDeviceId(context: Context): String {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    prefs.getString(KEY_OWN_DEVICE_ID, null)?.let { return it }
+    val id = "car-" + java.util.UUID.randomUUID().toString()
+    prefs.edit().putString(KEY_OWN_DEVICE_ID, id).apply()
+    return id
+}
+fun getMemberToken(context: Context): String? =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MEMBER_TOKEN, null)
+fun setMemberToken(context: Context, token: String?) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_MEMBER_TOKEN, token).apply()
 }
 
 private const val KEY_GARDEN_LAT = "garden_lat"

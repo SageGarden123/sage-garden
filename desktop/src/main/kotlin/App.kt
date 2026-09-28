@@ -216,8 +216,13 @@ class GardenAppState(private var file: File) {
      * merge logic of its own.
      */
     fun syncNow(): GardenSyncResult {
-        val result = GardenSyncClient.sync(linkedDeviceId, plants.toList(), careLog.toList(), plantTombstones, careLogTombstones)
+        val result = GardenSyncClient.sync(
+            GardenSyncSettings.getOwnDeviceId(), linkedDeviceId.trim(), GardenSyncSettings.getMemberToken(),
+            plants.toList(), careLog.toList(), plantTombstones, careLogTombstones
+        )
+        if (result is GardenSyncResult.NotAuthorized) GardenSyncSettings.setMemberToken(null)
         if (result is GardenSyncResult.Success) {
+            result.memberToken?.let { GardenSyncSettings.setMemberToken(it) }
             plants.clear(); plants.addAll(result.plants)
             plantTombstones = result.plantTombstones.toMutableList()
             careLog.clear(); careLog.addAll(result.careLog)
@@ -284,6 +289,7 @@ fun App() {
                                     is GardenSyncResult.Success -> "Synced — ${result.plants.size} plant(s) up to date"
                                     GardenSyncResult.NetworkError -> "Couldn't reach the sync server — check your connection."
                                     GardenSyncResult.ServerError -> "Sync failed — try again shortly."
+                                    GardenSyncResult.NotAuthorized -> "Not authorised — check the Install ID, or ask the garden's owner if this computer was removed."
                                 }
                                 snackbarHostState.showSnackbar(message)
                             }

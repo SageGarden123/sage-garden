@@ -9,7 +9,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 sealed class SyncResult {
-    data class Success(val plants: List<Plant>, val gardenLat: Double?, val gardenLng: Double?) : SyncResult()
+    data class Success(val plants: List<Plant>, val gardenLat: Double?, val gardenLng: Double?, val memberToken: String?) : SyncResult()
     data object NetworkError : SyncResult()
     data object ServerError : SyncResult()
     data object NotAuthorized : SyncResult()
@@ -20,10 +20,11 @@ sealed class SyncResult {
  * HTTPS syncGarden Cloud Function, no Firebase SDK needed. This viewer always sends EMPTY
  * plants/careLog/tombstone arrays: mergeCollection (gardenSync.ts) only ever ADDS/updates from
  * what's incoming and only ever DELETES via a tombstone, so an empty payload is a pure read — the
- * server's stored state for [deviceId] comes back unchanged, nothing is pushed or lost. [deviceId]
- * here is the phone's own Install ID (Help -> Sync with other devices, on the phone) — same pairing
- * scheme the desktop app already uses, deliberately not the newer multi-garden membership flow, to
- * keep this first version simple (one linked garden, no invite/approval round trip).
+ * server's stored state for the garden comes back unchanged, nothing is pushed or lost.
+ *
+ * [gardenId] is the phone's Install ID (its own garden); [ownDeviceId] is this display's own id
+ * (see getOwnDeviceId). The first sync joins the garden as its own member and returns a token that
+ * every later sync presents — so this app never impersonates the phone.
  */
 object SyncClient {
     private const val BASE_URL = "https://us-central1-gardenmapper-a68ec.cloudfunctions.net"
@@ -33,10 +34,13 @@ object SyncClient {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    fun fetch(deviceId: String): SyncResult {
+    fun fetch(ownDeviceId: String, gardenId: String, memberToken: String?): SyncResult {
         return try {
             val body = JSONObject().apply {
-                put("deviceId", deviceId)
+                put("deviceId", ownDeviceId)
+                put("gardenId", gardenId)
+                memberToken?.let { put("memberToken", it) }
+                put("deviceName", "Car display")
                 put("plants", JSONArray())
                 put("plantTombstones", JSONArray())
                 put("careLog", JSONArray())
@@ -58,7 +62,7 @@ object SyncClient {
                 // GardenSyncClient) — used here only as the map's default camera position.
                 val gardenLat = if (json.isNull("gardenLat")) null else json.optDouble("gardenLat")
                 val gardenLng = if (json.isNull("gardenLng")) null else json.optDouble("gardenLng")
-                SyncResult.Success(plants, gardenLat, gardenLng)
+                SyncResult.Success(plants, gardenLat, gardenLng, json.optString("memberToken", "").ifBlank { null })
             }
         } catch (_: Exception) {
             SyncResult.NetworkError

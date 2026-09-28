@@ -149,10 +149,13 @@ private fun CarApp() {
         loading = true
         errorMessage = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) { SyncClient.fetch(installId) }
+            val result = withContext(Dispatchers.IO) {
+                SyncClient.fetch(getOwnDeviceId(context), installId.trim(), getMemberToken(context))
+            }
             loading = false
             when (result) {
                 is SyncResult.Success -> {
+                    result.memberToken?.let { setMemberToken(context, it) }
                     plants = result.plants.sortedBy { it.name.lowercase() }
                     saveCachedPlants(context, plants)
                     if (result.gardenLat != null && result.gardenLng != null) {
@@ -160,7 +163,11 @@ private fun CarApp() {
                         setSavedGardenLatLng(context, result.gardenLat, result.gardenLng)
                     }
                 }
-                SyncResult.NotAuthorized -> errorMessage = "Not authorized — check the Install ID."
+                SyncResult.NotAuthorized -> {
+                    // Removed from the garden, or the token is stale — forget it so re-linking starts fresh.
+                    setMemberToken(context, null)
+                    errorMessage = "Not authorised — check the Install ID, or ask the garden's owner if this display was removed."
+                }
                 SyncResult.NetworkError -> errorMessage = "Couldn't reach the server — check your connection."
                 SyncResult.ServerError -> errorMessage = "Server error — try again shortly."
             }

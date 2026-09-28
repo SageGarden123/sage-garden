@@ -11,8 +11,10 @@ sealed class GardenSyncResult {
         val plants: List<Plant>,
         val plantTombstones: List<SyncTombstone>,
         val careLog: List<CareLogEntry>,
-        val careLogTombstones: List<SyncTombstone>
+        val careLogTombstones: List<SyncTombstone>,
+        val memberToken: String?
     ) : GardenSyncResult()
+    data object NotAuthorized : GardenSyncResult()
     data object NetworkError : GardenSyncResult()
     data object ServerError : GardenSyncResult()
 }
@@ -124,8 +126,11 @@ object GardenSyncClient {
         }
 
     /** Blocking call — run off the UI thread (see App.kt's use of a coroutine scope / background thread). */
+    /** [ownDeviceId] is this install's own id; [gardenId] is the linked phone's Install ID (its garden). */
     fun sync(
-        deviceId: String,
+        ownDeviceId: String,
+        gardenId: String,
+        memberToken: String?,
         plants: List<Plant>,
         careLog: List<CareLogEntry>,
         plantTombstones: List<SyncTombstone>,
@@ -133,7 +138,10 @@ object GardenSyncClient {
     ): GardenSyncResult {
         return try {
             val body = JSONObject().apply {
-                put("deviceId", deviceId)
+                put("deviceId", ownDeviceId)
+                put("gardenId", gardenId)
+                memberToken?.let { put("memberToken", it) }
+                put("deviceName", "Desktop app")
                 put("plants", JSONArray(plants.map { plantToJson(it) }))
                 put("plantTombstones", tombstonesToJson(plantTombstones))
                 put("careLog", JSONArray(careLog.map { careLogToJson(it) }))
@@ -147,6 +155,7 @@ object GardenSyncClient {
                 .build()
 
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() == 403) return GardenSyncResult.NotAuthorized
             if (response.statusCode() !in 200..299) return GardenSyncResult.ServerError
 
             val json = JSONObject(response.body())
@@ -158,7 +167,10 @@ object GardenSyncClient {
             val mergedCareLog = (0 until mergedCareLogArr.length()).map { jsonToCareLog(mergedCareLogArr.getJSONObject(it)) }
             val mergedCareLogTombstones = jsonToTombstones(json.getJSONArray("careLogTombstones"))
 
-            GardenSyncResult.Success(mergedPlants, mergedPlantTombstones, mergedCareLog, mergedCareLogTombstones)
+            GardenSyncResult.Success(
+                mergedPlants, mergedPlantTombstones, mergedCareLog, mergedCareLogTombstones,
+                json.optString("memberToken", "").ifBlank { null }
+            )
         } catch (_: Exception) {
             GardenSyncResult.NetworkError
         }
