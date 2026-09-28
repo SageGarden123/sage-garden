@@ -140,7 +140,8 @@ object BackupHelper {
         db.manualZoneScheduleDao().getAllOnceForGarden(backupGardenId).forEach { m ->
             val o = JSONObject()
             o.put("id", m.id); o.put("zone", m.zone); o.put("gardenId", m.gardenId)
-            o.put("daysOfWeek", m.daysOfWeek); o.put("durationMinutes", m.durationMinutes); o.put("createdAt", m.createdAt)
+            o.put("daysOfWeek", m.daysOfWeek); o.put("startTimeMinutes", m.startTimeMinutes)
+            o.put("durationMinutes", m.durationMinutes); o.put("createdAt", m.createdAt)
             manualSchedulesArr.put(o)
         }
         root.put("manualZoneSchedules", manualSchedulesArr)
@@ -383,7 +384,8 @@ object BackupHelper {
                 ManualZoneScheduleEntity(
                     id = o.getString("id"), zone = o.getString("zone"),
                     gardenId = o.optString("gardenId", "").ifBlank { effectiveGardenId(context) },
-                    daysOfWeek = o.getString("daysOfWeek"), durationMinutes = o.getInt("durationMinutes"),
+                    daysOfWeek = o.getString("daysOfWeek"), startTimeMinutes = o.optInt("startTimeMinutes", 360),
+                    durationMinutes = o.getInt("durationMinutes"),
                     createdAt = o.optLong("createdAt", System.currentTimeMillis())
                 )
             )

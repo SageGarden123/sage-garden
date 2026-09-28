@@ -17,6 +17,8 @@ data class ManualZoneScheduleEntity(
     val zone: String,
     val gardenId: String = "",
     val daysOfWeek: String,
+    /** Minutes since midnight (0..1439) — when this entry's run starts, not just how long it lasts. */
+    val startTimeMinutes: Int = 0,
     val durationMinutes: Int,
     val createdAt: Long
 )

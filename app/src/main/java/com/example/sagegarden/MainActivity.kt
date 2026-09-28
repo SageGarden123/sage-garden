@@ -4398,6 +4398,16 @@ fun formatDurationMinutes(totalMinutes: Int): String {
     }
 }
 
+/** [minutesSinceMidnight] (0..1439) as a 12-hour clock time, e.g. "6:00 AM" — matches the AM/PM
+ * convention already used for actual watering-history timestamps elsewhere on this screen. */
+fun formatStartTime(minutesSinceMidnight: Int): String {
+    val h24 = (minutesSinceMidnight / 60) % 24
+    val m = minutesSinceMidnight % 60
+    val amPm = if (h24 < 12) "AM" else "PM"
+    val h12 = if (h24 % 12 == 0) 12 else h24 % 12
+    return String.format("%d:%02d %s", h12, m, amPm)
+}
+
 /** Compact multi-select day-of-week row (1=Monday..7=Sunday) — tap a day to toggle it. */
 @Composable
 fun DayOfWeekPicker(selectedDays: Set<Int>, onToggleDay: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -4494,8 +4504,12 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
     val statused = remember(plants, now) {
         plants.mapNotNull { p -> computeWateringStatus(p, now)?.let { p to it } }
     }
+    // +1 day then -1ms: matches the truncated-days math computeWateringStatus's label uses ("Due in
+    // 3 day(s)" covers anything from 72h up to just under 96h away), so a plant the app itself labels
+    // "due in 3 days" doesn't get excluded by an exact-hours cutoff a few hours short of it.
+    val cutoff = now + 4 * 86_400_000L - 1
     val dueOrOverdue = remember(statused, now) {
-        statused.filter { (_, status) -> status.nextDueMillis != null && status.nextDueMillis <= now + 3 * 86_400_000L }
+        statused.filter { (_, status) -> status.nextDueMillis != null && status.nextDueMillis <= cutoff }
             .sortedBy { (_, status) -> status.sortKey() }
     }
     val unscheduled = remember(statused) {
@@ -4724,7 +4738,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
         Spacer(Modifier.height(16.dp))
 
         if (TuyaZoneMappingState.mappings.isNotEmpty()) {
-        ExpandableSection(title = "My watering schedule (manual reference)", initiallyExpanded = true) {
+        ExpandableSection(title = "My watering schedule (manual reference)", initiallyExpanded = false) {
             Text(
                 "Your own record of what days/times each zone runs — entered by hand, purely for your reference. Doesn't read from or write to Tuya.",
                 fontSize = 11.sp, color = Color.Gray
@@ -4735,6 +4749,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
             )
             var addingForZone by remember { mutableStateOf<String?>(null) }
+            var editingEntry by remember { mutableStateOf<ManualZoneScheduleEntity?>(null) }
 
             TuyaZoneMappingState.mappings.forEachIndexed { index, mapping ->
                 val entries by remember(mapping.zone) { scheduleViewModel.getForZone(mapping.zone, scheduleGardenId) }.collectAsState()
@@ -4750,8 +4765,12 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                 Column(Modifier.weight(1f)) {
                                     Text(formatTuyaTimerDays(loopStringToDays(entry.daysOfWeek)), fontSize = 12.sp)
-                                    Text(formatDurationMinutes(entry.durationMinutes), fontSize = 11.sp, color = Color.Gray)
+                                    Text(
+                                        "${formatStartTime(entry.startTimeMinutes)} • ${formatDurationMinutes(entry.durationMinutes)}",
+                                        fontSize = 11.sp, color = Color.Gray
+                                    )
                                 }
+                                TextButton(onClick = { editingEntry = entry }) { Text("Edit", fontSize = 11.sp) }
                                 TextButton(onClick = { scheduleViewModel.delete(entry.id) }) { Text("Delete", fontSize = 11.sp) }
                             }
                         }
@@ -4760,13 +4779,19 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                 if (index < TuyaZoneMappingState.mappings.lastIndex) HorizontalDivider()
             }
 
-            if (addingForZone != null) {
-                val zone = addingForZone!!
-                var selectedDays by remember { mutableStateOf(setOf<Int>()) }
-                var totalMinutes by remember { mutableStateOf(15) }
+            val dialogZone = addingForZone ?: editingEntry?.zone
+            if (dialogZone != null) {
+                val zone = dialogZone
+                val existing = editingEntry
+                fun closeDialog() { addingForZone = null; editingEntry = null }
+                var selectedDays by remember(existing) { mutableStateOf(existing?.let { loopStringToDays(it.daysOfWeek) } ?: setOf()) }
+                var startHour by remember(existing) { mutableStateOf(existing?.let { it.startTimeMinutes / 60 } ?: 6) }
+                var startMinute by remember(existing) { mutableStateOf(existing?.let { it.startTimeMinutes % 60 } ?: 0) }
+                var showStartTimeDialog by remember { mutableStateOf(false) }
+                var totalMinutes by remember(existing) { mutableStateOf(existing?.durationMinutes ?: 15) }
                 AlertDialog(
-                    onDismissRequest = { addingForZone = null },
-                    title = { Text("Add schedule for \"$zone\"") },
+                    onDismissRequest = { closeDialog() },
+                    title = { Text(if (existing != null) "Edit schedule for \"$zone\"" else "Add schedule for \"$zone\"") },
                     text = {
                         Column {
                             Text("Days", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
@@ -4776,6 +4801,12 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                                 onToggleDay = { day -> selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day }
                             )
                             Spacer(Modifier.height(16.dp))
+                            Text("Start time", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedButton(onClick = { showStartTimeDialog = true }) {
+                                Text(formatStartTime(startHour * 60 + startMinute))
+                            }
+                            Spacer(Modifier.height(16.dp))
                             Text("Duration", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
                             Spacer(Modifier.height(6.dp))
                             DurationWheelPicker(totalMinutes = totalMinutes, onTotalMinutesChange = { totalMinutes = it }, modifier = Modifier.fillMaxWidth())
@@ -4784,14 +4815,39 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                scheduleViewModel.add(zone, scheduleGardenId, daysToLoopString(selectedDays), totalMinutes)
-                                addingForZone = null
+                                if (existing != null) {
+                                    scheduleViewModel.update(existing, daysToLoopString(selectedDays), startHour * 60 + startMinute, totalMinutes)
+                                } else {
+                                    scheduleViewModel.add(zone, scheduleGardenId, daysToLoopString(selectedDays), startHour * 60 + startMinute, totalMinutes)
+                                }
+                                closeDialog()
                             },
                             enabled = selectedDays.isNotEmpty() && totalMinutes > 0
                         ) { Text("Save") }
                     },
-                    dismissButton = { TextButton(onClick = { addingForZone = null }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { closeDialog() }) { Text("Cancel") } }
                 )
+                if (showStartTimeDialog) {
+                    val timeState = rememberTimePickerState(initialHour = startHour, initialMinute = startMinute)
+                    Dialog(onDismissRequest = { showStartTimeDialog = false }) {
+                        Card {
+                            Column(Modifier.padding(16.dp)) {
+                                TimePicker(state = timeState)
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = { showStartTimeDialog = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                                    Button(
+                                        onClick = {
+                                            startHour = timeState.hour; startMinute = timeState.minute
+                                            showStartTimeDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Set") }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(16.dp))
