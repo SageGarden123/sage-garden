@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.Manifest
@@ -336,9 +338,9 @@ fun SunMapScreen(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.care_back)) }
             Spacer(Modifier.weight(1f))
-            Text("Sun exposure map", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(stringResource(R.string.sunmap_sun_exposure_map), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Spacer(Modifier.weight(1f))
         }
 
@@ -351,7 +353,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                         contentColor = if (showingRealMap) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.weight(1f)
-                ) { Text("Real Map", fontSize = 12.sp) }
+                ) { Text(stringResource(R.string.map_real_map), fontSize = 12.sp) }
                 Button(
                     onClick = { showingRealMap = false; drawMode = null; clearStrokes() },
                     colors = ButtonDefaults.buttonColors(
@@ -359,7 +361,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                         contentColor = if (!showingRealMap) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.weight(1f)
-                ) { Text("My Drawing", fontSize = 12.sp) }
+                ) { Text(stringResource(R.string.map_my_drawing), fontSize = 12.sp) }
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -583,8 +585,8 @@ fun SunMapScreen(onBack: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             if (drawMode != null) {
                 Text(
-                    if (drawMode == "tap") "Tap to place each corner, then confirm.${if (!showingRealMap) " Pinch to zoom." else ""}"
-                    else "Drag to trace the zone's outline, then confirm.",
+                    if (drawMode == stringResource(R.string.sunmap_tap)) "Tap to place each corner, then confirm.${if (!showingRealMap) " Pinch to zoom." else ""}"
+                    else stringResource(R.string.sunmap_drag_to_trace_the_zone_s),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
@@ -596,7 +598,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                 else { if (currentStroke.isNotEmpty()) currentStroke.removeAt(currentStroke.lastIndex) }
                             },
                             modifier = Modifier.weight(1f), enabled = strokeSize > 0
-                        ) { Text("Undo point", fontSize = 12.sp) }
+                        ) { Text(stringResource(R.string.sunmap_undo_point), fontSize = 12.sp) }
                     }
                     Button(
                         onClick = {
@@ -619,14 +621,14 @@ fun SunMapScreen(onBack: () -> Unit) {
                             drawMode = null
                         },
                         modifier = Modifier.weight(1f), enabled = strokeSize >= 3
-                    ) { Text("Confirm zone", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.sunmap_confirm_zone), fontSize = 12.sp) }
                     OutlinedButton(
                         onClick = { clearStrokes(); strokeComplete = false; drawMode = null },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Cancel", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.care_cancel), fontSize = 12.sp) }
                 }
             } else {
-                Text("Zone type", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.sunmap_zone_type), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -651,8 +653,8 @@ fun SunMapScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = { clearStrokes(); drawMode = "freehand" }, modifier = Modifier.weight(1f)) { Text("Draw freehand", fontSize = 12.sp) }
-                    Button(onClick = { clearStrokes(); drawMode = "tap" }, modifier = Modifier.weight(1f)) { Text("Tap points", fontSize = 12.sp) }
+                    Button(onClick = { clearStrokes(); drawMode = "freehand" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.sunmap_draw_freehand), fontSize = 12.sp) }
+                    Button(onClick = { clearStrokes(); drawMode = "tap" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.sunmap_tap_points), fontSize = 12.sp) }
                 }
 
                 val visibleZones = zones.filter { it.mapType == (if (showingRealMap) "real" else "custom") }
@@ -695,7 +697,7 @@ fun SunMapScreen(onBack: () -> Unit) {
                                     labelForSunCategory(zone.category), fontSize = 12.sp, modifier = Modifier.weight(1f),
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 )
-                                TextButton(onClick = { pendingDeleteId = zone.id }) { Text("Delete", fontSize = 12.sp) }
+                                TextButton(onClick = { pendingDeleteId = zone.id }) { Text(stringResource(R.string.care_delete), fontSize = 12.sp) }
                             }
                         }
                     }
@@ -707,10 +709,10 @@ fun SunMapScreen(onBack: () -> Unit) {
     pendingDeleteId?.let { id ->
         AlertDialog(
             onDismissRequest = { pendingDeleteId = null },
-            title = { Text("Delete this zone?") },
-            text = { Text("This can't be undone.") },
-            confirmButton = { TextButton(onClick = { sunViewModel.delete(id); pendingDeleteId = null }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { pendingDeleteId = null }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.sunmap_delete_this_zone)) },
+            text = { Text(stringResource(R.string.form_this_can_t_be_undone)) },
+            confirmButton = { TextButton(onClick = { sunViewModel.delete(id); pendingDeleteId = null }) { Text(stringResource(R.string.care_delete)) } },
+            dismissButton = { TextButton(onClick = { pendingDeleteId = null }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 }

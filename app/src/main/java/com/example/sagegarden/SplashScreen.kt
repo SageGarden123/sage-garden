@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import androidx.activity.enableEdgeToEdge
@@ -60,7 +62,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 .padding(horizontal = 30.dp, vertical = 20.dp)
         ) {
             Text(
-                "Sage Garden",
+                stringResource(R.string.splash_sage_garden),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -79,7 +81,7 @@ fun SplashScreen(onFinished: () -> Unit) {
                 .background(Color.White.copy(alpha = 0.80f))
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            Text("Created by Daniel Luton", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(stringResource(R.string.splash_created_by_daniel_luton), fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
 
         // Fake loading bar

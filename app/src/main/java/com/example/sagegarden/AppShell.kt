@@ -132,7 +132,7 @@ fun PlantTooltipCard(plant: PlantEntity, onEdit: () -> Unit, onDismiss: () -> Un
                 IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
             }
             Spacer(Modifier.height(8.dp))
-            Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Edit plant") }
+            Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.shell_edit_plant)) }
         }
     }
 }

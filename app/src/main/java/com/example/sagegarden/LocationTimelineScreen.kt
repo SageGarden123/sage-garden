@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.Manifest
@@ -105,12 +107,12 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("‹ Back") }
+        TextButton(onClick = onBack) { Text(stringResource(R.string.care_back)) }
         Spacer(Modifier.height(6.dp))
-        Text("Progress photos — $location", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(stringResource(R.string.zonephotos_progress_photos, location), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(6.dp))
         Text(
-            "For the best before/after comparison, take one photo of this whole area each season, from roughly the same spot.",
+            stringResource(R.string.zonephotos_for_the_best_before_after_comparison),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(14.dp))
@@ -119,7 +121,7 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
             LocationPhotoSlider(photos = sorted)
             Spacer(Modifier.height(20.dp))
         } else {
-            Text("Add at least 2 photos of this area to compare then vs now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text(stringResource(R.string.zonephotos_add_at_least_2_photos_of), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Spacer(Modifier.height(14.dp))
         }
 
@@ -132,16 +134,16 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                     else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 },
                 modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding
-            ) { Text("Camera", fontSize = 12.sp) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Gallery", fontSize = 12.sp) }
+            ) { Text(stringResource(R.string.form_camera), fontSize = 12.sp) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.form_gallery), fontSize = 12.sp) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Dropbox", fontSize = 12.sp) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.form_dropbox), fontSize = 12.sp) }
             }
         }
         }
 
         Spacer(Modifier.height(20.dp))
-        Text("All photos (${sorted.size})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text(stringResource(R.string.growth_all_photos, sorted.size), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
         val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
         sorted.reversed().forEach { photo ->
@@ -156,7 +158,7 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
                         if (canEdit) {
-                            TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text("Delete", fontSize = 12.sp) }
+                            TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text(stringResource(R.string.care_delete), fontSize = 12.sp) }
                         }
                     }
                     val localUriScheme = Uri.parse(photo.uri).scheme
@@ -177,13 +179,13 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                             enabled = uploadingPhotoId != photo.id
                         ) {
                             Text(
-                                if (uploadingPhotoId == photo.id) "Uploading…"
-                                else "Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                if (uploadingPhotoId == photo.id) stringResource(R.string.form_uploading)
+                                else stringResource(R.string.form_upload_to_dropbox) + (previewName?.let { " as $it" } ?: ""),
                                 fontSize = 12.sp
                             )
                         }
                         if (uploadFailedId == photo.id) {
-                            Text("Upload failed — try again", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.form_upload_failed_try_again), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -46,11 +48,11 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Sage", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.sage_sage), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.weight(1f))
                 TextButton(onClick = { viewModel.clearHistory() }, enabled = messages.isNotEmpty()) {
-                    Text("Clear chat", fontSize = 12.sp)
+                    Text(stringResource(R.string.sage_clear_chat), fontSize = 12.sp)
                 }
-                TextButton(onClick = onDismiss) { Text("Minimise", fontSize = 12.sp) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.sage_minimise), fontSize = 12.sp) }
             }
             Spacer(Modifier.height(2.dp))
             Text(
@@ -61,21 +63,21 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
-            Text("Ask about plant care or how to use this app.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.sage_ask_about_plant_care_or_how), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (messages.isEmpty()) {
                     item {
                         Text(
-                            "Ask me things like \"how often should I water a tomato plant?\" or \"how do I set up watering reminders?\"",
+                            stringResource(R.string.sage_ask_me_things_like_how_often),
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp)
                         )
                     }
                 }
                 items(messages, key = { it.id }) { message -> SageMessageBubble(message) }
                 if (sending) {
-                    item { Text("Sage is thinking…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp)) }
+                    item { Text(stringResource(R.string.sage_sage_is_thinking), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp)) }
                 }
             }
 
@@ -84,11 +86,11 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
             if (freeLimitReached) {
                 Card(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("You've used all your free Sage questions.", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.sage_you_ve_used_all_your_free), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
-                        Text("Enter a promo code in Settings → App preferences for unlimited access.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.sage_enter_a_promo_code_in_settings), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Open settings") }
+                        Button(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.sage_open_settings)) }
                     }
                 }
             } else {
@@ -96,7 +98,7 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
-                        placeholder = { Text("Ask Sage…") },
+                        placeholder = { Text(stringResource(R.string.sage_ask_sage)) },
                         modifier = Modifier.weight(1f),
                         enabled = !sending,
                         singleLine = true
@@ -105,7 +107,7 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                     Button(
                         onClick = { viewModel.send(input); input = "" },
                         enabled = !sending && input.isNotBlank()
-                    ) { Text("Send") }
+                    ) { Text(stringResource(R.string.sage_send)) }
                 }
             }
         }

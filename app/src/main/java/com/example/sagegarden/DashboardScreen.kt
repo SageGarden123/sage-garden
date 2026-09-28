@@ -323,7 +323,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
             }
         }
             if (filteredPlants.isEmpty()) {
-                Text("No plants match these filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.overview_no_plants_match_these_filters), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 return@Column
             }
 
@@ -357,7 +357,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                 val chartLabel = dashboardChartGroupOptions.firstOrNull { it.key == chartGroupBy }?.label ?: "Location"
                 val statLabel = dashboardStatCatalog.firstOrNull { it.key == selectedStatKey }?.label
                 Text(
-                    if (statLabel != null) "Plants by $chartLabel — $statLabel" else "Plants by $chartLabel",
+                    if (statLabel != null) stringResource(R.string.overview_plants_by, chartLabel, statLabel) else stringResource(R.string.overview_plants_by_2, chartLabel),
                     fontWeight = FontWeight.SemiBold, fontSize = 15.sp
                 )
                 Spacer(Modifier.height(8.dp))
@@ -368,10 +368,10 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 val statLabel = dashboardStatCatalog.firstOrNull { it.key == selectedStatKey }?.label
                 Text(
-                    if (statLabel != null) "Plants — $statLabel" else "Plants",
+                    if (statLabel != null) stringResource(R.string.overview_plants, statLabel) else stringResource(R.string.overview_plants_2),
                     fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f)
                 )
-                if (selectedStatKey != null) TextButton(onClick = { selectedStatKey = null }) { Text("Clear", fontSize = 12.sp) }
+                if (selectedStatKey != null) TextButton(onClick = { selectedStatKey = null }) { Text(stringResource(R.string.overview_clear), fontSize = 12.sp) }
             }
             Spacer(Modifier.height(8.dp))
 
@@ -396,7 +396,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                             Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text(
                                 text = listOfNotNull(
-                                    plant.location.takeIf { it.isNotBlank() } ?: "No location",
+                                    plant.location.takeIf { it.isNotBlank() } ?: stringResource(R.string.overview_no_location),
                                     plant.sun.takeIf { it.isNotBlank() }?.let { "$it sun" },
                                     plant.water.takeIf { it.isNotBlank() }?.let { "$it water" }
                                 ).joinToString(" · "),
@@ -414,7 +414,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
         var draft by remember { mutableStateOf(filters) }
         AlertDialog(
             onDismissRequest = { showFilterDialog = false },
-            title = { Text("Filter plants") },
+            title = { Text(stringResource(R.string.overview_filter_plants)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     SimpleFilterDropdown("Location", locations, draft.location) { draft = draft.copy(location = it) }
@@ -438,12 +438,12 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                     SimpleFilterDropdown("Frost", listOf("All") + frostOptions, draft.frost) { draft = draft.copy(frost = it) }
                 }
             },
-            confirmButton = { TextButton(onClick = { viewModel.setFilters(draft); showFilterDialog = false }) { Text("Apply") } },
+            confirmButton = { TextButton(onClick = { viewModel.setFilters(draft); showFilterDialog = false }) { Text(stringResource(R.string.overview_apply)) } },
             dismissButton = {
                 TextButton(onClick = {
                     val cleared = DashboardFilters()
                     draft = cleared; viewModel.setFilters(cleared); showFilterDialog = false
-                }) { Text("Clear filters") }
+                }) { Text(stringResource(R.string.overview_clear_filters)) }
             }
         )
     }
@@ -453,10 +453,10 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
         var draftChartGroupBy by remember { mutableStateOf(chartGroupBy) }
         AlertDialog(
             onDismissRequest = { showCustomiseDialog = false },
-            title = { Text("Customise dashboard") },
+            title = { Text(stringResource(R.string.overview_customise_dashboard)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Figures shown (in order):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.overview_figures_shown_in_order), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(6.dp))
                     draftKeys.forEachIndexed { index, key ->
                         val option = dashboardStatCatalog.firstOrNull { it.key == key }
@@ -479,7 +479,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                         Spacer(Modifier.height(10.dp))
                         HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
-                        Text("Add more:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.overview_add_more), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         addableOptions.forEach { option ->
                             Row(
@@ -498,7 +498,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                     HorizontalDivider()
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text("Show chart", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.overview_show_chart), fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Switch(checked = draftChartEnabled, onCheckedChange = { draftChartEnabled = it })
                     }
                     if (draftChartEnabled) {
@@ -524,9 +524,9 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                     chartGroupBy = draftChartGroupBy
                     setDashboardChartGroupBy(context, draftChartGroupBy)
                     showCustomiseDialog = false
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.care_save)) }
             },
-            dismissButton = { TextButton(onClick = { showCustomiseDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showCustomiseDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
     val plantToShow = selectedPlant
@@ -563,7 +563,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
                     DetailRow("Watering System", plantToShow.wateringSystem)
                     DetailRow("Notes", plantToShow.notes)
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { selectedPlant = null }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+                    Button(onClick = { selectedPlant = null }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.overview_close)) }
                 }
             }
         }
@@ -621,7 +621,7 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         plants.groupingBy(keyFn).eachCount().entries.sortedByDescending { it.value }.take(6)
     }
     if (counts.isEmpty()) {
-        Text("No data to chart yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.overview_no_data_to_chart_yet), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val maxCount = counts.maxOf { it.value }.coerceAtLeast(1)

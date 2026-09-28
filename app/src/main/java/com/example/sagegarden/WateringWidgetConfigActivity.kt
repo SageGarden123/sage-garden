@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
@@ -123,11 +125,11 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("Widget settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        Text("Plants requiring care", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.widget_widget_settings), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(stringResource(R.string.widget_plants_requiring_care), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
-        Text("Refresh every", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.widget_refresh_every), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(1 to "1 day", 2 to "2 days", 3 to "3 days", 7 to "7 days").forEach { (days, label) ->
@@ -136,7 +138,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Show up to", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.widget_show_up_to), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             maxPlantsOptions.forEach { n ->
@@ -145,7 +147,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Include plants due within", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.widget_include_plants_due_within), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0 to "Today only", 2 to "2 days", 5 to "5 days", 7 to "7 days").forEach { (days, label) ->
@@ -154,25 +156,25 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Show plants due for", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.widget_show_plants_due_for), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text("Watering", fontSize = 12.sp) })
-            FilterChip(selected = includePruning, onClick = { includePruning = !includePruning }, label = { Text("Pruning", fontSize = 12.sp) })
+            FilterChip(selected = includeWatering, onClick = { includeWatering = !includeWatering }, label = { Text(stringResource(R.string.widget_watering), fontSize = 12.sp) })
+            FilterChip(selected = includePruning, onClick = { includePruning = !includePruning }, label = { Text(stringResource(R.string.widget_pruning), fontSize = 12.sp) })
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = includeFertilising, onClick = { includeFertilising = !includeFertilising }, label = { Text("Fertilising", fontSize = 12.sp) })
-            FilterChip(selected = includeFeeding, onClick = { includeFeeding = !includeFeeding }, label = { Text("Feeding", fontSize = 12.sp) })
+            FilterChip(selected = includeFertilising, onClick = { includeFertilising = !includeFertilising }, label = { Text(stringResource(R.string.widget_fertilising), fontSize = 12.sp) })
+            FilterChip(selected = includeFeeding, onClick = { includeFeeding = !includeFeeding }, label = { Text(stringResource(R.string.widget_feeding), fontSize = 12.sp) })
         }
         if (!includeWatering && !includePruning && !includeFertilising && !includeFeeding) {
             Spacer(Modifier.height(4.dp))
-            Text("Pick at least one, or the widget will have nothing to show.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.widget_pick_at_least_one_or_the), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
 
         if (knownGardens.size > 1) {
             Spacer(Modifier.height(20.dp))
-            Text("Show plants from", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.widget_show_plants_from), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             knownGardens.forEach { garden ->
                 Row(
@@ -192,7 +194,7 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
                 }
             }
             if (selectedGardenIds?.isEmpty() == true) {
-                Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.widget_pick_at_least_one_garden_or), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
             }
         }
         Spacer(Modifier.height(28.dp))
@@ -209,6 +211,6 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
             },
             enabled = !saving,
             modifier = Modifier.fillMaxWidth()
-        ) { Text(if (saving) "Saving, please wait…" else "Save") }
+        ) { Text(if (saving) stringResource(R.string.widget_saving_please_wait) else stringResource(R.string.care_save)) }
     }
 }

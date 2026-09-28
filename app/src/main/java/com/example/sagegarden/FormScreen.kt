@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import com.example.sagegarden.ui.theme.appColors
@@ -368,7 +370,7 @@ fun FormScreen(
         if (!canEdit) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.warningContainer), modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "View-only — you don't have edit access to this garden.",
+                    stringResource(R.string.form_view_only_you_don_t_have),
                     modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = MaterialTheme.appColors.onWarningContainer
                 )
             }
@@ -379,7 +381,7 @@ fun FormScreen(
             // Dropbox connection — it's a plain HTTPS shared link that renders fine without this
             // device being linked. Only picking/uploading a NEW cloud photo actually needs it,
             // and those specific buttons below already gate on dropboxConnected individually.
-            Text("Connect Dropbox in Settings → Photos & storage first.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text(stringResource(R.string.form_connect_dropbox_in_settings_photos_storage), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             Box(
                 modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp))
@@ -400,7 +402,7 @@ fun FormScreen(
                 // the existing photo full-screen is harmless read-only behaviour, so that tap stays
                 // enabled above even when canEdit is false — only capturing a NEW photo is blocked.
                 if (photoUri != null) PlantPhoto(photoUri = photoUri.toString(), photoThumbnailBase64 = photoThumbnailBase64, modifier = Modifier.fillMaxSize())
-                else Text("Tap to take a photo", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else Text(stringResource(R.string.form_tap_to_take_a_photo), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
 
@@ -414,16 +416,16 @@ fun FormScreen(
                         } else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Replace with a new photo") }
+                ) { Text(stringResource(R.string.form_replace_with_a_new_photo)) }
                 Spacer(Modifier.height(8.dp))
             }
             OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (photoUri != null) "Replace with a photo from your device" else "Choose a photo from your device")
+                Text(if (photoUri != null) stringResource(R.string.form_replace_with_a_photo_from_your) else stringResource(R.string.form_choose_a_photo_from_your_device))
             }
             if (dropboxConnected) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { showDropboxPicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (photoUri != null) "Replace with a photo from Dropbox" else "Choose a photo from Dropbox")
+                    Text(if (photoUri != null) stringResource(R.string.form_replace_with_a_photo_from_dropbox) else stringResource(R.string.form_choose_a_photo_from_dropbox))
                 }
             }
             val currentPhotoUri = photoUri
@@ -452,7 +454,7 @@ fun FormScreen(
                     },
                     enabled = !uploadingPhotoToDropbox && displayId.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (uploadingPhotoToDropbox) "Uploading…" else "Upload this photo to Dropbox as $previewName") }
+                ) { Text(if (uploadingPhotoToDropbox) stringResource(R.string.form_uploading) else stringResource(R.string.form_upload_this_photo_to_dropbox_as, previewName)) }
             }
             if (photoUri != null) {
                 Spacer(Modifier.height(8.dp))
@@ -460,13 +462,13 @@ fun FormScreen(
                     onClick = { photoUri = null },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Remove photo from plant") }
+                ) { Text(stringResource(R.string.form_remove_photo_from_plant)) }
             }
             }
         }
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Plant name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.form_plant_name)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         if (canEdit) {
         Spacer(Modifier.height(6.dp))
         Button(
@@ -499,9 +501,9 @@ fun FormScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water),
             enabled = !aiLoading
-        ) { Text(if (aiLoading) "Identifying…" else "Suggest name from photo (AI)") }
+        ) { Text(if (aiLoading) stringResource(R.string.form_identifying) else stringResource(R.string.form_suggest_name_from_photo_ai)) }
         Text(
-            "AI suggestions are a starting point - always double-check the result.",
+            stringResource(R.string.form_ai_suggestions_are_a_starting_point),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
@@ -526,10 +528,10 @@ fun FormScreen(
                     lastWateredDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 }
             },
-            label = { Text("Watering frequency (days)") },
+            label = { Text(stringResource(R.string.form_watering_frequency_days)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             supportingText = {
-                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 12.sp)
+                Text(stringResource(R.string.form_a_guide_only_feel_the_soil), fontSize = 12.sp)
             },
             modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
@@ -537,7 +539,7 @@ fun FormScreen(
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Indoor plant (exempt from rain-based reminder skipping)",
+                stringResource(R.string.form_indoor_plant_exempt_from_rain_based),
                 fontSize = 13.sp, modifier = Modifier.weight(1f)
             )
             Switch(checked = isIndoor, onCheckedChange = { isIndoor = it }, enabled = canEdit)
@@ -553,19 +555,19 @@ fun FormScreen(
                 OutlinedButton(
                     onClick = { scope.launch { saveThenNavigateToPlacement("place_custom/$displayId") } },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (hasCustom) "Change location on custom map" else "Place on custom map") }
+                ) { Text(if (hasCustom) stringResource(R.string.form_change_location_on_custom_map) else stringResource(R.string.form_place_on_custom_map)) }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { scope.launch { saveThenNavigateToPlacement("place_real/$displayId") } },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (hasReal) "Change location on real-world map" else "Place on real-world map") }
+            ) { Text(if (hasReal) stringResource(R.string.form_change_location_on_real_world_map) else stringResource(R.string.form_place_on_real_world_map)) }
         }
         Spacer(Modifier.height(14.dp))
 
         if (plantId != null && FeatureVisibility.shouldShow(context, Feature.PLANT_HISTORY)) {
             OutlinedButton(onClick = { onOpenCareHistory(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("View watering, fertilising, feeding & pruning history")
+                Text(stringResource(R.string.form_view_watering_fertilising_feeding_pruning_histor))
             }
             Spacer(Modifier.height(14.dp))
         }
@@ -577,11 +579,11 @@ fun FormScreen(
             onClick = { showMoreDetails = !showMoreDetails },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (showMoreDetails) "Hide more details" else "More details — species, conditions, care schedules")
+            Text(if (showMoreDetails) stringResource(R.string.form_hide_more_details) else stringResource(R.string.form_more_details_species_conditions_care_schedules))
         }
         Spacer(Modifier.height(14.dp))
         if (showMoreDetails) {
-        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text("Scientific name") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        OutlinedTextField(value = sci, onValueChange = { sci = it }, label = { Text(stringResource(R.string.form_scientific_name)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
         DropdownField("Category", categoryOptions, category, { category = it }, "What kind of plant this is — also picks its icon on the map", enabled = canEdit)
@@ -606,7 +608,7 @@ fun FormScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = pollinatorOther, onValueChange = { pollinatorOther = it },
-                label = { Text("Describe pollinator-friendliness") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
+                label = { Text(stringResource(R.string.form_describe_pollinator_friendliness)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -647,9 +649,9 @@ fun FormScreen(
                 enabled = sci.isNotBlank() && !conditionsAutoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
-            ) { Text(if (conditionsAutoFillLoading) "Asking Sage…" else "Suggest optimal conditions with Sage") }
+            ) { Text(if (conditionsAutoFillLoading) stringResource(R.string.form_asking_sage) else stringResource(R.string.form_suggest_optimal_conditions_with_sage)) }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.form_enter_a_scientific_name_above_to), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -659,7 +661,7 @@ fun FormScreen(
             onValueChange = {},
             readOnly = true,
             enabled = false,
-            label = { Text("Plant ID") },
+            label = { Text(stringResource(R.string.form_plant_id)) },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -669,25 +671,25 @@ fun FormScreen(
         )
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("Source (e.g. nursery)") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text(stringResource(R.string.form_source_e_g_nursery)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
         DatePickerField(label = "Date planted", dateString = date, onDateChange = { date = it }, allowNotApplicable = true, enabled = canEdit)
         Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
-            value = qty, onValueChange = { qty = it }, label = { Text("Quantity") },
+            value = qty, onValueChange = { qty = it }, label = { Text(stringResource(R.string.form_quantity)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
         Spacer(Modifier.height(14.dp))
 
-        OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text("Watering System") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        OutlinedTextField(value = wateringSystem, onValueChange = { wateringSystem = it }, label = { Text(stringResource(R.string.form_watering_system)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(14.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Requires manual watering (not part of a watering system)",
+                stringResource(R.string.form_requires_manual_watering_not_part_of),
                 fontSize = 13.sp, modifier = Modifier.weight(1f)
             )
             Switch(checked = manualWateringOnly, onCheckedChange = { manualWateringOnly = it }, enabled = canEdit)
@@ -698,7 +700,7 @@ fun FormScreen(
         ExpandableSection(title = "Seasonal watering (optional)") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Leave blank to use the normal frequency. To pause a season, enter a large number such as 365 — not 0.",
+                    stringResource(R.string.form_leave_blank_to_use_the_normal),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
                 )
                 FaqInfoButton(Faq.SEASONAL)
@@ -707,7 +709,7 @@ fun FormScreen(
             OutlinedTextField(
                 value = summerWateringFrequency,
                 onValueChange = { summerWateringFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Summer frequency (days) — blank = no summer override") },
+                label = { Text(stringResource(R.string.form_summer_frequency_days_blank_no_summer)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -715,7 +717,7 @@ fun FormScreen(
             OutlinedTextField(
                 value = winterWateringFrequency,
                 onValueChange = { winterWateringFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Winter frequency (days) — blank = no winter override") },
+                label = { Text(stringResource(R.string.form_winter_frequency_days_blank_no_winter)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -729,7 +731,7 @@ fun FormScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = fertiliseFrequency, onValueChange = { fertiliseFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Fertilise frequency (days)") },
+                label = { Text(stringResource(R.string.form_fertilise_frequency_days)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -738,7 +740,7 @@ fun FormScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = pruneFrequency, onValueChange = { pruneFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Prune frequency (days)") },
+                label = { Text(stringResource(R.string.form_prune_frequency_days)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -752,7 +754,7 @@ fun FormScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = feedFrequency, onValueChange = { feedFrequency = it.filter { c -> c.isDigit() } },
-                label = { Text("Feeding frequency (days)") },
+                label = { Text(stringResource(R.string.form_feeding_frequency_days)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
             )
@@ -796,26 +798,26 @@ fun FormScreen(
                 enabled = sci.isNotBlank() && !autoFillLoading,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.water)
-            ) { Text(if (autoFillLoading) "Asking Sage…" else "Suggest care frequencies with Sage") }
+            ) { Text(if (autoFillLoading) stringResource(R.string.form_asking_sage) else stringResource(R.string.form_suggest_care_frequencies_with_sage)) }
             if (sci.isBlank()) {
-                Text("Enter a scientific name above to use this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.form_enter_a_scientific_name_above_to), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(14.dp))
         }
 
         if (FeatureVisibility.shouldShow(context, Feature.COORDINATES)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(value = lat, onValueChange = { lat = it }, label = { Text("Latitude") }, modifier = Modifier.weight(1f), readOnly = !canEdit)
-            OutlinedTextField(value = lng, onValueChange = { lng = it }, label = { Text("Longitude") }, modifier = Modifier.weight(1f), readOnly = !canEdit)
+            OutlinedTextField(value = lat, onValueChange = { lat = it }, label = { Text(stringResource(R.string.form_latitude)) }, modifier = Modifier.weight(1f), readOnly = !canEdit)
+            OutlinedTextField(value = lng, onValueChange = { lng = it }, label = { Text(stringResource(R.string.form_longitude)) }, modifier = Modifier.weight(1f), readOnly = !canEdit)
         }
         Text(
-            "Coordinates based on map location - update the location using the red pin in list view, or by manually updating the coordinates below",
+            stringResource(R.string.form_coordinates_based_on_map_location_update),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
         )
         }
         }
 
-        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
+        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text(stringResource(R.string.form_notes)) }, modifier = Modifier.fillMaxWidth(), readOnly = !canEdit)
         Spacer(Modifier.height(20.dp))
 
         if (displayId.isNotBlank() && FeatureVisibility.shouldShow(context, Feature.EXTRA_PHOTOS)) {
@@ -860,13 +862,13 @@ fun FormScreen(
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) { Text("Save plant") }
+        ) { Text(stringResource(R.string.form_save_plant)) }
         }
 
         if (plantId != null && FeatureVisibility.shouldShow(context, Feature.GROWTH_TIMELINES)) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { onOpenGrowthTimeline(plantId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("View growth timeline")
+                Text(stringResource(R.string.form_view_growth_timeline))
             }
         }
         if (plantId != null && canEdit) {
@@ -874,7 +876,7 @@ fun FormScreen(
             OutlinedButton(
                 onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) { Text("Delete this plant") }
+            ) { Text(stringResource(R.string.form_delete_this_plant)) }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -889,23 +891,23 @@ fun FormScreen(
                 onCancel()
             },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Cancel") }
+        ) { Text(stringResource(R.string.care_cancel)) }
         Spacer(Modifier.height(30.dp))
     }
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete this plant?") },
-            text = { Text("This can't be undone.") },
+            title = { Text(stringResource(R.string.form_delete_this_plant_2)) },
+            text = { Text(stringResource(R.string.form_this_can_t_be_undone)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
                     plantId?.let { viewModel.delete(gardenId, it) }
                     scope.launch { snackbarHostState.showSnackbar("Plant deleted") }
                     onDone()
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.care_delete)) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -918,10 +920,10 @@ fun FormScreen(
         }
         AlertDialog(
             onDismissRequest = { showAutoFillConfirm = null },
-            title = { Text("Overwrite existing values?") },
+            title = { Text(stringResource(R.string.form_overwrite_existing_values)) },
             text = {
                 Column {
-                    Text("Sage's suggestions will replace the values you've already entered for:")
+                    Text(stringResource(R.string.form_sage_s_suggestions_will_replace_the))
                     Spacer(Modifier.height(6.dp))
                     overwritten.forEach { Text("• $it", fontSize = 13.sp) }
                 }
@@ -936,9 +938,9 @@ fun FormScreen(
                     suggestion.pruneFrequencyDays?.let { pruneFrequency = it.toString() }
                     suggestion.feedFrequencyDays?.let { feedFrequency = it.toString() }
                     showAutoFillConfirm = null
-                }) { Text("Apply") }
+                }) { Text(stringResource(R.string.overview_apply)) }
             },
-            dismissButton = { TextButton(onClick = { showAutoFillConfirm = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showAutoFillConfirm = null }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -954,10 +956,10 @@ fun FormScreen(
         }
         AlertDialog(
             onDismissRequest = { showConditionsAutoFillConfirm = null },
-            title = { Text("Overwrite existing values?") },
+            title = { Text(stringResource(R.string.form_overwrite_existing_values)) },
             text = {
                 Column {
-                    Text("Sage's suggestions will replace the values you've already entered for:")
+                    Text(stringResource(R.string.form_sage_s_suggestions_will_replace_the))
                     Spacer(Modifier.height(6.dp))
                     overwritten.forEach { Text("• $it", fontSize = 13.sp) }
                 }
@@ -972,9 +974,9 @@ fun FormScreen(
                     suggestion.native?.let { native = it }
                     suggestion.pollinator?.let { pollinatorChoice = it }
                     showConditionsAutoFillConfirm = null
-                }) { Text("Apply") }
+                }) { Text(stringResource(R.string.overview_apply)) }
             },
-            dismissButton = { TextButton(onClick = { showConditionsAutoFillConfirm = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showConditionsAutoFillConfirm = null }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -985,30 +987,30 @@ fun FormScreen(
                 pendingHintPlant?.let { checkPlacementPrompts(it) }
                 pendingHintPlant = null
             },
-            title = { Text("Set up care reminders?") },
-            text = { Text("Sage Garden can remind you when your plants need watering, fertilising, feeding, or pruning. You can turn them on any time in Settings → Reminders.") },
+            title = { Text(stringResource(R.string.form_set_up_care_reminders)) },
+            text = { Text(stringResource(R.string.form_sage_garden_can_remind_you_when)) },
             confirmButton = {
                 TextButton(onClick = {
                     showNotificationHint = false
                     pendingHintPlant?.let { checkPlacementPrompts(it) }
                     pendingHintPlant = null
-                }) { Text("Got it") }
+                }) { Text(stringResource(R.string.form_got_it)) }
             }
         )
     }
     if (showPlacementPrompt) {
         AlertDialog(
             onDismissRequest = { showPlacementPrompt = false; onDone() },
-            title = { Text("Place on other map too?") },
+            title = { Text(stringResource(R.string.form_place_on_other_map_too)) },
             text = { Text(placementPromptText) },
             confirmButton = {
                 TextButton(onClick = {
                     showPlacementPrompt = false
                     onNavigateToPlacement(placementPromptRoute)
-                }) { Text("Yes, place it") }
+                }) { Text(stringResource(R.string.form_yes_place_it)) }
             },
             dismissButton = {
-                TextButton(onClick = { showPlacementPrompt = false; onDone() }) { Text("Not now") }
+                TextButton(onClick = { showPlacementPrompt = false; onDone() }) { Text(stringResource(R.string.form_not_now)) }
             }
         )
     }
@@ -1020,14 +1022,14 @@ fun FormScreen(
                 showBulkWaterPrompt = false
                 plant?.let { checkPlacementPrompts(it) }
             },
-            title = { Text("Apply this watering to other plants?") },
+            title = { Text(stringResource(R.string.form_apply_this_watering_to_other_plants)) },
             text = {
                 Column {
-                    Text("Set \"last watered\" to $lastWateredDate for \"${plant?.name}\" — also apply it to other plants?")
+                    Text(stringResource(R.string.form_set_last_watered_to_for_also, lastWateredDate, plant?.name.toString()))
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "Also apply to all plants in \"$location\"",
+                            stringResource(R.string.form_also_apply_to_all_plants_in, location),
                             fontSize = 13.sp,
                             modifier = Modifier.weight(1f)
                         )
@@ -1037,7 +1039,7 @@ fun FormScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Also apply to all plants on \"$systemName\" (any zone)",
+                                stringResource(R.string.form_also_apply_to_all_plants_on, systemName),
                                 fontSize = 13.sp,
                                 modifier = Modifier.weight(1f)
                             )
@@ -1046,7 +1048,7 @@ fun FormScreen(
                     }
                     if (!bulkApplyToZone && !bulkApplyToSystem) {
                         Spacer(Modifier.height(8.dp))
-                        Text("Neither toggle is on, so only \"${plant?.name}\" will be updated — same as \"Just this plant\".", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.form_neither_toggle_is_on_so_only, plant?.name.toString()), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -1069,13 +1071,13 @@ fun FormScreen(
                     } else {
                         plant?.let { checkPlacementPrompts(it) }
                     }
-                }) { Text("Yes, apply") }
+                }) { Text(stringResource(R.string.form_yes_apply)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showBulkWaterPrompt = false
                     plant?.let { checkPlacementPrompts(it) }
-                }) { Text("Just this plant") }
+                }) { Text(stringResource(R.string.form_just_this_plant)) }
             }
         )
     }
@@ -1089,7 +1091,7 @@ fun FormScreen(
                         Image(bitmap = fallbackBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                     } else {
                         Text(
-                            "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
+                            stringResource(R.string.form_couldn_t_load_this_photo_the),
                             color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
                         )
                     }
@@ -1140,7 +1142,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
 
     ExpandableSection(title = "Extra photos (${photos.size})") {
         Text(
-            "Anything else worth keeping a photo of for this plant — its watering system, a care-instruction leaflet, etc.",
+            stringResource(R.string.form_anything_else_worth_keeping_a_photo),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
@@ -1155,10 +1157,10 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                 },
                 contentPadding = extraPhotoButtonPadding,
                 modifier = Modifier.weight(1f)
-            ) { Text("Camera", fontSize = 12.sp, maxLines = 1) }
-            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("Gallery", fontSize = 12.sp, maxLines = 1) }
+            ) { Text(stringResource(R.string.form_camera), fontSize = 12.sp, maxLines = 1) }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.form_gallery), fontSize = 12.sp, maxLines = 1) }
             if (DropboxAuthState.token != null) {
-                OutlinedButton(onClick = { showDropboxPicker = true }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text("Dropbox", fontSize = 12.sp, maxLines = 1) }
+                OutlinedButton(onClick = { showDropboxPicker = true }, contentPadding = extraPhotoButtonPadding, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.form_dropbox), fontSize = 12.sp, maxLines = 1) }
             }
         }
         }
@@ -1180,13 +1182,13 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                             OutlinedTextField(
                                 value = label,
                                 onValueChange = { label = it; extraPhotoViewModel.updateLabel(photo, it) },
-                                label = { Text("Label", fontSize = 12.sp) },
+                                label = { Text(stringResource(R.string.form_label), fontSize = 12.sp) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 readOnly = !canEdit
                             )
                             if (canEdit) {
-                                TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text("Delete", fontSize = 12.sp) }
+                                TextButton(onClick = { extraPhotoViewModel.delete(photo.id) }) { Text(stringResource(R.string.care_delete), fontSize = 12.sp) }
                             }
                         }
                         val localUriScheme = Uri.parse(photo.uri).scheme
@@ -1207,13 +1209,13 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
                                 enabled = uploadingPhotoId != photo.id
                             ) {
                                 Text(
-                                    if (uploadingPhotoId == photo.id) "Uploading…"
-                                    else "Upload to Dropbox" + (previewName?.let { " as $it" } ?: ""),
+                                    if (uploadingPhotoId == photo.id) stringResource(R.string.form_uploading)
+                                    else stringResource(R.string.form_upload_to_dropbox) + (previewName?.let { " as $it" } ?: ""),
                                     fontSize = 12.sp
                                 )
                             }
                             if (uploadFailedId == photo.id) {
-                                Text("Upload failed — try again", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                Text(stringResource(R.string.form_upload_failed_try_again), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
@@ -1233,7 +1235,7 @@ fun ExtraPhotosSection(plantId: String, canEdit: Boolean = true, gardenId: Strin
             Box(modifier = Modifier.fillMaxWidth().height(400.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
                 if (photoLoadFailed) {
                     Text(
-                        "Couldn't load this photo — the link may no longer be valid (e.g. its Dropbox sharing permissions changed).",
+                        stringResource(R.string.form_couldn_t_load_this_photo_the),
                         color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(24.dp)
                     )
                 } else {

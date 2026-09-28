@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 
@@ -45,26 +47,26 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("‹ Back") }
+        TextButton(onClick = onBack) { Text(stringResource(R.string.care_back)) }
         Spacer(Modifier.height(6.dp))
-        Text("Watering, fertilising, feeding & pruning history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(stringResource(R.string.care_watering_fertilising_feeding_pruning_history), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(14.dp))
 
         if (canEdit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log watering", fontSize = 12.sp) }
-            Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log fertilising", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "watering"; logDate = "" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_log_watering), fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "fertilise"; logDate = "" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_log_fertilising), fontSize = 12.sp) }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { pendingLogType = "feed"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log feeding", fontSize = 12.sp) }
-            Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text("Log pruning", fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "feed"; logDate = "" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_log_feeding), fontSize = 12.sp) }
+            Button(onClick = { pendingLogType = "prune"; logDate = "" }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_log_pruning), fontSize = 12.sp) }
         }
         Spacer(Modifier.height(20.dp))
         }
 
         if (entries.isEmpty()) {
-            Text("No entries yet — log watering, fertilising, feeding, or pruning above.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text(stringResource(R.string.care_no_entries_yet_log_watering_fertilising), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             entries.forEach { entry ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -76,7 +78,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
                             Text(sdf.format(Date(entry.date)), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (canEdit) {
-                            TextButton(onClick = { careViewModel.delete(entry.id) }) { Text("Delete", fontSize = 12.sp) }
+                            TextButton(onClick = { careViewModel.delete(entry.id) }) { Text(stringResource(R.string.care_delete), fontSize = 12.sp) }
                         }
                     }
                 }
@@ -88,10 +90,10 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     pendingLogType?.let { type ->
         AlertDialog(
             onDismissRequest = { pendingLogType = null },
-            title = { Text("Log ${careTypeLabel(type).lowercase()}") },
+            title = { Text(stringResource(R.string.care_log, careTypeLabel(type).lowercase())) },
             text = {
                 Column {
-                    Text("Pick the date — defaults to today if left blank.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.care_pick_the_date_defaults_to_today), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
                     DatePickerField("Date", logDate, { logDate = it }, restrictToPastOrToday = true)
                 }
@@ -101,9 +103,9 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
                     val millis = dateStringToMillis(logDate) ?: System.currentTimeMillis()
                     careViewModel.logCare(plantId, gardenId ?: effectiveGardenId(context), type, millis)
                     pendingLogType = null
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.care_save)) }
             },
-            dismissButton = { TextButton(onClick = { pendingLogType = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { pendingLogType = null }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 }

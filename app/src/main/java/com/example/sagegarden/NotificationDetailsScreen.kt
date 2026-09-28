@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -70,19 +72,19 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
         val dueZones = remember(activePlants, photos, now) { dueProgressPhotoZones(activePlants, photos, now) }
 
         Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.care_back)) }
             Spacer(Modifier.height(6.dp))
-            Text("Zones due a progress photo", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(stringResource(R.string.due_zones_due_a_progress_photo), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Spacer(Modifier.height(14.dp))
 
             if (dueZones.isEmpty()) {
-                Text("Nothing needs attention right now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(stringResource(R.string.due_nothing_needs_attention_right_now), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             } else {
                 dueZones.forEach { zone ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onOpenZone(zone) }) {
                         Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(zone, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("Add photo ›", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.due_add_photo), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -123,13 +125,13 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("‹ Back") }
+        TextButton(onClick = onBack) { Text(stringResource(R.string.care_back)) }
         Spacer(Modifier.height(6.dp))
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(Modifier.height(14.dp))
 
         if (matchingPlants.isEmpty()) {
-            Text("Nothing needs attention right now.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text(stringResource(R.string.due_nothing_needs_attention_right_now), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             matchingPlants.forEach { plant ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {

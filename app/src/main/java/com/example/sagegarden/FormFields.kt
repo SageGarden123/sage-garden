@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 
@@ -31,7 +33,7 @@ fun DropdownField(
         OutlinedTextField(
             value = selected, onValueChange = {}, readOnly = true, enabled = enabled,
             label = { Text(label) },
-            placeholder = { Text("Pick an option") },
+            placeholder = { Text(stringResource(R.string.field_pick_an_option)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
             supportingText = helperText?.let { { Text(it, fontSize = 12.sp) } },
             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = enabled).fillMaxWidth()
@@ -60,7 +62,7 @@ fun DatePickerField(
     var showDialog by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = dateString, onValueChange = {}, readOnly = true, enabled = enabled,
-        label = { Text(label) }, placeholder = { Text("YYYY-MM-DD") },
+        label = { Text(label) }, placeholder = { Text(stringResource(R.string.field_yyyy_mm_dd)) },
         trailingIcon = { IconButton(onClick = { if (enabled) showDialog = true }, enabled = enabled) { Icon(Icons.Outlined.CalendarMonth, contentDescription = "Pick a date") } },
         modifier = Modifier.fillMaxWidth()
     )
@@ -97,7 +99,7 @@ fun DatePickerField(
                         onDateChange(sdf.format(Date(millis)))
                     }
                     showDialog = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.field_ok)) }
             },
             dismissButton = {
                 Row {
@@ -105,9 +107,9 @@ fun DatePickerField(
                         TextButton(onClick = { onDateChange("N/A"); showDialog = false }) { Text("N/A") }
                     }
                     if (allowClear && dateString.isNotBlank()) {
-                        TextButton(onClick = { onDateChange(""); showDialog = false }) { Text("Clear") }
+                        TextButton(onClick = { onDateChange(""); showDialog = false }) { Text(stringResource(R.string.overview_clear)) }
                     }
-                    TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { showDialog = false }) { Text(stringResource(R.string.care_cancel)) }
                 }
             }
         ) { DatePicker(state = datePickerState) }

@@ -170,11 +170,11 @@ fun GardenCheckScreen(onBack: () -> Unit, onOpenPlant: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(stringResource(R.string.garden_check_title), onBack, actions = { FaqInfoButton(Faq.GARDEN_CHECK) })
         Column(Modifier.padding(horizontal = 16.dp)) {
-        Text("${issues.sumOf { it.count }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.check_item_s_across_check_s, issues.sumOf { it.count }, issues.size), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
         if (issues.isEmpty()) {
-            Text("No issues found — nice work!", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
+            Text(stringResource(R.string.check_no_issues_found_nice_work), color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
         }
 
         issues.forEach { issue ->

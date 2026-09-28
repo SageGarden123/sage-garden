@@ -282,26 +282,26 @@ fun ListScreen(
             val id = locationChangePlantId!!
             AlertDialog(
                 onDismissRequest = { locationChangePlantId = null },
-                title = { Text("Change plant location") },
+                title = { Text(stringResource(R.string.plants_change_plant_location)) },
                 text = {
                     Column {
                         Text(
-                            "Pick where to place this plant. You'll be taken to the map — tap the new spot.",
+                            stringResource(R.string.plants_pick_where_to_place_this_plant),
                             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { locationChangePlantId = null; onChangeLocation(id, false) }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Real map")
+                            Text(stringResource(R.string.plants_real_map))
                         }
                         if (hasCustomMap) {
                             Spacer(Modifier.height(8.dp))
                             Button(onClick = { locationChangePlantId = null; onChangeLocation(id, true) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("My drawing")
+                                Text(stringResource(R.string.plants_my_drawing))
                             }
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { locationChangePlantId = null }) { Text("Cancel") } }
+                confirmButton = { TextButton(onClick = { locationChangePlantId = null }) { Text(stringResource(R.string.care_cancel)) } }
             )
         }
 
@@ -309,10 +309,10 @@ fun ListScreen(
             val draftFields = remember { mutableStateListOf(*fieldKeys.toTypedArray()) }
             AlertDialog(
                 onDismissRequest = { showListFieldsDialog = false },
-                title = { Text("Customise fields shown") },
+                title = { Text(stringResource(R.string.plants_customise_fields_shown)) },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text("Choose which details appear under each plant's name:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.plants_choose_which_details_appear_under_each), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         listFieldCatalog.forEach { option ->
                             val checked = draftFields.contains(option.key)
@@ -336,9 +336,9 @@ fun ListScreen(
                         fieldKeys = finalFields
                         setListFieldKeys(context, finalFields)
                         showListFieldsDialog = false
-                    }) { Text("Save") }
+                    }) { Text(stringResource(R.string.care_save)) }
                 },
-                dismissButton = { TextButton(onClick = { showListFieldsDialog = false }) { Text("Cancel") } }
+                dismissButton = { TextButton(onClick = { showListFieldsDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
             )
         }
 
@@ -350,13 +350,13 @@ fun ListScreen(
             val allLocations = remember(plants) { plants.map { it.location }.filter { it.isNotBlank() }.distinct().sorted() }
             AlertDialog(
                 onDismissRequest = { showProgressPhotosPicker = false },
-                title = { Text("Progress photos") },
+                title = { Text(stringResource(R.string.plants_progress_photos_2)) },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
                         if (allLocations.isEmpty()) {
-                            Text("Add a location to a plant first to track progress photos for it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.plants_add_a_location_to_a_plant), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
-                            Text("Tap a zone below to view or add photos of that area.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.plants_tap_a_zone_below_to_view), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(10.dp))
                             allLocations.forEach { location ->
                                 val count = photoCounts[location] ?: 0
@@ -368,7 +368,7 @@ fun ListScreen(
                                     Spacer(Modifier.width(8.dp))
                                     Text(location, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
                                     Text(
-                                        if (count == 1) "1 photo" else "$count photos",
+                                        if (count == 1) stringResource(R.string.plants_1_photo) else stringResource(R.string.plants_photos, count),
                                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(Modifier.width(4.dp))
@@ -378,7 +378,7 @@ fun ListScreen(
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { showProgressPhotosPicker = false }) { Text("Close") } }
+                confirmButton = { TextButton(onClick = { showProgressPhotosPicker = false }) { Text(stringResource(R.string.overview_close)) } }
             )
         }
     }

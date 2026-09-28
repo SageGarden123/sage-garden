@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 
@@ -172,7 +174,7 @@ fun DropboxImagePickerDialog(
                         TextButton(onClick = {
                             val prev = pathStack.removeAt(pathStack.size - 1)
                             currentPath = prev.first; currentLabel = prev.second
-                        }) { Text("‹ Back") }
+                        }) { Text(stringResource(R.string.care_back)) }
                     }
                 }
                 Text(currentLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -180,8 +182,8 @@ fun DropboxImagePickerDialog(
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading || resolving -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-                        entries.isEmpty() -> Text("Nothing here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                        error != null -> Text(stringResource(R.string.dropbox_error, error.toString()), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        entries.isEmpty() -> Text(stringResource(R.string.dropbox_nothing_here), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(entries) { entry ->
                                 Row(
@@ -219,7 +221,7 @@ fun DropboxImagePickerDialog(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.care_cancel)) }
             }
         }
     }
@@ -282,7 +284,7 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                         TextButton(onClick = {
                             val prev = pathStack.removeAt(pathStack.size - 1)
                             currentPath = prev.first; currentLabel = prev.second
-                        }) { Text("‹ Back") }
+                        }) { Text(stringResource(R.string.care_back)) }
                     }
                 }
                 Text(currentLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -290,8 +292,8 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading || resolving -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-                        entries.isEmpty() -> Text("No CSV files here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                        error != null -> Text(stringResource(R.string.dropbox_error, error.toString()), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        entries.isEmpty() -> Text(stringResource(R.string.dropbox_no_csv_files_here), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(entries) { entry ->
                                 Row(
@@ -329,7 +331,7 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.care_cancel)) }
             }
         }
     }
@@ -372,7 +374,7 @@ fun DropboxFolderPickerDialog(
                             val previous = pathStack.removeAt(pathStack.size - 1)
                             currentPath = previous.first
                             currentLabel = previous.second
-                        }) { Text("‹ Back") }
+                        }) { Text(stringResource(R.string.care_back)) }
                     }
                     Spacer(Modifier.weight(1f))
                 }
@@ -382,8 +384,8 @@ fun DropboxFolderPickerDialog(
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-                        folders.isEmpty() -> Text("No subfolders here.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                        error != null -> Text(stringResource(R.string.dropbox_error, error.toString()), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        folders.isEmpty() -> Text(stringResource(R.string.dropbox_no_subfolders_here), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         else -> LazyColumn {
                             items(folders) { folder ->
                                 Row(
@@ -409,11 +411,11 @@ fun DropboxFolderPickerDialog(
 
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_cancel)) }
                     Button(
                         onClick = { onFolderSelected(currentPath); onDismiss() },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Use this folder") }
+                    ) { Text(stringResource(R.string.dropbox_use_this_folder)) }
                 }
             }
         }

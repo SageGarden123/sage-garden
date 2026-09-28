@@ -2,6 +2,8 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 
@@ -73,7 +75,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
     val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
     SettingsGroup(title = "Garden address", faq = Faq.SET_ADDRESS) {
         if (!canEdit) {
-            Text("View-only — synced from the garden owner.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_view_only_synced_from_the_garden), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
         }
 
@@ -98,7 +100,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
         }
 
         if (gardenCoords != null) {
-            Text("Garden location set", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.settings_garden_location_set), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(6.dp))
         }
 
@@ -143,7 +145,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
         OutlinedTextField(
             value = gardenAddressQuery,
             onValueChange = { gardenAddressQuery = it; gardenAddressEditedByUser = true },
-            label = { Text("Garden address") }, placeholder = { Text("Start typing to search…") },
+            label = { Text(stringResource(R.string.settings_garden_address)) }, placeholder = { Text(stringResource(R.string.settings_start_typing_to_search)) },
             modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
 
@@ -175,7 +177,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                     }
                     gardenGeocoderPredictions.forEach { address ->
                         Text(
-                            text = address.getAddressLine(0) ?: "Unknown address",
+                            text = address.getAddressLine(0) ?: stringResource(R.string.settings_unknown_address),
                             modifier = Modifier.fillMaxWidth().clickable {
                                 gardenCoords = address.latitude to address.longitude
                                 GardenSettings.active(context).setLatLng(address.latitude, address.longitude)
@@ -202,7 +204,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                     scope.launch { snackbarHostState.showSnackbar("Map position reset — reopen the Map tab to see it") }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Reset map position") }
+            ) { Text(stringResource(R.string.settings_reset_map_position)) }
         }
     }
 }
@@ -214,12 +216,12 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
     val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
     SettingsGroup(title = "Garden zones", faq = Faq.ZONES) {
         Text(
-            "Manage the named areas of your garden (e.g. \"Front garden\", \"Back garden\") — these appear as a dropdown when adding or editing a plant, instead of typing the same names over and over.",
+            stringResource(R.string.settings_manage_the_named_areas_of_your),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(10.dp))
         if (!canEdit) {
-            Text("View-only — synced from the garden owner.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_view_only_synced_from_the_garden), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
         }
         var gardenLocations by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).getOrSeedLocations(plants)) }
@@ -245,31 +247,31 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                             GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
                         }
                         renamingIndex = -1
-                    }) { Text("Save") }
-                    TextButton(onClick = { renamingIndex = -1 }) { Text("Cancel") }
+                    }) { Text(stringResource(R.string.care_save)) }
+                    TextButton(onClick = { renamingIndex = -1 }) { Text(stringResource(R.string.care_cancel)) }
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text(loc, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     if (canEdit) {
-                        TextButton(onClick = { renamingIndex = index; renameText = loc }) { Text("Rename", fontSize = 12.sp) }
+                        TextButton(onClick = { renamingIndex = index; renameText = loc }) { Text(stringResource(R.string.settings_rename), fontSize = 12.sp) }
                         TextButton(onClick = {
                             gardenLocations = gardenLocations.filterIndexed { i, _ -> i != index }
                             GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
-                        }) { Text("Remove", fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+                        }) { Text(stringResource(R.string.map_remove), fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
                     }
                 }
             }
         }
         if (gardenLocations.isEmpty()) {
-            Text("No zones yet — add one below.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_no_zones_yet_add_one_below), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
         }
         if (canEdit) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = newLocationText, onValueChange = { newLocationText = it },
-                label = { Text("Add a zone") }, modifier = Modifier.weight(1f).imePadding(), singleLine = true
+                label = { Text(stringResource(R.string.settings_add_a_zone)) }, modifier = Modifier.weight(1f).imePadding(), singleLine = true
             )
             Spacer(Modifier.width(8.dp))
             Button(onClick = {
@@ -279,7 +281,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                     GardenSettings.active(context).locations = gardenLocations; GardenSettingsEdits.count++
                 }
                 newLocationText = ""
-            }) { Text("Add") }
+            }) { Text(stringResource(R.string.settings_add)) }
         }
         }
     }
@@ -402,7 +404,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
             value = activeGarden?.name ?: "My Garden", onValueChange = {}, readOnly = true,
-            label = { Text("Active garden") },
+            label = { Text(stringResource(R.string.settings_active_garden)) },
             leadingIcon = { Icon(Icons.Outlined.Yard, contentDescription = null) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth()
@@ -444,19 +446,19 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("New garden", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+        OutlinedButton(onClick = { showCreateDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.settings_new_garden), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
         if (isOwner) {
-            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Share", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+            OutlinedButton(onClick = { showShareDialog = true; shareCode = null }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.settings_share), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
         }
-        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Have code?", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+        OutlinedButton(onClick = { showJoinDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.settings_have_code), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
     }
     if (isOwner) {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text("Rename", fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+            OutlinedButton(onClick = { showRenameDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) { Text(stringResource(R.string.settings_rename), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
             OutlinedButton(onClick = { showManageAccessDialog = true }, modifier = Modifier.weight(1f), contentPadding = CompactButtonPadding) {
                 Text(
-                    if (pendingForActiveGarden.isNotEmpty()) "Manage access (${pendingForActiveGarden.size})" else "Manage access",
+                    if (pendingForActiveGarden.isNotEmpty()) stringResource(R.string.settings_manage_access, pendingForActiveGarden.size) else stringResource(R.string.settings_manage_access_2),
                     fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -505,7 +507,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 }
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("Approve", fontSize = 12.sp) }
+                        ) { Text(stringResource(R.string.settings_approve), fontSize = 12.sp) }
                         OutlinedButton(
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                             onClick = {
@@ -515,7 +517,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 }
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("Reject", fontSize = 12.sp) }
+                        ) { Text(stringResource(R.string.settings_reject), fontSize = 12.sp) }
                     }
                 }
             }
@@ -524,10 +526,10 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
 
     if (pendingMyRequests.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
-        Text("Your pending requests", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.settings_your_pending_requests), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         pendingMyRequests.forEach { req ->
-            Text("• ${req.name} — waiting for approval", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_waiting_for_approval, req.name), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -535,9 +537,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         var name by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Create a new garden") },
+            title = { Text(stringResource(R.string.settings_create_a_new_garden)) },
             text = {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Garden name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.settings_garden_name)) }, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
                 TextButton(
@@ -556,9 +558,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                         showCreateDialog = false
                     }
-                ) { Text("Create") }
+                ) { Text(stringResource(R.string.settings_create)) }
             },
-            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -578,10 +580,10 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             text = {
                 Column {
                     when {
-                        loadingShareCode -> Text("Loading…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        shareCode == null -> Text("No code yet — tap \"Generate\" below to create one for others to enter under \"Have code?\" on their own device.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        loadingShareCode -> Text(stringResource(R.string.settings_loading), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        shareCode == null -> Text(stringResource(R.string.settings_no_code_yet_tap_generate_below), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         else -> {
-                            Text("Share this code:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_share_this_code), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 shareCode ?: "", fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -592,9 +594,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 }
                             )
                             Spacer(Modifier.height(4.dp))
-                            Text("(tap to copy)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_tap_to_copy), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(10.dp))
-                            Text("Regenerating invalidates this code for anyone you haven't shared it with yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_regenerating_invalidates_this_code_for_anyone), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -609,9 +611,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                         loadingShareCode = false
                     }
-                }, enabled = !loadingShareCode) { Text(if (shareCode == null) "Generate" else "Regenerate") }
+                }, enabled = !loadingShareCode) { Text(if (shareCode == null) stringResource(R.string.settings_generate) else stringResource(R.string.settings_regenerate)) }
             },
-            dismissButton = { TextButton(onClick = { showShareDialog = false }) { Text("Close") } }
+            dismissButton = { TextButton(onClick = { showShareDialog = false }) { Text(stringResource(R.string.overview_close)) } }
         )
     }
 
@@ -621,24 +623,24 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         var displayName by remember { mutableStateOf(GardenMembershipStore.getDeviceDisplayName(context)) }
         AlertDialog(
             onDismissRequest = { showJoinDialog = false },
-            title = { Text("Request access to a garden") },
+            title = { Text(stringResource(R.string.settings_request_access_to_a_garden)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = displayName, onValueChange = { displayName = it },
-                        label = { Text("Your name") }, placeholder = { Text("e.g. My phone") },
+                        label = { Text(stringResource(R.string.settings_your_name)) }, placeholder = { Text(stringResource(R.string.settings_e_g_my_phone)) },
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Shown to the garden's owner so they know whose request this is.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.settings_shown_to_the_garden_s_owner), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Invite code") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text(stringResource(R.string.settings_invite_code)) }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Request edit access", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.settings_request_edit_access), fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Switch(checked = wantsWrite, onCheckedChange = { wantsWrite = it })
                     }
                     Text(
-                        if (wantsWrite) "The owner can still grant view-only instead." else "View-only — you won't be able to make changes.",
+                        if (wantsWrite) stringResource(R.string.settings_the_owner_can_still_grant_view) else stringResource(R.string.settings_view_only_you_won_t_be),
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -661,9 +663,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                     },
                     enabled = code.isNotBlank()
-                ) { Text("Request") }
+                ) { Text(stringResource(R.string.settings_request)) }
             },
-            dismissButton = { TextButton(onClick = { showJoinDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showJoinDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -671,9 +673,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         var name by remember { mutableStateOf(activeGarden?.name?.takeIf { it != "My Garden" } ?: "") }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename garden") },
+            title = { Text(stringResource(R.string.settings_rename_garden)) },
             text = {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Garden name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.settings_garden_name)) }, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
                 TextButton(
@@ -691,9 +693,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                     },
                     enabled = name.isNotBlank()
-                ) { Text("Rename") }
+                ) { Text(stringResource(R.string.settings_rename)) }
             },
-            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -710,12 +712,12 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         }
         AlertDialog(
             onDismissRequest = { showManageAccessDialog = false },
-            title = { Text("Who has access") },
+            title = { Text(stringResource(R.string.settings_who_has_access)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     when {
-                        loadingMembers -> Text("Loading…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        members.isEmpty() -> Text("No one else has access yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        loadingMembers -> Text(stringResource(R.string.settings_loading), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        members.isEmpty() -> Text(stringResource(R.string.settings_no_one_else_has_access_yet), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         else -> members.forEach { member ->
                             val memberLabel = member.displayName?.takeIf { it.isNotBlank() }
                                 ?: (if (member.role == "owner") "You" else "Device ${member.deviceId.take(8)}")
@@ -733,7 +735,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                 if (member.role != "owner") {
                                     Spacer(Modifier.height(8.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 42.dp)) {
-                                        Text("Edit access", fontSize = 12.sp, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.settings_edit_access), fontSize = 12.sp, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Switch(
                                             checked = member.permission == "write",
                                             onCheckedChange = { checked ->
@@ -761,7 +763,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                                                 }
                                             }
                                         }
-                                    ) { Text("Remove access", color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                                    ) { Text(stringResource(R.string.settings_remove_access), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 HorizontalDivider()
@@ -771,7 +773,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showManageAccessDialog = false }) { Text("Close") } }
+            dismissButton = { TextButton(onClick = { showManageAccessDialog = false }) { Text(stringResource(R.string.overview_close)) } }
         )
     }
 
@@ -779,7 +781,7 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         AlertDialog(
             onDismissRequest = { showLeaveConfirm = false },
             title = { Text("Leave ${activeGarden?.name ?: "this garden"}?") },
-            text = { Text("You'll lose access to its plants and history until someone invites you back in.", fontSize = 13.sp) },
+            text = { Text(stringResource(R.string.settings_you_ll_lose_access_to_its), fontSize = 13.sp) },
             confirmButton = {
                 TextButton(onClick = {
                     val leavingId = activeGardenId
@@ -794,9 +796,9 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                             else -> snackbarHostState.showSnackbar("Couldn't leave — try again.")
                         }
                     }
-                }) { Text("Leave", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.settings_leave), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showLeaveConfirm = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showLeaveConfirm = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
 
@@ -809,16 +811,16 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             title = { Text("Delete ${activeGarden?.name ?: "this garden"}?") },
             text = {
                 Text(
-                    "This permanently deletes the garden and every member's access to it — including yours. All its plants, care history, and settings on the server are gone. This can't be undone.",
+                    stringResource(R.string.settings_this_permanently_deletes_the_garden_and),
                     fontSize = 13.sp
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showDeleteGardenConfirm = false; showDeleteGardenFinalConfirm = true }) {
-                    Text("Continue", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.settings_continue), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showDeleteGardenConfirm = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
     if (showDeleteGardenFinalConfirm) {
@@ -826,14 +828,14 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
         var confirmText by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { if (!deletingGarden) { showDeleteGardenFinalConfirm = false; confirmText = "" } },
-            title = { Text("Are you sure?") },
+            title = { Text(stringResource(R.string.settings_are_you_sure)) },
             text = {
                 Column {
-                    Text("Type \"$gardenName\" below to confirm you want to permanently delete it.", fontSize = 13.sp)
+                    Text(stringResource(R.string.settings_type_below_to_confirm_you_want, gardenName), fontSize = 13.sp)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = confirmText, onValueChange = { confirmText = it },
-                        label = { Text("Garden name") }, singleLine = true,
+                        label = { Text(stringResource(R.string.settings_garden_name)) }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(), enabled = !deletingGarden
                     )
                 }
@@ -858,13 +860,13 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
                         }
                     },
                     enabled = !deletingGarden && confirmText == gardenName
-                ) { Text(if (deletingGarden) "Deleting…" else "Delete", color = MaterialTheme.colorScheme.error) }
+                ) { Text(if (deletingGarden) stringResource(R.string.settings_deleting) else stringResource(R.string.care_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showDeleteGardenFinalConfirm = false; confirmText = "" },
                     enabled = !deletingGarden
-                ) { Text("Cancel") }
+                ) { Text(stringResource(R.string.care_cancel)) }
             }
         )
     }
@@ -1024,7 +1026,7 @@ fun SettingsPageScreen(
                     setDefaultLandingTab(context, key)
                 }
             )
-            Text("Takes effect next time you open the app.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+            Text(stringResource(R.string.settings_takes_effect_next_time_you_open), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
 
             
         }
@@ -1038,13 +1040,13 @@ fun SettingsPageScreen(
             Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
 
             Text(
-                "Only relevant if you also use the desktop app — enter this device's Install ID there once to link them. Not needed for phone-to-phone garden sharing above.",
+                stringResource(R.string.settings_only_relevant_if_you_also_use),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
             val syncInstallId = remember { getOrCreateInstallId(context) }
             Text(
-                "Install ID: $syncInstallId (tap to copy)",
+                stringResource(R.string.settings_install_id_tap_to_copy, syncInstallId),
                 fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -1056,18 +1058,18 @@ fun SettingsPageScreen(
 
             var showRecoverInstallId by remember { mutableStateOf(false) }
             TextButton(onClick = { showRecoverInstallId = !showRecoverInstallId }) {
-                Text(if (showRecoverInstallId) "▾ Recover after reinstall" else "▸ Recover after reinstall", fontSize = 12.sp)
+                Text(if (showRecoverInstallId) stringResource(R.string.settings_recover_after_reinstall) else stringResource(R.string.settings_recover_after_reinstall_2), fontSize = 12.sp)
             }
             if (showRecoverInstallId) {
                 var recoverInstallIdText by remember { mutableStateOf("") }
                 Text(
-                    "Reinstalling always generates a brand-new Install ID, with no way to recover the old one automatically. If you restore an old backup after reinstalling, every plant stays tagged with the OLD Install ID and won't show up anywhere — not lost, just orphaned. Paste that old ID here (it's the \"gardenId\" field on any plant in the old backup's JSON, or whatever you copied from this same field before uninstalling) to fix it. Requires restarting the app afterwards.",
+                    stringResource(R.string.settings_reinstalling_always_generates_a_brand_new),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = recoverInstallIdText, onValueChange = { recoverInstallIdText = it },
-                    label = { Text("Old Install ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.settings_old_install_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
                 Button(
@@ -1077,14 +1079,14 @@ fun SettingsPageScreen(
                     },
                     enabled = recoverInstallIdText.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save and use this Install ID") }
+                ) { Text(stringResource(R.string.settings_save_and_use_this_install_id)) }
             }
             Spacer(Modifier.height(10.dp))
             var syncing by remember { mutableStateOf(false) }
             var lastSyncedAt by remember { mutableStateOf(GardenSyncStore.getLastSyncedAt(context)) }
             if (lastSyncedAt > 0) {
                 Text(
-                    "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
+                    "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).format(Date(lastSyncedAt))}",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1108,8 +1110,8 @@ fun SettingsPageScreen(
                 },
                 enabled = !syncing && canEditActiveGarden,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
-            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            ) { Text(if (syncing) stringResource(R.string.settings_syncing) else stringResource(R.string.settings_sync_plants_care_history)) }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.settings_you_have_view_only_access_to), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         }
         }
@@ -1124,10 +1126,10 @@ fun SettingsPageScreen(
                     "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary
                 )
-                Text("Set a different garden address above to change this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                Text(stringResource(R.string.settings_set_a_different_garden_address_above), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             } else {
                 var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).hemisphere) }
-                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_no_garden_address_set_yet_pick), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
@@ -1146,7 +1148,7 @@ fun SettingsPageScreen(
         }
         if (page == SettingsPage.REMINDERS) {
             SettingsGroup(title = "Reminders", faq = Faq.TURN_ON_REMINDERS) {
-            Text("Get reminded when your plants require care.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_get_reminded_when_your_plants_require), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var notifsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).notificationsEnabled) }
@@ -1164,7 +1166,7 @@ fun SettingsPageScreen(
             val hasExactAlarmPermission = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Enable notifications", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_enable_notifications), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = notifsEnabled, onCheckedChange = { checked ->
                     notifsEnabled = checked
                     GardenSettings.active(context).notificationsEnabled = checked
@@ -1180,12 +1182,12 @@ fun SettingsPageScreen(
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && notifsEnabled && !hasNotifPermission) {
                 Spacer(Modifier.height(6.dp))
-                Text("Notification permission isn't granted — enable it in system settings for reminders to show.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.settings_notification_permission_isn_t_granted_enable), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
             }
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && notifsEnabled && !hasExactAlarmPermission) {
                 Spacer(Modifier.height(6.dp))
-                Text("Exact alarm permission isn't granted — reminders may fire late or not at all.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.settings_exact_alarm_permission_isn_t_granted), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = {
                     context.startActivity(
@@ -1194,12 +1196,12 @@ fun SettingsPageScreen(
                             android.net.Uri.parse("package:${context.packageName}")
                         )
                     )
-                }) { Text("Grant exact alarm permission") }
+                }) { Text(stringResource(R.string.settings_grant_exact_alarm_permission)) }
             }
 
             if (notifsEnabled) {
                 Spacer(Modifier.height(12.dp))
-                Text("Style", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_style), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("lockscreen" to "Lock screen", "popup" to "Pop-up", "both" to "Both").forEach { (key, label) ->
@@ -1215,7 +1217,7 @@ fun SettingsPageScreen(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Text("Remind me", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_remind_me), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 listOf(0 to "On the day", 1 to "1 day before", 2 to "2 days before", 3 to "3 days before").forEach { (days, label) ->
                     val checked = notifOffsets.contains(days)
@@ -1237,12 +1239,12 @@ fun SettingsPageScreen(
                 Spacer(Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(12.dp))
-                Text("Overdue repeat reminders", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_overdue_repeat_reminders), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 var overdueRepeatEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatEnabled) }
                 var overdueRepeatDaysText by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).overdueRepeatDays.toString()) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Keep reminding while overdue", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_keep_reminding_while_overdue), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = overdueRepeatEnabled, onCheckedChange = {
                         overdueRepeatEnabled = it; GardenSettings.active(context).overdueRepeatEnabled = it
                     })
@@ -1255,9 +1257,9 @@ fun SettingsPageScreen(
                             overdueRepeatDaysText = new.filter { it.isDigit() }
                             overdueRepeatDaysText.toIntOrNull()?.let { GardenSettings.active(context).overdueRepeatDays = it }
                         },
-                        label = { Text("Repeat every (days)") },
+                        label = { Text(stringResource(R.string.settings_repeat_every_days)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        supportingText = { Text("Re-notify for overdue plants until \"last watered\" is updated", fontSize = 12.sp) },
+                        supportingText = { Text(stringResource(R.string.settings_re_notify_for_overdue_plants_until), fontSize = 12.sp) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1270,24 +1272,24 @@ fun SettingsPageScreen(
                 var feedReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).feedRemindersEnabled) }
                 var progressPhotoReminders by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).progressPhotoRemindersEnabled) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Include fertilising reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_include_fertilising_reminders), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = fertiliseReminders, onCheckedChange = { fertiliseReminders = it; GardenSettings.active(context).fertiliseRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Include pruning reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_include_pruning_reminders), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = pruneReminders, onCheckedChange = { pruneReminders = it; GardenSettings.active(context).pruneRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Include feeding reminders", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_include_feeding_reminders), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = feedReminders, onCheckedChange = { feedReminders = it; GardenSettings.active(context).feedRemindersEnabled = it })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Remind me to add progress photos (every 3 months per zone)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_remind_me_to_add_progress_photos), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = progressPhotoReminders, onCheckedChange = { progressPhotoReminders = it; GardenSettings.active(context).progressPhotoRemindersEnabled = it })
                 }
 
                 Spacer(Modifier.height(10.dp))
-                Text("Notify at", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_notify_at), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 var showTimeDialog by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { showTimeDialog = true }, modifier = Modifier.fillMaxWidth()) {
@@ -1301,7 +1303,7 @@ fun SettingsPageScreen(
                                 TimePicker(state = timeState)
                                 Spacer(Modifier.height(10.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { showTimeDialog = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                                    TextButton(onClick = { showTimeDialog = false }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_cancel)) }
                                     Button(
                                         onClick = {
                                             notifHour = timeState.hour; notifMinute = timeState.minute
@@ -1310,7 +1312,7 @@ fun SettingsPageScreen(
                                             showTimeDialog = false
                                         },
                                         modifier = Modifier.weight(1f)
-                                    ) { Text("Set") }
+                                    ) { Text(stringResource(R.string.water_set)) }
                                 }
                             }
                         }
@@ -1325,16 +1327,16 @@ fun SettingsPageScreen(
             val hasGardenAddress = remember(ActiveGardenState.activeGardenId, GardenAddressState.latLng) { GardenSettings.active(context).latLng != null }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Flag reminders when rain is likely", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_flag_reminders_when_rain_is_likely), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = weatherSkipEnabled, onCheckedChange = { weatherSkipEnabled = it; GardenSettings.active(context).weatherSkipEnabled = it })
             }
             if (!hasGardenAddress) {
-                Text("Set your garden address above (Garden address) to use this.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_set_your_garden_address_above_garden), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             var frostWarningsEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostWarningsEnabled) }
             var frostThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).frostTempThreshold.toFloat()) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Warn about frost risk for tender outdoor plants", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_warn_about_frost_risk_for_tender), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = frostWarningsEnabled, onCheckedChange = { frostWarningsEnabled = it; GardenSettings.active(context).frostWarningsEnabled = it })
             }
             if (frostWarningsEnabled) {
@@ -1350,7 +1352,7 @@ fun SettingsPageScreen(
 
                 if (weatherSkipEnabled) {
                     Spacer(Modifier.height(12.dp))
-                    Text("Flag if rain probability is at least $rainThreshold%", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.settings_flag_if_rain_probability_is_at, rainThreshold), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Slider(
                         value = rainThreshold.toFloat(), onValueChange = { rainThreshold = it.toInt() },
@@ -1381,7 +1383,7 @@ fun SettingsPageScreen(
         if (page == SettingsPage.PHOTOS) {
         run {
         SettingsGroup(title = "Photo storage", faq = Faq.PHOTO_STORAGE) {
-            Text("Photo storage", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_photo_storage), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -1391,7 +1393,7 @@ fun SettingsPageScreen(
                         containerColor = if (photoMode == "local") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = if (photoMode == "local") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
-                ) { Text("On this device", fontSize = 12.sp) }
+                ) { Text(stringResource(R.string.settings_on_this_device), fontSize = 12.sp) }
                 Button(
                     onClick = { photoMode = "cloud"; setPhotoStorageMode(context, "cloud") },
                     modifier = Modifier.weight(1f),
@@ -1399,31 +1401,31 @@ fun SettingsPageScreen(
                         containerColor = if (photoMode == "cloud") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = if (photoMode == "cloud") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                     )
-                ) { Text("Cloud link", fontSize = 12.sp) }
+                ) { Text(stringResource(R.string.settings_cloud_link), fontSize = 12.sp) }
             }
             if (photoMode == "cloud") {
                 Spacer(Modifier.height(8.dp))
                 val dropboxToken = DropboxAuthState.token
                 if (dropboxToken != null) {
-                    Text("Connected to Dropbox", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.settings_connected_to_dropbox), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = { DropboxAuthState.clear(context) }) { Text("Disconnect") }
+                    TextButton(onClick = { DropboxAuthState.clear(context) }) { Text(stringResource(R.string.settings_disconnect)) }
                 } else {
-                    Button(onClick = { startDropboxSignIn(context) }, modifier = Modifier.fillMaxWidth()) { Text("Connect Dropbox") }
+                    Button(onClick = { startDropboxSignIn(context) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_connect_dropbox)) }
                 }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Auto-link photos by Plant ID", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_auto_link_photos_by_plant_id), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Photos named after a Plant ID (e.g. \"P0001.jpg\") link automatically. Only new, unlinked photos are added.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_photos_named_after_a_plant_id), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             if (photoMode == "local") {
                 var localFolder by remember { mutableStateOf(getLocalPhotoFolderUri(context)) }
                 OutlinedButton(onClick = { folderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (localFolder != null) "Change photo folder" else "Choose photo folder")
+                    Text(if (localFolder != null) stringResource(R.string.settings_change_photo_folder) else stringResource(R.string.settings_choose_photo_folder))
                 }
                 if (localFolder != null) {
                     Spacer(Modifier.height(8.dp))
@@ -1432,7 +1434,7 @@ fun SettingsPageScreen(
                             val count = autoLinkLocalPhotos(context, localFolder!!, plants) { viewModel.save(it) }
                             snackbarHostState.showSnackbar("Linked $count new photo(s)")
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Auto-link photos now") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_auto_link_photos_now)) }
                 }
             } else {
                 var dropboxPath by remember { mutableStateOf(getDropboxPhotoFolderPath(context) ?: "") }
@@ -1442,10 +1444,10 @@ fun SettingsPageScreen(
 
                 OutlinedTextField(
                     value = dropboxPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.settings_dropbox_folder)) }, modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { showFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                OutlinedButton(onClick = { showFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_browse_dropbox)) }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -1459,13 +1461,13 @@ fun SettingsPageScreen(
                         },
                         modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking,
                         contentPadding = CompactButtonPadding
-                    ) { Text(if (testing) "Testing…" else "Test connection") }
+                    ) { Text(if (testing) stringResource(R.string.settings_testing) else stringResource(R.string.settings_test_connection)) }
 
                     Button(
                         onClick = { setDropboxPhotoFolderPath(context, dropboxPath); viewModel.runDropboxAutoLink(context, dropboxPath) },
                         modifier = Modifier.weight(1f), enabled = !testing && !DropboxLinkState.linking,
                         contentPadding = CompactButtonPadding
-                    ) { Text(if (DropboxLinkState.linking) "Linking…" else "Auto-link now") }
+                    ) { Text(if (DropboxLinkState.linking) stringResource(R.string.settings_linking) else stringResource(R.string.settings_auto_link_now)) }
                 }
 
                 testResult?.let {
@@ -1477,7 +1479,7 @@ fun SettingsPageScreen(
                     val current = DropboxLinkState.current; val total = DropboxLinkState.total
                     LinearProgressIndicator(progress = { if (total > 0) current.toFloat() / total.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(4.dp))
-                    Text("$current of $total images linked", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.settings_of_images_linked, current, total), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val linkResult = DropboxLinkState.result ?: getLastDropboxLinkResult(context)
                 linkResult?.let {
@@ -1503,7 +1505,7 @@ fun SettingsPageScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) { Text("Clear auto-linked photos (keep plants)") }
+            ) { Text(stringResource(R.string.settings_clear_auto_linked_photos_keep_plants)) }
         }
         }
         }
@@ -1514,7 +1516,7 @@ fun SettingsPageScreen(
         if (isGardenOwner && FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
         SettingsGroup(title = "Irrigation controller", faq = Faq.IRRIGATION_SUPPORTED) {
             var irrigationSystem by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).irrigationSystem) }
-            Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_which_irrigation_system_do_you_have), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(IrrigationSystem.NONE to "None", IrrigationSystem.TUYA to "Tuya", IrrigationSystem.RACHIO to "Rachio").forEach { (value, label) ->
@@ -1530,7 +1532,7 @@ fun SettingsPageScreen(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text("Switching doesn't delete the other system's saved credentials or zones — it just hides them.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_switching_doesn_t_delete_the_other), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             if (irrigationSystem == IrrigationSystem.TUYA) {
@@ -1539,12 +1541,12 @@ fun SettingsPageScreen(
             var tuyaSecretVisible by remember { mutableStateOf(false) }
             var tuyaEditing by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).tuyaClientId.isBlank() || GardenSettings.active(context).tuyaClientSecret.isBlank()) }
 
-            Text("Tuya connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_tuya_connection), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = tuyaClientId,
                 onValueChange = { tuyaClientId = it },
-                label = { Text("Tuya Client ID") },
+                label = { Text(stringResource(R.string.settings_tuya_client_id)) },
                 singleLine = true,
                 readOnly = !tuyaEditing,
                 modifier = Modifier.fillMaxWidth()
@@ -1553,20 +1555,20 @@ fun SettingsPageScreen(
             OutlinedTextField(
                 value = tuyaClientSecret,
                 onValueChange = { tuyaClientSecret = it },
-                label = { Text("Tuya Client Secret") },
+                label = { Text(stringResource(R.string.settings_tuya_client_secret)) },
                 singleLine = true,
                 readOnly = !tuyaEditing,
                 visualTransformation = if (tuyaSecretVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     TextButton(onClick = { tuyaSecretVisible = !tuyaSecretVisible }) {
-                        Text(if (tuyaSecretVisible) "Hide" else "Show", fontSize = 12.sp)
+                        Text(if (tuyaSecretVisible) stringResource(R.string.settings_hide) else stringResource(R.string.settings_show), fontSize = 12.sp)
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             )
             if (tuyaClientId.isBlank() || tuyaClientSecret.isBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text("Both fields are required to sync irrigation history.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_both_fields_are_required_to_sync), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
             if (tuyaEditing) {
@@ -1578,9 +1580,9 @@ fun SettingsPageScreen(
                         tuyaEditing = false
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save Tuya credentials") }
+                ) { Text(stringResource(R.string.settings_save_tuya_credentials)) }
             } else {
-                OutlinedButton(onClick = { tuyaEditing = true }, modifier = Modifier.fillMaxWidth()) { Text("Edit Tuya credentials") }
+                OutlinedButton(onClick = { tuyaEditing = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_edit_tuya_credentials)) }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
@@ -1590,18 +1592,18 @@ fun SettingsPageScreen(
                 modifier = Modifier.fillMaxWidth().clickable { zonesExpanded = !zonesExpanded },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Irrigation zones (Tuya)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_irrigation_zones_tuya), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Text(if (zonesExpanded) "▾" else "▸ ${zoneRows.count { it.first.isNotBlank() }}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             if (zonesExpanded) {
                 Spacer(Modifier.height(6.dp))
-                Text("Add a friendly zone name for each physical outlet on your Tuya devices. Zone names should match your Watering System field values.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_add_a_friendly_zone_name_for), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 zoneRows.forEachIndexed { index, (zoneName, deviceId, outlet) ->
                     Column(Modifier.padding(bottom = 12.dp)) {
-                        OutlinedTextField(value = zoneName, onValueChange = { zoneRows[index] = Triple(it, deviceId, outlet) }, label = { Text("Zone name") }, placeholder = { Text("e.g. Front Garden") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = zoneName, onValueChange = { zoneRows[index] = Triple(it, deviceId, outlet) }, label = { Text(stringResource(R.string.map_zone_name)) }, placeholder = { Text(stringResource(R.string.settings_e_g_front_garden)) }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(6.dp))
-                        OutlinedTextField(value = deviceId, onValueChange = { zoneRows[index] = Triple(zoneName, it, outlet) }, label = { Text("Tuya Device ID") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = deviceId, onValueChange = { zoneRows[index] = Triple(zoneName, it, outlet) }, label = { Text(stringResource(R.string.settings_tuya_device_id)) }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.weight(1f)) {
@@ -1611,7 +1613,7 @@ fun SettingsPageScreen(
                         }
                     }
                 }
-                OutlinedButton(onClick = { zoneRows.add(Triple("", "", "1")) }, modifier = Modifier.fillMaxWidth()) { Text("+ Add zone") }
+                OutlinedButton(onClick = { zoneRows.add(Triple("", "", "1")) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_add_zone)) }
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
@@ -1620,7 +1622,7 @@ fun SettingsPageScreen(
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save zone mapping") }
+                ) { Text(stringResource(R.string.settings_save_zone_mapping)) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
@@ -1629,7 +1631,7 @@ fun SettingsPageScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Clear all zones") }
+                ) { Text(stringResource(R.string.settings_clear_all_zones)) }
             }
             }
 
@@ -1640,25 +1642,25 @@ fun SettingsPageScreen(
             var rachioTesting by remember { mutableStateOf(false) }
             var rachioTestResult by remember { mutableStateOf<String?>(null) }
 
-            Text("Rachio connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_rachio_connection), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = rachioApiToken,
                 onValueChange = { rachioApiToken = it },
-                label = { Text("Rachio API token") },
+                label = { Text(stringResource(R.string.settings_rachio_api_token)) },
                 singleLine = true,
                 readOnly = !rachioEditing,
                 visualTransformation = if (rachioTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     TextButton(onClick = { rachioTokenVisible = !rachioTokenVisible }) {
-                        Text(if (rachioTokenVisible) "Hide" else "Show", fontSize = 12.sp)
+                        Text(if (rachioTokenVisible) stringResource(R.string.settings_hide) else stringResource(R.string.settings_show), fontSize = 12.sp)
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             )
             if (rachioApiToken.isBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text("An API token is required to sync irrigation history.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_an_api_token_is_required_to), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
             if (rachioEditing) {
@@ -1669,9 +1671,9 @@ fun SettingsPageScreen(
                         rachioTestResult = null
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save Rachio API token") }
+                ) { Text(stringResource(R.string.settings_save_rachio_api_token)) }
             } else {
-                OutlinedButton(onClick = { rachioEditing = true }, modifier = Modifier.fillMaxWidth()) { Text("Edit Rachio API token") }
+                OutlinedButton(onClick = { rachioEditing = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_edit_rachio_api_token)) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
@@ -1688,7 +1690,7 @@ fun SettingsPageScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(), enabled = !rachioTesting
-                ) { Text(if (rachioTesting) "Testing…" else "Test connection") }
+                ) { Text(if (rachioTesting) stringResource(R.string.settings_testing) else stringResource(R.string.settings_test_connection)) }
                 rachioTestResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
 
@@ -1699,26 +1701,26 @@ fun SettingsPageScreen(
                 modifier = Modifier.fillMaxWidth().clickable { rachioZonesExpanded = !rachioZonesExpanded },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Irrigation zones (Rachio)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_irrigation_zones_rachio), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Text(if (rachioZonesExpanded) "▾" else "▸ ${rachioZoneRows.count { it.first.isNotBlank() }}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             if (rachioZonesExpanded) {
                 Spacer(Modifier.height(6.dp))
-                Text("Add a friendly zone name for each Rachio zone (use Test connection above to find your device/zone IDs). Zone names should match your Watering System field values.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_add_a_friendly_zone_name_for_2), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 rachioZoneRows.forEachIndexed { index, (zoneName, deviceId, zoneId) ->
                     Column(Modifier.padding(bottom = 12.dp)) {
-                        OutlinedTextField(value = zoneName, onValueChange = { rachioZoneRows[index] = Triple(it, deviceId, zoneId) }, label = { Text("Zone name") }, placeholder = { Text("e.g. Front Garden") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = zoneName, onValueChange = { rachioZoneRows[index] = Triple(it, deviceId, zoneId) }, label = { Text(stringResource(R.string.map_zone_name)) }, placeholder = { Text(stringResource(R.string.settings_e_g_front_garden)) }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(6.dp))
-                        OutlinedTextField(value = deviceId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, it, zoneId) }, label = { Text("Rachio Device ID") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = deviceId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, it, zoneId) }, label = { Text(stringResource(R.string.settings_rachio_device_id)) }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(value = zoneId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, deviceId, it) }, label = { Text("Rachio Zone ID") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = zoneId, onValueChange = { rachioZoneRows[index] = Triple(zoneName, deviceId, it) }, label = { Text(stringResource(R.string.settings_rachio_zone_id)) }, modifier = Modifier.weight(1f))
                             if (rachioZoneRows.size > 1) IconButton(onClick = { rachioZoneRows.removeAt(index) }) { Icon(Icons.Outlined.Close, contentDescription = "Remove zone") }
                         }
                     }
                 }
-                OutlinedButton(onClick = { rachioZoneRows.add(Triple("", "", "")) }, modifier = Modifier.fillMaxWidth()) { Text("+ Add zone") }
+                OutlinedButton(onClick = { rachioZoneRows.add(Triple("", "", "")) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_add_zone)) }
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
@@ -1727,7 +1729,7 @@ fun SettingsPageScreen(
                         scope.launch { snackbarHostState.showSnackbar("Zone mapping saved") }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save zone mapping") }
+                ) { Text(stringResource(R.string.settings_save_zone_mapping)) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
@@ -1736,16 +1738,16 @@ fun SettingsPageScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Clear all zones") }
+                ) { Text(stringResource(R.string.settings_clear_all_zones)) }
             }
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Irrigation log location", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_irrigation_log_location), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Where irrigation_log.csv is read from and appended to — separate from wherever your photos are stored.",
+                stringResource(R.string.settings_where_irrigation_log_csv_is_read),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
@@ -1754,10 +1756,10 @@ fun SettingsPageScreen(
                 var showIrrigationFolderPicker by remember { mutableStateOf(false) }
                 OutlinedTextField(
                     value = irrigationDropboxPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.settings_dropbox_folder)) }, modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { showIrrigationFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                OutlinedButton(onClick = { showIrrigationFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_browse_dropbox)) }
                 if (showIrrigationFolderPicker) {
                     DropboxFolderPickerDialog(
                         context = context, onDismiss = { showIrrigationFolderPicker = false },
@@ -1766,38 +1768,38 @@ fun SettingsPageScreen(
                 }
             } else {
                 OutlinedButton(onClick = { irrigationLogFolderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (irrigationLogFolder != null) "Change irrigation log folder" else "Choose irrigation log folder")
+                    Text(if (irrigationLogFolder != null) stringResource(R.string.settings_change_irrigation_log_folder) else stringResource(R.string.settings_choose_irrigation_log_folder))
                 }
             }
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
             if (irrigationSystem != IrrigationSystem.NONE) {
-            Text("Sync irrigation history", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_sync_irrigation_history), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text(
                 if (irrigationSystem == IrrigationSystem.RACHIO)
-                    "Pulls the last 30 days of watering activity from Rachio and appends new sessions to irrigation_log.csv."
+                    stringResource(R.string.settings_pulls_the_last_30_days_of)
                 else
-                    "Pulls the last 30 days of watering activity from Tuya and appends new sessions to irrigation_log.csv so history isn't lost once Tuya's ~7-day retention rolls over.",
+                    stringResource(R.string.settings_pulls_the_last_30_days_of_2),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
             val syncing by wateringViewModel.syncing.collectAsState()
             val syncResult by wateringViewModel.lastSyncResult.collectAsState()
-            Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync watering history") }
+            Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) stringResource(R.string.settings_syncing) else stringResource(R.string.settings_sync_watering_history)) }
             syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             // Re-read whenever a manual sync finishes (syncing flips back to false) or the garden changes.
             val lastIrrigationSyncAt = remember(ActiveGardenState.activeGardenId, syncing) { GardenSettings.of(context, effectiveGardenId(context)).lastIrrigationSyncAt }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Also syncs automatically every $IRRIGATION_AUTO_SYNC_DAYS days in the background." +
-                    if (lastIrrigationSyncAt > 0L) " Last synced ${java.text.SimpleDateFormat("d MMM yyyy, h:mm a", Locale.getDefault()).format(java.util.Date(lastIrrigationSyncAt))}." else "",
+                stringResource(R.string.settings_also_syncs_automatically_every_days_in, IRRIGATION_AUTO_SYNC_DAYS) +
+                    if (lastIrrigationSyncAt > 0L) " Last synced ${java.text.SimpleDateFormat("d MMM yyyy, h:mm a", androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).format(java.util.Date(lastIrrigationSyncAt))}." else "",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { irrigationImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }, modifier = Modifier.weight(1f)) { Text("Import from device") }
+                OutlinedButton(onClick = { irrigationImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.settings_import_from_device)) }
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -1812,11 +1814,11 @@ fun SettingsPageScreen(
                         }
                     },
                     modifier = Modifier.weight(1f), enabled = DropboxAuthState.token != null
-                ) { Text("Import from Dropbox") }
+                ) { Text(stringResource(R.string.settings_import_from_dropbox)) }
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { irrigationExportLauncher.launch("irrigation_log.csv") }, modifier = Modifier.weight(1f), enabled = irrigationEvents.isNotEmpty()) { Text("Export to device") }
+                OutlinedButton(onClick = { irrigationExportLauncher.launch("irrigation_log.csv") }, modifier = Modifier.weight(1f), enabled = irrigationEvents.isNotEmpty()) { Text(stringResource(R.string.settings_export_to_device)) }
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -1825,7 +1827,7 @@ fun SettingsPageScreen(
                         }
                     },
                     modifier = Modifier.weight(1f), enabled = irrigationEvents.isNotEmpty() && DropboxAuthState.token != null
-                ) { Text("Export to Dropbox") }
+                ) { Text(stringResource(R.string.settings_export_to_dropbox)) }
             }
 
         }
@@ -1837,7 +1839,7 @@ fun SettingsPageScreen(
         SettingsGroup(title = "Sage assistant", faq = Faq.SAGE_WHAT) {
             var sageChatEnabled by remember { mutableStateOf(FeatureVisibility.isSageChatEnabled(context)) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Sage assistant", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.settings_sage_assistant), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(checked = sageChatEnabled, onCheckedChange = {
                     sageChatEnabled = it
                     FeatureVisibility.setSageChatEnabled(context, it)
@@ -1845,12 +1847,12 @@ fun SettingsPageScreen(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Turn off the floating leaf button and plant-form suggestions if you'd rather not see Sage.",
+                stringResource(R.string.settings_turn_off_the_floating_leaf_button),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
             Text(
-                "Drag the floating leaf button up or down if it's covering something. Stuck somewhere awkward?",
+                stringResource(R.string.settings_drag_the_floating_leaf_button_up),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
@@ -1858,7 +1860,7 @@ fun SettingsPageScreen(
                 FeatureVisibility.setSageFabOffsetDp(context, 0f)
                 SageFabResetState.requested = true
             }) {
-                Text("Reset button position", fontSize = 12.sp)
+                Text(stringResource(R.string.settings_reset_button_position), fontSize = 12.sp)
             }
         }
         }
@@ -1869,7 +1871,7 @@ fun SettingsPageScreen(
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(if (advancedMode) "Advanced mode" else "Basic mode", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text(if (advancedMode) stringResource(R.string.settings_advanced_mode) else stringResource(R.string.settings_basic_mode), fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(
                     checked = advancedMode,
                     onCheckedChange = {
@@ -1880,7 +1882,7 @@ fun SettingsPageScreen(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Nothing is deleted when you switch — your Tuya/Rachio setup, sun map, and history stay saved.",
+                stringResource(R.string.settings_nothing_is_deleted_when_you_switch),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
@@ -1890,7 +1892,7 @@ fun SettingsPageScreen(
             var redeemingPromo by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = promoCode, onValueChange = { promoCode = it.uppercase() },
-                label = { Text("Promo code") },
+                label = { Text(stringResource(R.string.settings_promo_code)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1912,7 +1914,7 @@ fun SettingsPageScreen(
                 },
                 enabled = promoCode.isNotBlank() && !redeemingPromo,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (redeemingPromo) "Redeeming…" else "Redeem promo code") }
+            ) { Text(if (redeemingPromo) stringResource(R.string.settings_redeeming) else stringResource(R.string.settings_redeem_promo_code)) }
         }
         }
 
@@ -1930,17 +1932,17 @@ fun SettingsPageScreen(
                 }
             }
             OutlinedButton(onClick = { mapImageLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (customMapUri != null) "Change custom map image" else "Upload custom map image")
+                Text(if (customMapUri != null) stringResource(R.string.settings_change_custom_map_image) else stringResource(R.string.settings_upload_custom_map_image))
             }
             if (customMapUri != null) {
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Use custom map instead of real-world map", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.settings_use_custom_map_instead_of_real), fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = useCustomMap, onCheckedChange = { useCustomMap = it; GardenSettings.active(context).usingCustomMap = it })
                 }
                 Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(10.dp))
                 var mapRotationDeg by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapRotation) }
-                Text("Orientation", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_orientation), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = {
@@ -1948,9 +1950,9 @@ fun SettingsPageScreen(
                         GardenSettings.active(context).customMapRotation = mapRotationDeg
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Rotate 90° (currently ${mapRotationDeg}°)") }
+                ) { Text(stringResource(R.string.settings_rotate_90_currently, mapRotationDeg)) }
                 Text(
-                    "Rotating shifts what's shown at each spot on the map — recheck any markers, paths, or sun zones you've already placed after rotating.",
+                    stringResource(R.string.settings_rotating_shifts_what_s_shown_at),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp)
                 )
                 Spacer(Modifier.height(10.dp))
@@ -1958,7 +1960,7 @@ fun SettingsPageScreen(
                     onClick = { GardenSettings.active(context).customMapUri = null; GardenSettings.active(context).usingCustomMap = false; customMapUri = null; useCustomMap = false },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Clear custom map") }
+                ) { Text(stringResource(R.string.settings_clear_custom_map)) }
             }
         }
         }
@@ -1969,25 +1971,25 @@ fun SettingsPageScreen(
         if (page == SettingsPage.DATA) {
         if (canEditActiveGarden) {
         SettingsGroup(title = "Backup & restore", faq = Faq.BACKUP_OPTIONS) {
-            Text("Export to spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_export_to_spreadsheet), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_downloads_all_your_plant_data_excluding), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
-            Button(onClick = { exportLauncher.launch(csvExportFileNameForGarden(context, effectiveGardenId(context))) }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV to device") }
+            Button(onClick = { exportLauncher.launch(csvExportFileNameForGarden(context, effectiveGardenId(context))) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_export_csv_to_device)) }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
                 var dropboxCsvFolderPath by remember {
                     mutableStateOf(getDropboxCsvFolderPath(context) ?: getDropboxBackupFolderPath(context) ?: getDropboxPhotoFolderPath(context) ?: "")
                 }
                 var showDropboxCsvFolderPicker by remember { mutableStateOf(false) }
-                Text("Dropbox folder", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_dropbox_folder), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = dropboxCsvFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.settings_dropbox_folder)) }, modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { showDropboxCsvFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                OutlinedButton(onClick = { showDropboxCsvFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_browse_dropbox)) }
                 if (showDropboxCsvFolderPicker) {
                     DropboxFolderPickerDialog(
                         context = context, onDismiss = { showDropboxCsvFolderPicker = false },
@@ -2041,23 +2043,23 @@ fun SettingsPageScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(), enabled = !dropboxCsvExporting && !checkingExistingCsv
-                ) { Text(if (dropboxCsvExporting) "Exporting…" else if (checkingExistingCsv) "Checking…" else "Export CSV to Dropbox") }
+                ) { Text(if (dropboxCsvExporting) stringResource(R.string.settings_exporting) else if (checkingExistingCsv) stringResource(R.string.settings_checking) else stringResource(R.string.settings_export_csv_to_dropbox)) }
                 if (showReplaceCsvConfirm) {
                     val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
                     val defaultName = remember { csvExportFileNameForGarden(context, effectiveGardenId(context)) }
                     AlertDialog(
                         onDismissRequest = { showReplaceCsvConfirm = false },
-                        title = { Text("Replace existing CSV?") },
+                        title = { Text(stringResource(R.string.settings_replace_existing_csv)) },
                         text = { Text("A CSV from ${existingCsvDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replace it, or keep it and save this as a separate new file?") },
-                        confirmButton = { TextButton(onClick = { showReplaceCsvConfirm = false; runDropboxCsvExport(defaultName) }) { Text("Replace") } },
+                        confirmButton = { TextButton(onClick = { showReplaceCsvConfirm = false; runDropboxCsvExport(defaultName) }) { Text(stringResource(R.string.settings_replace)) } },
                         dismissButton = {
                             Row {
-                                TextButton(onClick = { showReplaceCsvConfirm = false }) { Text("Cancel") }
+                                TextButton(onClick = { showReplaceCsvConfirm = false }) { Text(stringResource(R.string.care_cancel)) }
                                 TextButton(onClick = {
                                     showReplaceCsvConfirm = false
                                     val timestamped = defaultName.removeSuffix(".csv") + "_${SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date())}.csv"
                                     runDropboxCsvExport(timestamped)
-                                }) { Text("Create new") }
+                                }) { Text(stringResource(R.string.settings_create_new)) }
                             }
                         }
                     )
@@ -2066,22 +2068,22 @@ fun SettingsPageScreen(
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Import from spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_import_from_spreadsheet), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Upload a CSV in the same format to add or update plants in bulk.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_upload_a_csv_in_the_same), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
                 modifier = Modifier.fillMaxWidth(), enabled = canEditActiveGarden
-            ) { Text("Choose CSV file from device") }
+            ) { Text(stringResource(R.string.settings_choose_csv_file_from_device)) }
             if (DropboxAuthState.token != null) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { showDropboxCsvPicker = true },
                     modifier = Modifier.fillMaxWidth(), enabled = canEditActiveGarden && !dropboxCsvImporting
-                ) { Text(if (dropboxCsvImporting) "Importing…" else "Choose CSV from Dropbox") }
+                ) { Text(if (dropboxCsvImporting) stringResource(R.string.settings_importing) else stringResource(R.string.settings_choose_csv_from_dropbox)) }
             }
-            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.settings_you_have_view_only_access_to_2), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (showDropboxCsvPicker) {
                 DropboxCsvPickerDialog(
                     context = context,
@@ -2098,12 +2100,12 @@ fun SettingsPageScreen(
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Backup & restore all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_backup_restore_all_data), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Backs up all plants (including seasonal watering, fertilising, pruning, and indoor/manual-watering settings), irrigation paths and watering history, sun exposure zones, growth timeline photos, fertilise/prune history, Tuya zone mappings, your custom map drawing and its rotation, and all app preferences (weather-aware reminders, garden address, notification and reminder settings, default tab, and more) to a Dropbox folder you choose.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_backs_up_all_plants_including_seasonal), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             if (isGardenOwner) {
-                Text("Note: locally-stored photos can't be backed up this way — switch to cloud photo storage above first if you want photos to carry across too.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.settings_note_locally_stored_photos_can_t), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(10.dp))
 
@@ -2117,14 +2119,14 @@ fun SettingsPageScreen(
             }
 
             if (DropboxAuthState.token != null) {
-                Text("Backup folder", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_backup_folder), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = backupFolderPath.ifBlank { "(root)" }, onValueChange = {}, readOnly = true,
-                    label = { Text("Dropbox folder") }, modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.settings_dropbox_folder)) }, modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { showBackupFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text("Browse Dropbox…") }
+                OutlinedButton(onClick = { showBackupFolderPicker = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_browse_dropbox)) }
                 if (showBackupFolderPicker) {
                     DropboxFolderPickerDialog(
                         context = context, onDismiss = { showBackupFolderPicker = false },
@@ -2174,20 +2176,20 @@ fun SettingsPageScreen(
                 val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
                 AlertDialog(
                     onDismissRequest = { showReplaceBackupConfirm = false },
-                    title = { Text("Replace existing backup?") },
+                    title = { Text(stringResource(R.string.settings_replace_existing_backup)) },
                     text = {
                         Text(
                             "A backup from ${existingBackupDate?.let { sdf.format(it) } ?: "earlier"} already exists in this Dropbox folder. Replace it, or keep it and save this as a separate new backup?"
                         )
                     },
-                    confirmButton = { TextButton(onClick = { showReplaceBackupConfirm = false; runDropboxBackup() }) { Text("Replace") } },
+                    confirmButton = { TextButton(onClick = { showReplaceBackupConfirm = false; runDropboxBackup() }) { Text(stringResource(R.string.settings_replace)) } },
                     dismissButton = {
                         Row {
-                            TextButton(onClick = { showReplaceBackupConfirm = false }) { Text("Cancel") }
+                            TextButton(onClick = { showReplaceBackupConfirm = false }) { Text(stringResource(R.string.care_cancel)) }
                             TextButton(onClick = {
                                 showReplaceBackupConfirm = false
                                 runDropboxBackup(BackupHelper.newDatedBackupFileName())
-                            }) { Text("Create new") }
+                            }) { Text(stringResource(R.string.settings_create_new)) }
                         }
                     }
                 )
@@ -2226,13 +2228,13 @@ fun SettingsPageScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(), enabled = !backupWorking && !restoreWorking && !loadingBackupList && DropboxAuthState.token != null && canEditActiveGarden
-            ) { Text(if (restoreWorking) "Restoring…" else if (loadingBackupList) "Checking…" else "Restore from Dropbox") }
+            ) { Text(if (restoreWorking) stringResource(R.string.settings_restoring) else if (loadingBackupList) stringResource(R.string.settings_checking) else stringResource(R.string.settings_restore_from_dropbox)) }
 
             if (showBackupPicker) {
                 val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
                 AlertDialog(
                     onDismissRequest = { showBackupPicker = false },
-                    title = { Text("Choose a backup to restore") },
+                    title = { Text(stringResource(R.string.settings_choose_a_backup_to_restore)) },
                     text = {
                         Column {
                             availableBackups.forEach { info ->
@@ -2254,28 +2256,28 @@ fun SettingsPageScreen(
                         }
                     },
                     confirmButton = {},
-                    dismissButton = { TextButton(onClick = { showBackupPicker = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showBackupPicker = false }) { Text(stringResource(R.string.care_cancel)) } }
                 )
             }
 
-            if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Connect Dropbox above first.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (DropboxAuthState.token == null && isGardenOwner) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.settings_connect_dropbox_above_first), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             backupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
 
             if (showRestoreConfirm) {
                 var forceFreshRestore by remember { mutableStateOf(false) }
                 AlertDialog(
                     onDismissRequest = { showRestoreConfirm = false },
-                    title = { Text("Restore from Dropbox?") },
+                    title = { Text(stringResource(R.string.settings_restore_from_dropbox_2)) },
                     text = {
                         Column {
-                            Text("Restoring \"${selectedRestoreFileName ?: BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))}\" adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from it. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Text(stringResource(R.string.settings_restoring_adds_updates_plants_irrigation_paths, selectedRestoreFileName ?: BackupHelper.defaultBackupFileNameForGarden(context, effectiveGardenId(context))))
                             Spacer(Modifier.height(12.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth().clickable { forceFreshRestore = !forceFreshRestore }
                             ) {
                                 Checkbox(checked = forceFreshRestore, onCheckedChange = { forceFreshRestore = it })
-                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(R.string.settings_make_this_the_current_version_everywhere), fontSize = 12.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     },
@@ -2288,17 +2290,17 @@ fun SettingsPageScreen(
                                 val result = BackupHelper.restoreBackup(context, viewModel, pathViewModel, wateringViewModel, fileName, forceFreshRestore)
                                 restoreWorking = false; backupResultText = result.message
                             }
-                        }) { Text("Restore") }
+                        }) { Text(stringResource(R.string.settings_restore)) }
                     },
-                    dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.care_cancel)) } }
                 )
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Export backup to device", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_export_backup_to_device), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Saves the same backup to a folder you choose on this device — or a synced folder like Google Drive/OneDrive — no Dropbox connection needed. Uses the system file picker, so no extra app permissions are required.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_saves_the_same_backup_to_a), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
             var localBackupFolder by remember { mutableStateOf(getLocalBackupFolderUri(context)) }
@@ -2320,7 +2322,7 @@ fun SettingsPageScreen(
             }
 
             OutlinedButton(onClick = { backupFolderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (localBackupFolder != null) "Change backup folder" else "Choose backup folder")
+                Text(if (localBackupFolder != null) stringResource(R.string.settings_change_backup_folder) else stringResource(R.string.settings_choose_backup_folder))
             }
 
             if (localBackupFolder != null) {
@@ -2334,13 +2336,13 @@ fun SettingsPageScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking
-                ) { Text(if (localBackupWorking) "Backing up…" else "Export backup now") }
+                ) { Text(if (localBackupWorking) stringResource(R.string.settings_backing_up) else stringResource(R.string.settings_export_backup_now)) }
 
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { showLocalRestoreConfirm = true },
                     modifier = Modifier.fillMaxWidth(), enabled = !localBackupWorking && canEditActiveGarden
-                ) { Text("Restore from this folder") }
+                ) { Text(stringResource(R.string.settings_restore_from_this_folder)) }
             }
 
             localBackupResultText?.let { Spacer(Modifier.height(8.dp)); Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
@@ -2349,17 +2351,17 @@ fun SettingsPageScreen(
                 var forceFreshLocalRestore by remember { mutableStateOf(false) }
                 AlertDialog(
                     onDismissRequest = { showLocalRestoreConfirm = false },
-                    title = { Text("Restore from device backup?") },
+                    title = { Text(stringResource(R.string.settings_restore_from_device_backup)) },
                     text = {
                         Column {
-                            Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, care history, and all settings from the backup in this folder. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Text(stringResource(R.string.settings_this_adds_updates_plants_irrigation_paths))
                             Spacer(Modifier.height(12.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth().clickable { forceFreshLocalRestore = !forceFreshLocalRestore }
                             ) {
                                 Checkbox(checked = forceFreshLocalRestore, onCheckedChange = { forceFreshLocalRestore = it })
-                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(R.string.settings_make_this_the_current_version_everywhere), fontSize = 12.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     },
@@ -2371,18 +2373,18 @@ fun SettingsPageScreen(
                                 val result = BackupHelper.restoreLocalBackup(context, viewModel, pathViewModel, wateringViewModel, localBackupFolder!!, forceFreshLocalRestore)
                                 localBackupWorking = false; localBackupResultText = result.message
                             }
-                        }) { Text("Restore") }
+                        }) { Text(stringResource(R.string.settings_restore)) }
                     },
-                    dismissButton = { TextButton(onClick = { showLocalRestoreConfirm = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showLocalRestoreConfirm = false }) { Text(stringResource(R.string.care_cancel)) } }
                 )
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Automatic backups (this device)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.settings_automatic_backups_this_device), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Runs silently once a day, no setup needed — keeps up to 7 rolling daily snapshots on this device (plus Dropbox too, if it's connected above), as a safety net under the manual backups above.",
+                stringResource(R.string.settings_runs_silently_once_a_day_no),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
@@ -2399,17 +2401,17 @@ fun SettingsPageScreen(
             OutlinedButton(
                 onClick = { showAutoBackupPicker = true },
                 modifier = Modifier.fillMaxWidth(), enabled = availableAutoBackups.isNotEmpty() && canEditActiveGarden && !autoBackupWorking
-            ) { Text(if (autoBackupWorking) "Restoring…" else "Restore from automatic backup") }
+            ) { Text(if (autoBackupWorking) stringResource(R.string.settings_restoring) else stringResource(R.string.settings_restore_from_automatic_backup)) }
             if (availableAutoBackups.isEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Text("None yet — the first one is created the next time you open the app.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_none_yet_the_first_one_is), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (showAutoBackupPicker) {
                 val sdf = remember { SimpleDateFormat("EEEE, dd MMM yyyy, h:mm a", Locale.getDefault()) }
                 AlertDialog(
                     onDismissRequest = { showAutoBackupPicker = false },
-                    title = { Text("Choose an automatic backup to restore") },
+                    title = { Text(stringResource(R.string.settings_choose_an_automatic_backup_to_restore)) },
                     text = {
                         Column {
                             availableAutoBackups.forEach { info ->
@@ -2428,7 +2430,7 @@ fun SettingsPageScreen(
                         }
                     },
                     confirmButton = {},
-                    dismissButton = { TextButton(onClick = { showAutoBackupPicker = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showAutoBackupPicker = false }) { Text(stringResource(R.string.care_cancel)) } }
                 )
             }
 
@@ -2438,17 +2440,17 @@ fun SettingsPageScreen(
                 var forceFreshAutoRestore by remember { mutableStateOf(false) }
                 AlertDialog(
                     onDismissRequest = { showAutoRestoreConfirm = false },
-                    title = { Text("Restore this automatic backup?") },
+                    title = { Text(stringResource(R.string.settings_restore_this_automatic_backup)) },
                     text = {
                         Column {
-                            Text("This adds/updates plants, irrigation paths, watering history, sun zones, growth photos, and care history from this on-device snapshot. Existing entries with matching IDs will be overwritten. This can't be undone.")
+                            Text(stringResource(R.string.settings_this_adds_updates_plants_irrigation_paths_2))
                             Spacer(Modifier.height(12.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth().clickable { forceFreshAutoRestore = !forceFreshAutoRestore }
                             ) {
                                 Checkbox(checked = forceFreshAutoRestore, onCheckedChange = { forceFreshAutoRestore = it })
-                                Text("Make this the current version everywhere (overrides other devices' more recent edits too)", fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(R.string.settings_make_this_the_current_version_everywhere), fontSize = 12.sp, modifier = Modifier.weight(1f))
                             }
                         }
                     },
@@ -2466,23 +2468,23 @@ fun SettingsPageScreen(
                                     autoBackupWorking = false; autoBackupResultText = result.message
                                 }
                             }
-                        }) { Text("Restore") }
+                        }) { Text(stringResource(R.string.settings_restore)) }
                     },
-                    dismissButton = { TextButton(onClick = { showAutoRestoreConfirm = false }) { Text("Cancel") } }
+                    dismissButton = { TextButton(onClick = { showAutoRestoreConfirm = false }) { Text(stringResource(R.string.care_cancel)) } }
                 )
             }
 
             Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
 
-            Text("Reset all data", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.settings_reset_all_data), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(6.dp))
-            Text("Clears every plant in this app. Cannot be undone.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.settings_clears_every_plant_in_this_app), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { showResetDialog = true }, modifier = Modifier.fillMaxWidth(), enabled = isGardenOwner,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-            ) { Text("Reset garden") }
-            if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            ) { Text(stringResource(R.string.settings_reset_garden)) }
+            if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text(stringResource(R.string.settings_only_this_garden_s_owner_can), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         }
         }
@@ -2492,7 +2494,7 @@ fun SettingsPageScreen(
         if (page == SettingsPage.ABOUT) {
         SettingsGroup(title = "Support Sage Garden") {
             Text(
-                "Sage Garden is free, with no ads. If it's useful to you, a small tip helps cover running costs (Sage AI, hosting).",
+                stringResource(R.string.settings_sage_garden_is_free_with_no),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
@@ -2506,14 +2508,14 @@ fun SettingsPageScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Buy me a coffee") }
+            ) { Text(stringResource(R.string.settings_buy_me_a_coffee)) }
         }
         }
 
         if (page == SettingsPage.ABOUT) {
         SettingsGroup(title = "Contact & feedback") {
             Text(
-                "Found a bug, or have an idea for the app? We'd love to hear from you at gardenwizardry685@gmail.com.",
+                stringResource(R.string.settings_found_a_bug_or_have_an),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
@@ -2530,11 +2532,11 @@ fun SettingsPageScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Email us") }
+            ) { Text(stringResource(R.string.settings_email_us)) }
             Spacer(Modifier.height(10.dp))
             val installId = remember { getOrCreateInstallId(context) }
             Text(
-                "Install ID: $installId (tap to copy — quote this if you contact support)",
+                stringResource(R.string.settings_install_id_tap_to_copy_quote, installId),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.clickable {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -2551,10 +2553,10 @@ fun SettingsPageScreen(
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
-            title = { Text("Reset your garden?") },
-            text = { Text("This will permanently delete every plant you've added. This can't be undone.") },
-            confirmButton = { TextButton(onClick = { showResetDialog = false; viewModel.resetAll(); scope.launch { snackbarHostState.showSnackbar("Garden reset.") } }) { Text("Reset") } },
-            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.settings_reset_your_garden)) },
+            text = { Text(stringResource(R.string.settings_this_will_permanently_delete_every_plant)) },
+            confirmButton = { TextButton(onClick = { showResetDialog = false; viewModel.resetAll(); scope.launch { snackbarHostState.showSnackbar("Garden reset.") } }) { Text(stringResource(R.string.settings_reset)) } },
+            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text(stringResource(R.string.care_cancel)) } }
         )
     }
     importResultDialog?.let { outcome ->
@@ -2562,7 +2564,7 @@ fun SettingsPageScreen(
             onDismissRequest = { importResultDialog = null },
             title = { Text(outcome.title) },
             text = { Text(outcome.message) },
-            confirmButton = { TextButton(onClick = { importResultDialog = null }) { Text("OK") } }
+            confirmButton = { TextButton(onClick = { importResultDialog = null }) { Text(stringResource(R.string.field_ok)) } }
         )
     }
 }
