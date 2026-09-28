@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.SageGardenCar" parent="android:Theme.Material.NoActionBar" />
+</resources>
