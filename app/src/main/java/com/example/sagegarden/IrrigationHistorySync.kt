@@ -28,13 +28,13 @@ private fun vendorSyncConfig(context: Context, gardenId: String, system: Irrigat
         VendorSyncConfig(
             mappings = GardenSettings.of(context, gardenId).tuyaZoneMappings.map { VendorZoneMapping(it.zone, it.deviceId, it.outlet) },
             missingCredentialMessage = if (GardenSettings.of(context, gardenId).tuyaClientId.isBlank() || GardenSettings.of(context, gardenId).tuyaClientSecret.isBlank())
-                "Tuya isn't connected — add your Client ID and Secret in Help first." else null
+                "Tuya isn't connected — add your Client ID and Secret in Settings → Irrigation first." else null
         ) { mapping, start, end -> TuyaClient.fetchWateringEvents(context, mapping.deviceId, mapping.zone, mapping.key, start, end, gardenId) }
     } else {
         VendorSyncConfig(
             mappings = GardenSettings.of(context, gardenId).rachioZoneMappings.map { VendorZoneMapping(it.zone, it.deviceId, it.zoneId) },
             missingCredentialMessage = if (GardenSettings.of(context, gardenId).rachioApiToken.isBlank())
-                "Rachio isn't connected — add your API token in Help first." else null
+                "Rachio isn't connected — add your API token in Settings → Irrigation first." else null
         ) { mapping, start, end -> RachioClient.fetchWateringEvents(context, mapping.deviceId, mapping.key, mapping.zone, start, end, gardenId) }
     }
 
@@ -55,10 +55,10 @@ fun isIrrigationSyncConfigured(context: Context, gardenId: String): Boolean {
  */
 suspend fun syncIrrigationHistory(context: Context, gardenId: String): String {
     val system = GardenSettings.of(context, gardenId).irrigationSystem
-    if (system == IrrigationSystem.NONE) return "Select an irrigation system in Help first."
+    if (system == IrrigationSystem.NONE) return "Select an irrigation system in Settings → Irrigation first."
 
     val config = vendorSyncConfig(context, gardenId, system)
-    if (config.mappings.isEmpty()) return "No zones configured yet — add ${if (system == IrrigationSystem.TUYA) "device IDs" else "zone IDs"} in Help."
+    if (config.mappings.isEmpty()) return "No zones configured yet — add ${if (system == IrrigationSystem.TUYA) "device IDs" else "zone IDs"} in Settings → Irrigation."
     config.missingCredentialMessage?.let { return it }
 
     val dao = AppDatabase.getInstance(context).wateringEventDao()
@@ -101,7 +101,7 @@ suspend fun syncIrrigationHistory(context: Context, gardenId: String): String {
         if (allNewEvents.isNotEmpty()) {
             when {
                 csvSaved -> append(if (usingCloud) " — appended to irrigation_log.csv in Dropbox" else " — appended to irrigation_log.csv on device")
-                !storageConfigured -> append(" — choose an irrigation log location (Help → Irrigation) to save irrigation_log.csv")
+                !storageConfigured -> append(" — choose an irrigation log location (Settings → Irrigation) to save irrigation_log.csv")
                 else -> append(" (couldn't save irrigation_log.csv — check your irrigation log folder/Dropbox connection)")
             }
         }

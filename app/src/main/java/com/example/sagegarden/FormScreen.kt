@@ -379,7 +379,7 @@ fun FormScreen(
             // Dropbox connection — it's a plain HTTPS shared link that renders fine without this
             // device being linked. Only picking/uploading a NEW cloud photo actually needs it,
             // and those specific buttons below already gate on dropboxConnected individually.
-            Text("Connect your cloud storage in the Help tab first.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text("Connect Dropbox in Settings → Photos & storage first.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         } else {
             Box(
                 modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp))
@@ -531,7 +531,7 @@ fun FormScreen(
         }
         DropdownField(
             "Garden location", locationOptions, location, { location = it },
-            "Manage these from Help → Garden locations", enabled = canEdit
+            "Manage zones in Settings → This garden", enabled = canEdit
         )
         Spacer(Modifier.height(14.dp))
 
@@ -585,7 +585,7 @@ fun FormScreen(
                             }
                             is SageAutoFillConditionsResult.FreeLimitReached -> {
                                 EntitlementManager.updateSagePromptsRemaining(context, 0)
-                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code under Help → Basic/Advanced mode for unlimited access.")
+                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code in Settings → App preferences for unlimited access.")
                             }
                             is SageAutoFillConditionsResult.DailyLimitReached ->
                                 snackbarHostState.showSnackbar("Sage is busy right now — try again later.")
@@ -633,10 +633,7 @@ fun FormScreen(
             label = { Text("Watering frequency (days)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             supportingText = {
-                Text(
-                    "This is a guide only — your plant's needs may vary with conditions. Before watering, check the soil by inserting your finger about 2–3 cm deep. If the soil feels dry, it's time to water; if it's still moist, wait and check again later.",
-                    fontSize = 11.sp
-                )
+                Text("A guide only — feel the soil 2–3 cm down before watering.", fontSize = 11.sp)
             },
             modifier = Modifier.fillMaxWidth(), readOnly = !canEdit
         )
@@ -644,12 +641,13 @@ fun FormScreen(
 
         if (FeatureVisibility.shouldShow(context, Feature.SEASONAL_WATERING)) {
         ExpandableSection(title = "Seasonal watering (optional)") {
-            Text("Overrides the frequency above during summer/winter. Leave a season blank to fall back to the frequency above for that season — not to skip it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "There's no dedicated \"skip this season\" option. Entering 0 does NOT skip watering — it means water every 0 days, so the plant will constantly show as overdue. Leaving the field blank doesn't skip it either — it just uses the frequency above. To effectively skip a season, enter a large number of days here (e.g. 365) so it won't come due again until the season is over.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.error
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Leave blank to use the normal frequency. To pause a season, enter a large number such as 365 — not 0.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
+                )
+                FaqInfoButton(Faq.SEASONAL)
+            }
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = summerWateringFrequency,
@@ -730,7 +728,7 @@ fun FormScreen(
                             }
                             is SageAutoFillResult.FreeLimitReached -> {
                                 EntitlementManager.updateSagePromptsRemaining(context, 0)
-                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code under Help → Basic/Advanced mode for unlimited access.")
+                                snackbarHostState.showSnackbar("You've used all your free Sage questions — enter a promo code in Settings → App preferences for unlimited access.")
                             }
                             is SageAutoFillResult.DailyLimitReached ->
                                 snackbarHostState.showSnackbar("Sage is busy right now — try again later.")
@@ -975,7 +973,7 @@ fun FormScreen(
                 pendingHintPlant = null
             },
             title = { Text("Set up care reminders?") },
-            text = { Text("Sage Garden can remind you when your plants need watering, fertilising, feeding, or pruning. You can turn reminders on any time from Help → Plant notifications.") },
+            text = { Text("Sage Garden can remind you when your plants need watering, fertilising, feeding, or pruning. You can turn them on any time in Settings → Reminders.") },
             confirmButton = {
                 TextButton(onClick = {
                     showNotificationHint = false

@@ -2,6 +2,19 @@
 
 package com.example.sagegarden
 
+import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -45,6 +58,59 @@ import kotlinx.coroutines.launch
 // ============================================================================
 // APP SHELL / NAVIGATION
 // ============================================================================
+
+/** The four bottom-bar tabs. Settings and Help live in the top bar, and Garden check in the Plants tab. */
+enum class TopLevelTab(val route: String, @StringRes val label: Int, val icon: ImageVector, val selectedIcon: ImageVector) {
+    HOME("home", R.string.tab_home, Icons.Outlined.Home, Icons.Filled.Home),
+    MAP("map", R.string.tab_map, Icons.Outlined.Map, Icons.Filled.Map),
+    PLANTS("list", R.string.tab_plants, Icons.Outlined.LocalFlorist, Icons.Filled.LocalFlorist),
+    WATER("irrigation", R.string.tab_water, Icons.Outlined.WaterDrop, Icons.Filled.WaterDrop),
+}
+
+/**
+ * The top-bar title: the garden on screen, and — when you belong to more than one — a one-tap
+ * switcher. Switching gardens used to be buried in Help → "Sync with other devices".
+ */
+@Composable
+fun GardenSwitcherTitle(onManageGardens: () -> Unit) {
+    val context = LocalContext.current
+    val gardens = remember(ActiveGardenState.activeGardenId) { knownGardensIncludingOwn(context) }
+    val activeId = effectiveGardenId(context)
+    val name = gardens.firstOrNull { it.gardenId == activeId }?.name ?: "My Garden"
+    if (gardens.size <= 1) {
+        Text(name, maxLines = 1)
+        return
+    }
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable(onClickLabel = stringResource(R.string.garden_switch)) { expanded = true }.padding(vertical = 8.dp)
+        ) {
+            Text(name, maxLines = 1)
+            Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            gardens.forEach { garden ->
+                DropdownMenuItem(
+                    text = { Text(garden.name) },
+                    leadingIcon = { if (garden.gardenId == activeId) Icon(Icons.Outlined.Check, contentDescription = stringResource(R.string.garden_current)) },
+                    onClick = {
+                        expanded = false
+                        val installId = getOrCreateInstallId(context)
+                        GardenMembershipStore.setActiveGardenId(context, if (garden.gardenId == installId) null else garden.gardenId)
+                    }
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.garden_manage)) },
+                leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                onClick = { expanded = false; onManageGardens() }
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,7 +172,9 @@ fun GardenMapperApp() {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val topLevelRoutes = listOf("dashboard", "map", "list", "irrigation", "audit", "help")
+    val topLevelRoutes = TopLevelTab.entries.map { it.route }
+    // Screens with their own header (back arrow + title) don't also get the app bar.
+    val showAppBar = currentRoute != null && !currentRoute.startsWith("settings") && !currentRoute.startsWith("faq") && currentRoute != "garden_check"
 
     LaunchedEffect(Unit) {
         // SageEnabledState/AdvancedModeState/HemisphereState are already synced synchronously in
@@ -219,10 +287,29 @@ fun GardenMapperApp() {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(title = { Text("Sage Garden") })
+            if (showAppBar) {
+                TopAppBar(
+                    title = { GardenSwitcherTitle(onManageGardens = { navController.navigate("settings/${SettingsPage.GARDEN.key}") }) },
+                    navigationIcon = {
+                        if (currentRoute !in topLevelRoutes) {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { navController.navigate("faq") }) {
+                            Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = stringResource(R.string.faq_title))
+                        }
+                        IconButton(onClick = { navController.navigate("settings") }) {
+                            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
+                        }
+                    }
+                )
+            }
         },
         floatingActionButton = {
-            if (FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT)) {
+            if (FeatureVisibility.shouldShow(context, Feature.SAGE_ASSISTANT) && currentRoute in topLevelRoutes) {
                 FloatingActionButton(
                     onClick = { showSageSheet = true },
                     modifier = Modifier
@@ -236,44 +323,27 @@ fun GardenMapperApp() {
                                 FeatureVisibility.setSageFabOffsetDp(context, sageFabOffsetY)
                             }
                         }
-                ) { Text("🌿") }
+                ) { Icon(Icons.Outlined.Eco, contentDescription = stringResource(R.string.sage_ask)) }
             }
         },
         bottomBar = {
             if (currentRoute in topLevelRoutes) {
                 NavigationBar {
-                    NavigationBarItem(
-                        selected = currentRoute == "dashboard",
-                        onClick = { navController.navigate("dashboard") { popUpTo("map") } },
-                        icon = { Text("📊") }, label = { AutoSizeText("Report") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "map",
-                        onClick = { navController.navigate("map") { popUpTo("map") { inclusive = true } } },
-                        icon = { Text("🗺️") }, label = { AutoSizeText("Map") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "list",
-                        onClick = { navController.navigate("list") { popUpTo("map") } },
-                        icon = { Text("📋") }, label = { AutoSizeText("List") }
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == "irrigation",
-                        onClick = { navController.navigate("irrigation") { popUpTo("map") } },
-                        icon = { Text("💧") }, label = { AutoSizeText("Water") }
-                    )
-                    if (FeatureVisibility.shouldShow(context, Feature.AUDIT_SCREEN)) {
+                    TopLevelTab.entries.forEach { tab ->
+                        val selected = currentRoute == tab.route
                         NavigationBarItem(
-                            selected = currentRoute == "audit",
-                            onClick = { navController.navigate("audit") { popUpTo("map") } },
-                            icon = { Text("🔍") }, label = { AutoSizeText("Audit") }
+                            selected = selected,
+                            onClick = {
+                                navController.navigate(tab.route) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
+                            label = { AutoSizeText(stringResource(tab.label)) }
                         )
                     }
-                    NavigationBarItem(
-                        selected = currentRoute == "help",
-                        onClick = { navController.navigate("help") { popUpTo("map") } },
-                        icon = { Text("❓") }, label = { AutoSizeText("Help") }
-                    )
                 }
             }
         }
@@ -283,7 +353,15 @@ fun GardenMapperApp() {
             startDestination = remember { getDefaultLandingTab(context) },
             modifier = Modifier.padding(padding)
         ) {
-            composable("dashboard") { DashboardScreen(viewModel = viewModel) }
+            composable("home") {
+                HomeScreen(
+                    viewModel = viewModel,
+                    onAddPlant = { navController.navigate("form_new") },
+                    onOpenPlant = { id -> navController.navigate("form_edit/$id") },
+                    onOpenZonePhotos = { zone -> navController.navigate("location_photos/${Uri.encode(zone)}") },
+                    onOpenSettings = { page -> navController.navigate("settings/${page.key}") }
+                )
+            }
             composable("map") {
                 MapTabScreen(
                     viewModel = viewModel,
@@ -292,7 +370,7 @@ fun GardenMapperApp() {
                     onAddPlantAtFraction = { x, y -> navController.navigate("form_new?mapX=$x&mapY=$y") },
                     startOnCustom = GardenSettings.active(context).usingCustomMap,
                     onOpenSunMap = { navController.navigate("sunmap") },
-                    onNavigateToHelp = { navController.navigate("help") }
+                    onNavigateToHelp = { navController.navigate("settings/${SettingsPage.GARDEN.key}") }
                 )
             }
             composable("list") {
@@ -303,7 +381,8 @@ fun GardenMapperApp() {
                     onChangeLocation = { id, useCustom ->
                         navController.navigate(if (useCustom) "place_custom/$id" else "place_real/$id")
                     },
-                    onOpenLocationPhotos = { location -> navController.navigate("location_photos/${Uri.encode(location)}") }
+                    onOpenLocationPhotos = { location -> navController.navigate("location_photos/${Uri.encode(location)}") },
+                    onOpenGardenCheck = { navController.navigate("garden_check") }
                 )
             }
             composable("irrigation") {
@@ -311,7 +390,9 @@ fun GardenMapperApp() {
                 val plants by viewModel.plants.collectAsState()
                 IrrigationScreen(wateringEvents = events, plants = plants, onPlantClick = { id -> navController.navigate("form_edit/$id") })
             }
-            composable("audit") { AuditScreen() }
+            composable("garden_check") {
+                GardenCheckScreen(onBack = { navController.popBackStack() }, onOpenPlant = { id -> navController.navigate("form_edit/$id") })
+            }
             composable(
                 "form_new?lat={lat}&lng={lng}&mapX={mapX}&mapY={mapY}",
                 arguments = listOf(
@@ -372,20 +453,36 @@ fun GardenMapperApp() {
                     startOnCustom = true
                 )
             }
-            composable("help") {
-                val pathViewModel: IrrigationPathViewModel = viewModel(
-                    factory = ViewModelProvider.AndroidViewModelFactory.getInstance(
-                        context.applicationContext as Application
+            composable("settings") {
+                Column {
+                    ScreenHeader(stringResource(R.string.settings_title), onBack = { navController.popBackStack() })
+                    SettingsHome(
+                        onOpenPage = { page -> navController.navigate("settings/${page.key}") },
+                        onOpenFaq = { navController.navigate("faq") }
                     )
-                )
-                HelpScreen(
-                    viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
-                    snackbarHostState = snackbarHostState, scope = scope,
-                    onOpenFaq = { navController.navigate("faq") }
-                )
+                }
             }
-            composable("faq") {
-                FaqScreen(onBack = { navController.popBackStack() })
+            composable("settings/{page}", arguments = listOf(navArgument("page") { type = NavType.StringType })) { backStackEntry ->
+                val page = SettingsPage.fromKey(backStackEntry.arguments?.getString("page")) ?: return@composable
+                Column {
+                    ScreenHeader(stringResource(page.title), onBack = { navController.popBackStack() })
+                    SettingsPageScreen(
+                        page = page,
+                        viewModel = viewModel, wateringViewModel = wateringViewModel, pathViewModel = pathViewModel,
+                        snackbarHostState = snackbarHostState, scope = scope
+                    )
+                }
+            }
+            composable(
+                "faq?entry={entry}",
+                arguments = listOf(navArgument("entry") { type = NavType.StringType; nullable = true; defaultValue = null })
+            ) { backStackEntry ->
+                val entry = backStackEntry.arguments?.getString("entry")?.let { name -> Faq.entries.firstOrNull { it.name == name } }
+                FaqScreen(
+                    initialEntry = entry,
+                    onBack = { navController.popBackStack() },
+                    onOpenSettings = { page -> navController.navigate("settings/${page.key}") }
+                )
             }
             composable("sunmap") {
                 SunMapScreen(onBack = { navController.popBackStack() })
@@ -421,8 +518,17 @@ fun GardenMapperApp() {
             onDismiss = { showSageSheet = false },
             onOpenHelp = {
                 showSageSheet = false
-                navController.navigate("help")
+                navController.navigate("settings/${SettingsPage.APP.key}")
             }
+        )
+    }
+
+    FaqSheetState.entry?.let { faq ->
+        FaqSheet(
+            faq = faq,
+            onDismiss = { FaqSheetState.entry = null },
+            onOpenAll = { FaqSheetState.entry = null; navController.navigate("faq?entry=${it.name}") },
+            onOpenSettings = { page -> FaqSheetState.entry = null; navController.navigate("settings/${page.key}") }
         )
     }
 

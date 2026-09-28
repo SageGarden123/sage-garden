@@ -68,12 +68,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
     // itself, unlike plants/care-log which any write-permission member may edit. A non-owner editor
     // seeing this as editable would have their change silently dropped on the next sync.
     val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
-    ExpandableSection(title = "Garden address", initiallyExpanded = initiallyExpanded) {
-        Text(
-            "Centres the Map tab on your garden and enables weather-aware watering reminders below.",
-            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(10.dp))
+    SettingsGroup(title = "Garden address", faq = Faq.SET_ADDRESS) {
         if (!canEdit) {
             Text("View-only — synced from the garden owner.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
@@ -214,7 +209,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
     // Owner-only — see GardenAddressSection's comment; the server only accepts a zones update from
     // the garden's owner (syncGarden.ts), so a non-owner editor must see this read-only too.
     val canEdit = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
-    ExpandableSection(title = "Garden zones") {
+    SettingsGroup(title = "Garden zones", faq = Faq.ZONES) {
         Text(
             "Manage the named areas of your garden (e.g. \"Front garden\", \"Back garden\") — these appear as a dropdown when adding or editing a plant, instead of typing the same names over and over.",
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -400,9 +395,6 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
             delay(15_000L)
         }
     }
-
-    Text("Choose which garden's plants and care history you're viewing and editing.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(10.dp))
 
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
@@ -877,10 +869,10 @@ fun GardenSharingControls(context: Context, scope: CoroutineScope, snackbarHostS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HelpScreen(
+fun SettingsPageScreen(
+    page: SettingsPage,
     viewModel: PlantViewModel, wateringViewModel: WateringZoneViewModel, pathViewModel: IrrigationPathViewModel,
     snackbarHostState: SnackbarHostState, scope: CoroutineScope,
-    onOpenFaq: () -> Unit
 ) {
     val context = LocalContext.current
     val plants by viewModel.plants.collectAsState()
@@ -1010,15 +1002,14 @@ fun HelpScreen(
     val helpScrollState = rememberScrollState()
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(helpScrollState).imePadding().padding(16.dp)) {
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { onOpenFaq() }) {
-            Row(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Frequently Asked Questions", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+
 
         // 1) App settings & notifications
-        ExpandableSection(title = "App settings & notifications", initiallyExpanded = true) {
+        if (page == SettingsPage.APPEARANCE) {
+            AppearanceSettings()
+        }
+        if (page == SettingsPage.APP) {
+
             var landingTab by remember { mutableStateOf(getDefaultLandingTab(context)) }
             DropdownField(
                 label = "Default tab on open",
@@ -1032,15 +1023,126 @@ fun HelpScreen(
             )
             Text("Takes effect next time you open the app.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
 
-            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
+            
+        }
+        if (page == SettingsPage.GARDEN) {
+        if (FeatureVisibility.shouldShow(context, Feature.GARDEN_SHARING)) {
+        SettingsGroup(title = "Gardens & sharing", faq = Faq.SHARE_GARDEN) {
+            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
 
+            GardenSharingControls(context, scope, snackbarHostState)
+
+            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
+
+            Text(
+                "Only relevant if you also use the desktop app — enter this device's Install ID there once to link them. Not needed for phone-to-phone garden sharing above.",
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            val syncInstallId = remember { getOrCreateInstallId(context) }
+            Text(
+                "Install ID: $syncInstallId (tap to copy)",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", syncInstallId))
+                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+
+            var showRecoverInstallId by remember { mutableStateOf(false) }
+            TextButton(onClick = { showRecoverInstallId = !showRecoverInstallId }) {
+                Text(if (showRecoverInstallId) "▾ Recover after reinstall" else "▸ Recover after reinstall", fontSize = 12.sp)
+            }
+            if (showRecoverInstallId) {
+                var recoverInstallIdText by remember { mutableStateOf("") }
+                Text(
+                    "Reinstalling always generates a brand-new Install ID, with no way to recover the old one automatically. If you restore an old backup after reinstalling, every plant stays tagged with the OLD Install ID and won't show up anywhere — not lost, just orphaned. Paste that old ID here (it's the \"gardenId\" field on any plant in the old backup's JSON, or whatever you copied from this same field before uninstalling) to fix it. Requires restarting the app afterwards.",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = recoverInstallIdText, onValueChange = { recoverInstallIdText = it },
+                    label = { Text("Old Install ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        setInstallId(context, recoverInstallIdText.trim())
+                        scope.launch { snackbarHostState.showSnackbar("Saved — close and reopen the app for this to take effect") }
+                    },
+                    enabled = recoverInstallIdText.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save and use this Install ID") }
+            }
+            Spacer(Modifier.height(10.dp))
+            var syncing by remember { mutableStateOf(false) }
+            var lastSyncedAt by remember { mutableStateOf(GardenSyncStore.getLastSyncedAt(context)) }
+            if (lastSyncedAt > 0) {
+                Text(
+                    "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+            Button(
+                onClick = {
+                    syncing = true
+                    scope.launch {
+                        when (val result = GardenSyncClient.sync(context, syncInstallId, effectiveGardenId(context))) {
+                            is GardenSyncResult.Success -> {
+                                lastSyncedAt = GardenSyncStore.getLastSyncedAt(context)
+                                val note = if (result.permission == "read") " (view-only)" else ""
+                                snackbarHostState.showSnackbar("Synced — ${result.plantCount} plant(s) up to date$note")
+                            }
+                            GardenSyncResult.NetworkError -> snackbarHostState.showSnackbar("Couldn't reach the sync server — check your connection.")
+                            GardenSyncResult.ServerError -> snackbarHostState.showSnackbar("Sync failed — try again shortly.")
+                            GardenSyncResult.NotAuthorized -> snackbarHostState.showSnackbar("This device no longer has access to that garden.")
+                        }
+                        syncing = false
+                    }
+                },
+                enabled = !syncing && canEditActiveGarden,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
+            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        }
+        }
+        if (page == SettingsPage.GARDEN) {
             GardenAddressSection(context, scope, snackbarHostState, initiallyExpanded = focusWeatherSection)
-
             GardenZonesSection(context, plants)
-
-            Spacer(Modifier.height(16.dp)); HorizontalDivider(); Spacer(Modifier.height(16.dp))
-
-            ExpandableSection(title = "Plant notifications") {
+            SettingsGroup(title = "Hemisphere", faq = Faq.SEASONAL) {
+            val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).latLng != null }
+            if (gardenHasAddress) {
+                val hemisphere = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).hemisphere }
+                Text(
+                    "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary
+                )
+                Text("Set a different garden address above to change this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            } else {
+                var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).hemisphere) }
+                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
+                        Button(
+                            onClick = { hemisphere = value; GardenSettings.active(context).hemisphereFallback = value },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (hemisphere == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (hemisphere == value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) { Text(label, fontSize = 12.sp) }
+                    }
+                }
+            }
+            }
+        }
+        if (page == SettingsPage.REMINDERS) {
+            SettingsGroup(title = "Reminders", faq = Faq.TURN_ON_REMINDERS) {
             Text("Get reminded when your plants require care.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
 
@@ -1213,42 +1315,8 @@ fun HelpScreen(
                 }
             }
             }
-
-            ExpandableSection(title = "Hemisphere") {
-            Text("Which months count as summer vs winter for each plant's seasonal watering frequency overrides (set on the Add/Edit plant screen).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(10.dp))
-            val gardenHasAddress = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).latLng != null }
-            if (gardenHasAddress) {
-                val hemisphere = remember(ActiveGardenState.activeGardenId) { GardenSettings.active(context).hemisphere }
-                Text(
-                    "Auto-detected: ${if (hemisphere == Hemisphere.NORTHERN) "Northern" else "Southern"} (based on your garden address)",
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary
-                )
-                Text("Set a different garden address above to change this.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-            } else {
-                var hemisphere by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).hemisphere) }
-                Text("No garden address set yet — pick manually for now, or set an address above to detect this automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(Hemisphere.SOUTHERN to "Southern (e.g. Australia)", Hemisphere.NORTHERN to "Northern").forEach { (value, label) ->
-                        Button(
-                            onClick = { hemisphere = value; GardenSettings.active(context).hemisphereFallback = value },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (hemisphere == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = if (hemisphere == value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier = Modifier.weight(1f)
-                        ) { Text(label, fontSize = 12.sp) }
-                    }
-                }
-            }
-            }
-
             if (FeatureVisibility.shouldShow(context, Feature.WEATHER_AWARE_REMINDERS)) {
-            ExpandableSection(title = "Weather-aware reminders") {
-            Text("When enabled, watering reminders will flag when significant rain is expected, so you know to consider skipping.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(10.dp))
-
+            SettingsGroup(title = "Weather & frost", faq = Faq.WEATHER) {
             var weatherSkipEnabled by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).weatherSkipEnabled) }
             var rainThreshold by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).rainProbabilityThreshold) }
             val hasGardenAddress = remember(ActiveGardenState.activeGardenId, GardenAddressState.latLng) { GardenSettings.active(context).latLng != null }
@@ -1307,12 +1375,11 @@ fun HelpScreen(
         // 2) Photos & cloud storage — device-wide Dropbox connection/storage mode, not tied to any
         // one garden, so hidden entirely for a non-owner viewing someone else's shared garden
         // (matches the Custom garden map / Irrigation gating below).
-        if (isGardenOwner) {
-        ExpandableSection(title = "Photos & cloud storage") {
+        if (page == SettingsPage.PHOTOS) {
+        run {
+        SettingsGroup(title = "Photo storage", faq = Faq.PHOTO_STORAGE) {
             Text("Photo storage", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text("Choose whether new photos are stored on this device, or automatically saved to your own cloud storage. See the FAQ above for the pros and cons of each.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = { photoMode = "local"; setPhotoStorageMode(context, "local") },
@@ -1436,11 +1503,13 @@ fun HelpScreen(
             ) { Text("Clear auto-linked photos (keep plants)") }
         }
         }
+        }
 
         // 3) Irrigation (Advanced mode + Pro only — hiding it never touches the saved Tuya or Rachio credentials/zones below).
         // Also device-wide/owner-only, same reasoning as Photos & cloud storage above.
+        if (page == SettingsPage.IRRIGATION) {
         if (isGardenOwner && FeatureVisibility.shouldShow(context, Feature.TUYA_INTEGRATION)) {
-        ExpandableSection(title = "Irrigation") {
+        SettingsGroup(title = "Irrigation controller", faq = Faq.IRRIGATION_SUPPORTED) {
             var irrigationSystem by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).irrigationSystem) }
             Text("Which irrigation system do you have?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
@@ -1469,11 +1538,6 @@ fun HelpScreen(
 
             Text("Tuya connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text(
-                "Connect your own Tuya Cloud project to sync smart-irrigation history. Stored only on this device — never shared with other users of this app, and not included in backups.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = tuyaClientId,
                 onValueChange = { tuyaClientId = it },
@@ -1575,11 +1639,6 @@ fun HelpScreen(
 
             Text("Rachio connection", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
-            Text(
-                "Connect your Rachio account with the API key from the Rachio app (Profile → API key) to sync smart-irrigation history. Stored only on this device — never shared with other users of this app, and not included in backups.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = rachioApiToken,
                 onValueChange = { rachioApiToken = it },
@@ -1768,9 +1827,11 @@ fun HelpScreen(
 
         }
         }
+        }
 
         // 3a) Sage assistant on/off
-        ExpandableSection(title = "Sage assistant") {
+        if (page == SettingsPage.APP) {
+        SettingsGroup(title = "Sage assistant", faq = Faq.SAGE_WHAT) {
             var sageChatEnabled by remember { mutableStateOf(FeatureVisibility.isSageChatEnabled(context)) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("Sage assistant", fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -1797,21 +1858,13 @@ fun HelpScreen(
                 Text("Reset button position", fontSize = 12.sp)
             }
         }
+        }
 
         // 3b) Basic / Advanced mode
-        ExpandableSection(title = "Basic / Advanced mode") {
+        if (page == SettingsPage.APP) {
+        SettingsGroup(title = "Basic or Advanced", faq = Faq.BASIC_ADVANCED) {
             var advancedMode by remember { mutableStateOf(FeatureVisibility.isAdvancedModeEnabled(context)) }
 
-            Text(
-                "Basic mode keeps things simple: your plant list, watering schedule and reminders, photo log, plant care widget, and Dropbox backup. Advanced mode adds everything else — weather-aware reminders, irrigation, the sun map, the audit, cost & water usage tracking, watering history, growth photo timelines, the custom garden map, progress photos, soil pH, seasonal watering, fertilising/pruning/feeding, Sage's care-frequency suggestions, plant history, coordinates, place-on-map buttons, extra photos, and multi-device/garden sharing.",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Sage isn't affected by this toggle — it's available in both modes (its own on/off switch is above).",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text(if (advancedMode) "Advanced mode" else "Basic mode", fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Switch(
@@ -1858,14 +1911,13 @@ fun HelpScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (redeemingPromo) "Redeeming…" else "Redeem promo code") }
         }
+        }
 
         // 4) Custom garden map
         val canManageActiveGardenMap = remember(ActiveGardenState.activeGardenId) { isOwnerOfActiveGarden(context) }
+        if (page == SettingsPage.GARDEN) {
         if (canManageActiveGardenMap && FeatureVisibility.shouldShow(context, Feature.CUSTOM_MAP)) {
-        ExpandableSection(title = "Custom garden map") {
-            Text("Upload a hand-drawn or custom image of your garden instead of using the real-world map.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(10.dp))
-
+        SettingsGroup(title = "Your own garden map", faq = Faq.REAL_VS_CUSTOM) {
             var customMapUri by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).customMapUri) }
             var useCustomMap by remember(ActiveGardenState.activeGardenId) { mutableStateOf(GardenSettings.active(context).usingCustomMap) }
             val mapImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1907,11 +1959,13 @@ fun HelpScreen(
             }
         }
         }
+        }
 
         // 5) Data — export/import/backup/reset all mutate or dump the whole garden's data; a
         // view-only member shouldn't see any of it, not just have individual buttons disabled.
+        if (page == SettingsPage.DATA) {
         if (canEditActiveGarden) {
-        ExpandableSection(title = "Data") {
+        SettingsGroup(title = "Backup & restore", faq = Faq.BACKUP_OPTIONS) {
             Text("Export to spreadsheet", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Text("Downloads all your plant data (excluding photos) as a CSV file.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2428,96 +2482,12 @@ fun HelpScreen(
             if (!isGardenOwner) { Spacer(Modifier.height(6.dp)); Text("Only this garden's owner can reset it.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         }
-
-        if (FeatureVisibility.shouldShow(context, Feature.GARDEN_SHARING)) {
-        ExpandableSection(title = "Sync with other devices") {
-            Text(
-                "Keep this garden's plants and care history in sync between this phone, another phone sharing this garden, and the desktop app. Enter this device's Install ID (below) into the desktop app once to link them, then use \"Sync plants & care history\" on either device whenever you want to pull in the other's changes. (This is separate from the Irrigation section's \"Sync watering history\" button, which only pulls Tuya/Rachio watering events.)",
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
-
-            GardenSharingControls(context, scope, snackbarHostState)
-
-            Spacer(Modifier.height(14.dp)); HorizontalDivider(); Spacer(Modifier.height(14.dp))
-
-            Text(
-                "Only relevant if you also use the desktop app — enter this device's Install ID there once to link them. Not needed for phone-to-phone garden sharing above.",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(6.dp))
-            val syncInstallId = remember { getOrCreateInstallId(context) }
-            Text(
-                "Install ID: $syncInstallId (tap to copy)",
-                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clickable {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Install ID", syncInstallId))
-                    scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
-                }
-            )
-            Spacer(Modifier.height(10.dp))
-
-            var showRecoverInstallId by remember { mutableStateOf(false) }
-            TextButton(onClick = { showRecoverInstallId = !showRecoverInstallId }) {
-                Text(if (showRecoverInstallId) "▾ Recover after reinstall" else "▸ Recover after reinstall", fontSize = 12.sp)
-            }
-            if (showRecoverInstallId) {
-                var recoverInstallIdText by remember { mutableStateOf("") }
-                Text(
-                    "Reinstalling always generates a brand-new Install ID, with no way to recover the old one automatically. If you restore an old backup after reinstalling, every plant stays tagged with the OLD Install ID and won't show up anywhere — not lost, just orphaned. Paste that old ID here (it's the \"gardenId\" field on any plant in the old backup's JSON, or whatever you copied from this same field before uninstalling) to fix it. Requires restarting the app afterwards.",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = recoverInstallIdText, onValueChange = { recoverInstallIdText = it },
-                    label = { Text("Old Install ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        setInstallId(context, recoverInstallIdText.trim())
-                        scope.launch { snackbarHostState.showSnackbar("Saved — close and reopen the app for this to take effect") }
-                    },
-                    enabled = recoverInstallIdText.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Save and use this Install ID") }
-            }
-            Spacer(Modifier.height(10.dp))
-            var syncing by remember { mutableStateOf(false) }
-            var lastSyncedAt by remember { mutableStateOf(GardenSyncStore.getLastSyncedAt(context)) }
-            if (lastSyncedAt > 0) {
-                Text(
-                    "Last synced: ${SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()).format(Date(lastSyncedAt))}",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            Button(
-                onClick = {
-                    syncing = true
-                    scope.launch {
-                        when (val result = GardenSyncClient.sync(context, syncInstallId, effectiveGardenId(context))) {
-                            is GardenSyncResult.Success -> {
-                                lastSyncedAt = GardenSyncStore.getLastSyncedAt(context)
-                                val note = if (result.permission == "read") " (view-only)" else ""
-                                snackbarHostState.showSnackbar("Synced — ${result.plantCount} plant(s) up to date$note")
-                            }
-                            GardenSyncResult.NetworkError -> snackbarHostState.showSnackbar("Couldn't reach the sync server — check your connection.")
-                            GardenSyncResult.ServerError -> snackbarHostState.showSnackbar("Sync failed — try again shortly.")
-                            GardenSyncResult.NotAuthorized -> snackbarHostState.showSnackbar("This device no longer has access to that garden.")
-                        }
-                        syncing = false
-                    }
-                },
-                enabled = !syncing && canEditActiveGarden,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (syncing) "Syncing…" else "Sync plants & care history") }
-            if (!canEditActiveGarden) { Spacer(Modifier.height(6.dp)); Text("You have view-only access to this garden — it stays up to date automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
         }
 
-        ExpandableSection(title = "Support Sage Garden") {
+
+
+        if (page == SettingsPage.ABOUT) {
+        SettingsGroup(title = "Support Sage Garden") {
             Text(
                 "Sage Garden is free, with no ads. If it's useful to you, a small tip helps cover running costs (Sage AI, hosting).",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2535,8 +2505,10 @@ fun HelpScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("☕ Buy me a coffee") }
         }
+        }
 
-        ExpandableSection(title = "Contact & feedback") {
+        if (page == SettingsPage.ABOUT) {
+        SettingsGroup(title = "Contact & feedback") {
             Text(
                 "Found a bug, or have an idea for the app? We'd love to hear from you at gardenwizardry685@gmail.com.",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2567,6 +2539,7 @@ fun HelpScreen(
                     scope.launch { snackbarHostState.showSnackbar("Install ID copied") }
                 }
             )
+        }
         }
 
         Spacer(Modifier.height(20.dp))

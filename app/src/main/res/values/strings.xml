@@ -2,4 +2,114 @@
     <string name="app_name">Sage Garden</string>
     <string name="watering_widget_name">Plants requiring care</string>
     <string name="watering_widget_description">Shows plants due or soon due for watering, pruning, fertilising and/or feeding — pick which in the widget\'s settings. Tap a plant to update its care details.</string>
+
+    <!-- Common actions -->
+    <string name="action_back">Back</string>
+    <string name="action_done">Done</string>
+    <string name="action_expand">Show answer</string>
+    <string name="action_collapse">Hide answer</string>
+    <string name="action_customise">Customise</string>
+    <string name="action_filter">Filter</string>
+    <string name="action_filter_count">Filter (%1$d)</string>
+    <string name="action_add_photo">Add photo</string>
+
+    <!-- Navigation -->
+    <string name="tab_home">Home</string>
+    <string name="tab_map">Map</string>
+    <string name="tab_plants">Plants</string>
+    <string name="tab_water">Water</string>
+    <string name="sage_ask">Ask Sage</string>
+    <string name="garden_switch">Switch garden</string>
+    <string name="garden_current">Current garden</string>
+    <string name="garden_manage">Manage gardens</string>
+
+    <!-- Home -->
+    <string name="home_today">Today</string>
+    <string name="home_all_caught_up">All caught up</string>
+    <plurals name="home_next_watering">
+        <item quantity="one">Next up: water %1$s tomorrow.</item>
+        <item quantity="other">Next up: water %1$s in %2$d days.</item>
+    </plurals>
+    <plurals name="home_other_garden_due">
+        <item quantity="one">%1$s: %2$d plant to water</item>
+        <item quantity="other">%1$s: %2$d plants to water</item>
+    </plurals>
+    <string name="home_no_zone">No zone</string>
+    <string name="home_other_care">Other care</string>
+    <string name="home_water_all">Done all</string>
+    <string name="home_progress_photos">Progress photos due</string>
+    <string name="home_overview">Garden overview</string>
+    <string name="home_overview_count_all">%1$d plants</string>
+    <string name="home_overview_count_filtered">%1$d of %2$d plants shown (%3$s%%)</string>
+    <string name="home_welcome_title">Welcome to your garden</string>
+    <string name="home_welcome_body">Add a plant to get started. You\'ll see what needs watering or tending here each day.</string>
+    <string name="home_add_first_plant">Add a plant</string>
+    <string name="home_set_address">Set your garden\'s address</string>
+    <string name="care_water">Water</string>
+    <string name="care_fertilise">Fertilise</string>
+    <string name="care_prune">Prune</string>
+    <string name="care_feed">Feed</string>
+    <string name="status_overdue">Overdue</string>
+    <string name="status_due_soon">Due soon</string>
+    <string name="status_on_track">On track</string>
+
+    <!-- Plants -->
+    <string name="plants_search_hint">Search plants</string>
+    <string name="plants_customise_fields">Fields shown</string>
+    <string name="plants_progress_photos">Progress photos</string>
+    <string name="plants_empty">No plants in this garden yet.</string>
+    <string name="plants_no_match">No plants match your search.</string>
+    <string name="garden_check_title">Garden check</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_garden">For %1$s</string>
+    <string name="settings_section_app">For the app on this phone</string>
+    <string name="settings_garden">This garden</string>
+    <string name="settings_garden_summary">Sharing, address, zones, map</string>
+    <string name="settings_reminders">Reminders</string>
+    <string name="settings_reminders_summary">Watering and care reminders, weather and frost</string>
+    <string name="settings_irrigation">Irrigation</string>
+    <string name="settings_irrigation_summary">Tuya or Rachio controller and watering history</string>
+    <string name="settings_appearance">Appearance &amp; accessibility</string>
+    <string name="settings_appearance_summary">Light or dark, colours, text size, contrast</string>
+    <string name="settings_photos">Photos &amp; storage</string>
+    <string name="settings_photos_summary">Where photos are saved, Dropbox</string>
+    <string name="settings_data">Backup &amp; data</string>
+    <string name="settings_data_summary">Backup, restore, import and export</string>
+    <string name="settings_app">App preferences</string>
+    <string name="settings_app_summary">Basic or Advanced mode, start screen, Sage</string>
+    <string name="settings_about">Help &amp; about</string>
+    <string name="settings_about_summary">Contact us, support the app, privacy</string>
+
+    <!-- Appearance -->
+    <string name="appearance_theme">Theme</string>
+    <string name="theme_system">Match my phone</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="appearance_colours">Colours</string>
+    <string name="palette_sage">Sage</string>
+    <string name="palette_terracotta">Terracotta</string>
+    <string name="palette_ocean">Ocean</string>
+    <string name="palette_lavender">Lavender</string>
+    <string name="palette_dynamic">Match my wallpaper</string>
+    <string name="appearance_accessibility">Accessibility</string>
+    <string name="appearance_text_size">Text size</string>
+    <string name="text_size_default">Default</string>
+    <string name="text_size_large">Large</string>
+    <string name="text_size_largest">Largest</string>
+    <string name="appearance_high_contrast">High contrast</string>
+    <string name="appearance_high_contrast_desc">Stronger text and outlines.</string>
+    <string name="appearance_colour_blind">Colour-blind-friendly status colours</string>
+    <string name="appearance_colour_blind_desc">Uses blue and orange instead of green and red for on-track and overdue.</string>
+    <string name="appearance_system_filters">Colour correction, colour inversion, greyscale and bold text are in Android\'s own accessibility settings, and apply to every app.</string>
+    <string name="appearance_open_android_accessibility">Open Android accessibility settings</string>
+
+    <!-- FAQ -->
+    <string name="faq_title">Help &amp; FAQ</string>
+    <string name="faq_search_hint">Search help</string>
+    <string name="faq_no_results">No answers match. Try a different word, or contact us from Settings → Help &amp; about.</string>
+    <string name="faq_open_setting">Open this setting</string>
+    <string name="faq_see_all">See all help</string>
+    <string name="faq_help_about">Help: %1$s</string>
 </resources>

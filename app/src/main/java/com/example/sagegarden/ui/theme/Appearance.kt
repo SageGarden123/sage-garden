@@ -1,20 +1,22 @@
 package com.example.sagegarden.ui.theme
 
 import android.content.Context
+import androidx.annotation.StringRes
+import com.example.sagegarden.R
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-enum class ThemeMode(val label: String) { SYSTEM("Match device"), LIGHT("Light"), DARK("Dark") }
+enum class ThemeMode(@StringRes val labelRes: Int) { SYSTEM(R.string.theme_system), LIGHT(R.string.theme_light), DARK(R.string.theme_dark) }
 
-enum class AppPalette(val label: String) {
-    SAGE("Sage"), TERRACOTTA("Terracotta"), OCEAN("Ocean"), LAVENDER("Lavender"),
+enum class AppPalette(@StringRes val labelRes: Int) {
+    SAGE(R.string.palette_sage), TERRACOTTA(R.string.palette_terracotta), OCEAN(R.string.palette_ocean), LAVENDER(R.string.palette_lavender),
     /** Android 12+ wallpaper-based colours; falls back to Sage on older devices. */
-    DYNAMIC("Match wallpaper"),
+    DYNAMIC(R.string.palette_dynamic),
 }
 
-enum class TextSize(val label: String, val scale: Float) {
-    DEFAULT("Default", 1.0f), LARGE("Large", 1.15f), LARGEST("Largest", 1.3f)
+enum class TextSize(@StringRes val labelRes: Int, val scale: Float) {
+    DEFAULT(R.string.text_size_default, 1.0f), LARGE(R.string.text_size_large, 1.15f), LARGEST(R.string.text_size_largest, 1.3f)
 }
 
 /**

@@ -2,6 +2,10 @@
 
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+
 import androidx.compose.material3.MaterialTheme
 
 import android.content.Context
@@ -241,16 +245,20 @@ fun listFieldValue(key: String, plant: PlantEntity): String? = when (key) {
 // ============================================================================
 
 val landingTabOptions = listOf(
-    DashboardStatOption("dashboard", "Report"),
+    DashboardStatOption("home", "Home"),
     DashboardStatOption("map", "Map"),
-    DashboardStatOption("list", "List"),
-    DashboardStatOption("irrigation", "Water"),
-    DashboardStatOption("audit", "Audit")
+    DashboardStatOption("list", "Plants"),
+    DashboardStatOption("irrigation", "Water")
 )
 
+/** Older versions stored tabs that no longer exist (Report → Home, Audit → Plants, Help → Home). */
 fun getDefaultLandingTab(context: Context): String {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    return prefs.getString("default_landing_tab", "map") ?: "map"
+    return when (val stored = prefs.getString("default_landing_tab", "home") ?: "home") {
+        "dashboard", "help" -> "home"
+        "audit" -> "list"
+        else -> stored
+    }
 }
 fun setDefaultLandingTab(context: Context, tab: String) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
@@ -259,7 +267,7 @@ fun setDefaultLandingTab(context: Context, tab: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(viewModel: PlantViewModel) {
+fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = {}) {
     val allPlants by viewModel.plants.collectAsState()
     val filters by viewModel.filters.collectAsState()
     val context = LocalContext.current
@@ -285,30 +293,32 @@ fun DashboardScreen(viewModel: PlantViewModel) {
         filters.location, filters.source, filters.plant, filters.sun, filters.soil, filters.soilPh, filters.category, filters.water, filters.frost
     ).count { it != "All" }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        header()
+        Text(
+            stringResource(R.string.home_overview), style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 8.dp).semantics { heading() }
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp, 16.dp, 16.dp, 0.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val df = DecimalFormat("0.##")
             Text(
-                "${filteredPlants.size}/${allPlants.size} unique plants shown (${df.format(percentage)}%)",
-                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
+                if (filteredPlants.size == allPlants.size) stringResource(R.string.home_overview_count_all, allPlants.size)
+                else stringResource(R.string.home_overview_count_filtered, filteredPlants.size, allPlants.size, df.format(percentage)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
             )
-                    OutlinedButton(onClick = { showCustomiseDialog = true }, modifier = Modifier.padding(end = 8.dp)) {
-            Text("Customise")
-        }
-            OutlinedButton(onClick = { showFilterDialog = true }) {
-                Text(if (activeFilterCount > 0) "Filter ($activeFilterCount)" else "Filter")
+            TextButton(onClick = { showCustomiseDialog = true }) { Text(stringResource(R.string.action_customise)) }
+            TextButton(onClick = { showFilterDialog = true }) {
+                Text(if (activeFilterCount > 0) stringResource(R.string.action_filter_count, activeFilterCount) else stringResource(R.string.action_filter))
             }
         }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
             if (filteredPlants.isEmpty()) {
                 Text("No plants match these filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 return@Column
@@ -395,7 +405,6 @@ fun DashboardScreen(viewModel: PlantViewModel) {
                 }
             }
             Spacer(Modifier.height(30.dp))
-        }
     }
 
     if (showFilterDialog) {

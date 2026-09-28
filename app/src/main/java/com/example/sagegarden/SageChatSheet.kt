@@ -86,9 +86,9 @@ fun SageChatSheet(onDismiss: () -> Unit, onOpenHelp: () -> Unit) {
                     Column(Modifier.padding(12.dp)) {
                         Text("You've used all your free Sage questions.", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
-                        Text("Enter a promo code in Help → Basic/Advanced mode for unlimited access.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Enter a promo code in Settings → App preferences for unlimited access.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Open Help") }
+                        Button(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("Open settings") }
                     }
                 }
             } else {

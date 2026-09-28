@@ -263,10 +263,10 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
             var waterRate by remember { mutableStateOf(getWaterRatePerKiloliter(context)) }
             var waterRateText by remember { mutableStateOf(if (waterRate > 0) waterRate.toString() else "") }
 
-            Text(
-                "Estimated from your logged watering durations and a flow rate you calibrate per zone/outlet — not a metered reading.",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("An estimate, not a meter reading.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                FaqInfoButton(Faq.WATER_COST)
+            }
             Spacer(Modifier.height(10.dp))
 
             OutlinedTextField(
@@ -409,10 +409,10 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
 
         if (TuyaZoneMappingState.mappings.isNotEmpty()) {
         ExpandableSection(title = "My watering schedule (manual reference)", initiallyExpanded = false) {
-            Text(
-                "Your own record of what days/times each zone runs — entered by hand, purely for your reference. Doesn't read from or write to Tuya.",
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Your own reference — it doesn't control anything.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                FaqInfoButton(Faq.MANUAL_SCHEDULE)
+            }
             Spacer(Modifier.height(10.dp))
             val scheduleGardenId = remember { effectiveGardenId(context) }
             val scheduleViewModel: ManualZoneScheduleViewModel = viewModel(
@@ -541,7 +541,7 @@ fun IrrigationScreen(wateringEvents: List<WateringEvent>, plants: List<PlantEnti
                     IrrigationSystem.RACHIO -> "Rachio"
                     else -> "Tuya"
                 }
-                Text("No irrigation data yet — connect $irrigationSystemName zones and sync in Help.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No irrigation data yet — connect $irrigationSystemName zones in Settings → Irrigation.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 filtered.forEach { e ->
                     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {

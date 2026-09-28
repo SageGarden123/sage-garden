@@ -176,7 +176,7 @@ fun MapScreen(
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = { PendingHelpFocusState.focusWeatherSection = true; onNavigateToHelp() }) {
-                    Text("Set garden address in Help")
+                    Text("Set garden address")
                 }
             }
         }
@@ -567,7 +567,7 @@ fun CustomMapScreen(
 
     if (mapUri == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No custom map uploaded yet — add one in Help.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("No garden map uploaded yet — add one in Settings → This garden.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }

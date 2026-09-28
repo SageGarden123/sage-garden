@@ -2,6 +2,10 @@
 
 package com.example.sagegarden
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -42,7 +46,8 @@ object ListScreenState {
 @Composable
 fun ListScreen(
     viewModel: PlantViewModel, onPlantClick: (String) -> Unit, onAddPlant: () -> Unit,
-    onChangeLocation: (String, Boolean) -> Unit, onOpenLocationPhotos: (String) -> Unit
+    onChangeLocation: (String, Boolean) -> Unit, onOpenLocationPhotos: (String) -> Unit,
+    onOpenGardenCheck: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val canEdit = remember(ActiveGardenState.activeGardenId) { hasWriteAccessToActiveGarden(context) }
@@ -116,7 +121,10 @@ fun ListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             OutlinedTextField(
                 value = search, onValueChange = { search = it },
-                label = { Text("Search plant data") }, modifier = Modifier.fillMaxWidth()
+                placeholder = { Text(stringResource(R.string.plants_search_hint)) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = { FaqInfoButton(Faq.FIND_PLANT) },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -143,17 +151,38 @@ fun ListScreen(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            FlowRow {
-                TextButton(onClick = { showListFieldsDialog = true }) { Text("Customise fields shown", fontSize = 12.sp) }
-                if (FeatureVisibility.shouldShow(context, Feature.PROGRESS_PHOTOS)) {
-                    TextButton(onClick = { showProgressPhotosPicker = true }) { Text("📷 Progress photos", fontSize = 12.sp) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (FeatureVisibility.shouldShow(context, Feature.AUDIT_SCREEN)) {
+                    AssistChip(
+                        onClick = onOpenGardenCheck, label = { Text(stringResource(R.string.garden_check_title)) },
+                        leadingIcon = { Icon(Icons.Outlined.FactCheck, contentDescription = null) }
+                    )
                 }
+                if (FeatureVisibility.shouldShow(context, Feature.PROGRESS_PHOTOS)) {
+                    AssistChip(
+                        onClick = { showProgressPhotosPicker = true }, label = { Text(stringResource(R.string.plants_progress_photos)) },
+                        leadingIcon = { Icon(Icons.Outlined.PhotoCamera, contentDescription = null) }
+                    )
+                }
+                AssistChip(
+                    onClick = { showListFieldsDialog = true }, label = { Text(stringResource(R.string.plants_customise_fields)) },
+                    leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) }
+                )
             }
             Spacer(modifier = Modifier.height(4.dp))
 
             if (filtered.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No plants match — tap + to add one.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(if (search.isBlank()) Icons.Outlined.Yard else Icons.Outlined.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(if (search.isBlank()) R.string.plants_empty else R.string.plants_no_match),
+                        style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (search.isBlank() && canEdit) {
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = onAddPlant) { Text(stringResource(R.string.home_add_first_plant)) }
+                    }
                 }
             } else {
                 val listState = rememberLazyListState(

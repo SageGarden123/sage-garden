@@ -1,5 +1,7 @@
 package com.example.sagegarden
 
+import androidx.compose.ui.res.stringResource
+
 import androidx.compose.material3.MaterialTheme
 
 import android.app.Application
@@ -89,7 +91,7 @@ private fun findExposureConflicts(plants: List<PlantEntity>): List<Pair<PlantEnt
 }
 
 @Composable
-fun AuditScreen() {
+fun GardenCheckScreen(onBack: () -> Unit, onOpenPlant: (String) -> Unit) {
     val context = LocalContext.current
     val viewModel: PlantViewModel = viewModel(
         factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
@@ -165,9 +167,9 @@ fun AuditScreen() {
         }.sortedBy { it.title }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-        Text("Garden audit", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        Spacer(Modifier.height(4.dp))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        ScreenHeader(stringResource(R.string.garden_check_title), onBack, actions = { FaqInfoButton(Faq.GARDEN_CHECK) })
+        Column(Modifier.padding(horizontal = 16.dp)) {
         Text("${issues.sumOf { it.count }} item(s) across ${issues.size} check(s)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
 
@@ -197,7 +199,10 @@ fun AuditScreen() {
                             }
                         } else {
                             issue.plants.forEach { p ->
-                                Text("• ${p.name}${if (p.location.isNotBlank()) " (${p.location})" else ""}", fontSize = 12.sp, modifier = Modifier.padding(vertical = 2.dp))
+                                Text(
+                                    "• ${p.name}${if (p.location.isNotBlank()) " (${p.location})" else ""}", fontSize = 12.sp,
+                                    modifier = Modifier.fillMaxWidth().clickable { onOpenPlant(p.id) }.padding(vertical = 6.dp)
+                                )
                             }
                         }
                     }
@@ -205,5 +210,6 @@ fun AuditScreen() {
             }
         }
         Spacer(Modifier.height(20.dp))
+        }
     }
 }

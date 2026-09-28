@@ -122,7 +122,7 @@ object TuyaClient {
         val clientId = GardenSettings.of(context, gardenId).tuyaClientId
         val clientSecret = GardenSettings.of(context, gardenId).tuyaClientSecret
         if (clientId.isBlank() || clientSecret.isBlank()) {
-            throw RuntimeException("Tuya isn't connected — add your Client ID and Secret in Help first")
+            throw RuntimeException("Tuya isn't connected — add your Client ID and Secret in Settings → Irrigation first")
         }
         return clientId to clientSecret
     }
