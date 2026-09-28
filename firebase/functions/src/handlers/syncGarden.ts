@@ -69,6 +69,7 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
   }
   const gardenId = typeof req.body?.gardenId === "string" && req.body.gardenId.trim() ? req.body.gardenId.trim() : deviceId;
   const memberToken = typeof req.body?.memberToken === "string" ? req.body.memberToken.trim() : "";
+  const deviceName = typeof req.body?.deviceName === "string" ? req.body.deviceName.trim().slice(0, 60) : "";
 
   const rawPlants = Array.isArray(req.body?.plants) ? req.body.plants : [];
   const rawPlantTombstones = Array.isArray(req.body?.plantTombstones) ? req.body.plantTombstones : [];
@@ -169,7 +170,11 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
         permission = "write";
         responseToken = generateMemberToken();
         needsMetaStamp = !existingMeta?.ownerDeviceId;
-        tx.set(memberRef, { status: "approved", role, permission, memberToken: responseToken, joinedAt: Date.now() });
+        tx.set(memberRef, {
+          status: "approved", role, permission, memberToken: responseToken, joinedAt: Date.now(),
+          // Lets the owner's "Manage access" list show "Desktop app" / "Car display" instead of an unnamed device.
+          ...(deviceName ? { displayName: deviceName } : {}),
+        });
 
         // Mirrors this auto-provisioned membership into the caller's deviceGardens index too, so
         // listMyGardens finds it independent of the calling device's own local cache (e.g. after a

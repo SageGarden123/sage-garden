@@ -61,5 +61,17 @@ async function sync(body) {
   assert.equal(migrated.plants.P0001.photoThumbnail, undefined, "inline thumbnail moved out");
   assert.equal(Object.fromEntries(legacy.plants.map((p) => [p.id, p])).P0002.photoThumbnail, "OLD2", "still returned to clients");
 
+  // 5. A desktop/car app joins the phone's garden as ITSELF and must not disturb the phone's token.
+  const phoneTokenBefore = (await db.collection("gardens").doc(deviceId).collection("members").doc(deviceId).get()).data().memberToken;
+  const desktopId = "desktop-" + Date.now();
+  const joined = await sync({ deviceId: desktopId, gardenId: deviceId, deviceName: "Desktop app", plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] });
+  assert.ok(joined.memberToken && joined.memberToken !== phoneTokenBefore, "desktop gets its own token");
+  const desktopMember = (await db.collection("gardens").doc(deviceId).collection("members").doc(desktopId).get()).data();
+  assert.equal(desktopMember.displayName, "Desktop app");
+  assert.equal(desktopMember.role, "member");
+  await sync({ deviceId: desktopId, gardenId: deviceId, memberToken: joined.memberToken, plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] });
+  const phoneTokenAfter = (await db.collection("gardens").doc(deviceId).collection("members").doc(deviceId).get()).data().memberToken;
+  assert.equal(phoneTokenAfter, phoneTokenBefore, "phone's token untouched by desktop syncs");
+
   console.log("syncGarden emulator integration: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });
