@@ -23,15 +23,17 @@ object TuyaClient {
     private const val OFF_MATCH_WINDOW_MS = 5_000L
 
     private val httpClient = OkHttpClient()
-    private var cachedToken: String? = null
-    private var tokenExpiresAt: Long = 0L
+    // Keyed by clientId: each garden can connect its own Tuya Cloud project, and a background sync
+    // (IrrigationHistorySyncWorker) walks every garden in turn — a single shared cached token would
+    // hand garden B a token issued for garden A's project for up to two hours.
+    private data class CachedToken(val token: String, val expiresAt: Long)
+    private val cachedTokens = java.util.concurrent.ConcurrentHashMap<String, CachedToken>()
 
     data class DpLogEntry(val code: String, val value: Any?, val eventTimeMs: Long)
 
     /** Call after the user changes their stored Tuya credentials so a token signed with the old secret isn't reused. */
     fun invalidateToken() {
-        cachedToken = null
-        tokenExpiresAt = 0L
+        cachedTokens.clear()
     }
 
     private fun sha256Hex(input: String): String {
@@ -49,7 +51,7 @@ object TuyaClient {
 
     private suspend fun getToken(context: Context, clientId: String, clientSecret: String): String = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        cachedToken?.let { if (now < tokenExpiresAt) return@withContext it }
+        cachedTokens[clientId]?.let { if (now < it.expiresAt) return@withContext it.token }
 
         val t = now.toString()
         val method = "GET"
@@ -76,8 +78,7 @@ object TuyaClient {
             val result = json.getJSONObject("result")
             val token = result.getString("access_token")
             val expiresInSec = result.optLong("expire_time", 7200L)
-            cachedToken = token
-            tokenExpiresAt = now + (expiresInSec * 1000) - 30_000
+            cachedTokens[clientId] = CachedToken(token, now + (expiresInSec * 1000) - 30_000)
             token
         }
     }
@@ -116,9 +117,10 @@ object TuyaClient {
             }
         }
 
-    private fun requireCredentials(context: Context): Pair<String, String> {
-        val clientId = getTuyaClientId(context)
-        val clientSecret = getTuyaClientSecret(context)
+    /** [gardenId] defaults to the active garden; background callers pass the garden they're syncing explicitly. */
+    private fun requireCredentials(context: Context, gardenId: String = effectiveGardenId(context)): Pair<String, String> {
+        val clientId = getTuyaClientIdFor(context, gardenId)
+        val clientSecret = getTuyaClientSecretFor(context, gardenId)
         if (clientId.isBlank() || clientSecret.isBlank()) {
             throw RuntimeException("Tuya isn't connected — add your Client ID and Secret in Help first")
         }
@@ -136,8 +138,8 @@ object TuyaClient {
         return (0 until result.length()).map { result.getJSONObject(it).getString("code") }
     }
 
-    suspend fun getDpLogs(context: Context, deviceId: String, codes: List<String>, startMs: Long, endMs: Long): List<DpLogEntry> {
-        val (clientId, clientSecret) = requireCredentials(context)
+    suspend fun getDpLogs(context: Context, deviceId: String, codes: List<String>, startMs: Long, endMs: Long, gardenId: String = effectiveGardenId(context)): List<DpLogEntry> {
+        val (clientId, clientSecret) = requireCredentials(context, gardenId)
         val token = getToken(context, clientId, clientSecret)
         val allLogs = mutableListOf<DpLogEntry>()
         var rowKey = ""
@@ -192,9 +194,10 @@ object TuyaClient {
      * better signal available, and showing a plausibly-noisy event beats showing nothing.
      */
     suspend fun fetchWateringEvents(
-        context: Context, deviceId: String, zone: String, outlet: String, startMs: Long, endMs: Long
+        context: Context, deviceId: String, zone: String, outlet: String, startMs: Long, endMs: Long,
+        gardenId: String = effectiveGardenId(context)
     ): List<WateringEvent> {
-        val logs = getDpLogs(context, deviceId, ALL_CODES, startMs, endMs).sortedBy { it.eventTimeMs }
+        val logs = getDpLogs(context, deviceId, ALL_CODES, startMs, endMs, gardenId).sortedBy { it.eventTimeMs }
 
         val ons = mutableListOf<OnOff>()
         val offs = mutableListOf<OnOff>()

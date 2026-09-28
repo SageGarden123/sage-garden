@@ -385,10 +385,12 @@ enum class IrrigationSystem { NONE, TUYA, RACHIO }
  * Defaults to TUYA when the device already has non-blank Tuya credentials saved for this garden
  * (pre-existing testers see zero change), else NONE.
  */
-fun getIrrigationSystem(context: Context): IrrigationSystem {
-    val stored = gardenScopedString(context, "irrigation_system", "")
+fun getIrrigationSystem(context: Context): IrrigationSystem = getIrrigationSystemFor(context, effectiveGardenId(context))
+/** The *For variants below read a SPECIFIC garden's irrigation setup regardless of which garden is active — used by IrrigationHistorySyncWorker, which syncs every garden with irrigation configured. */
+fun getIrrigationSystemFor(context: Context, gardenId: String): IrrigationSystem {
+    val stored = gardenScopedString(context, "irrigation_system", "", gardenIdOverride = gardenId)
     if (stored.isNotBlank()) return IrrigationSystem.entries.firstOrNull { it.name == stored } ?: IrrigationSystem.NONE
-    return if (getTuyaClientId(context).isNotBlank() && getTuyaClientSecret(context).isNotBlank()) IrrigationSystem.TUYA else IrrigationSystem.NONE
+    return if (getTuyaClientIdFor(context, gardenId).isNotBlank() && getTuyaClientSecretFor(context, gardenId).isNotBlank()) IrrigationSystem.TUYA else IrrigationSystem.NONE
 }
 fun setIrrigationSystem(context: Context, value: IrrigationSystem) {
     setGardenScopedString(context, "irrigation_system", value.name)
@@ -437,8 +439,9 @@ object TuyaZoneMappingState {
     var mappings by mutableStateOf<List<TuyaZoneMapping>>(emptyList())
 }
 
-fun getTuyaZoneMappings(context: Context): List<TuyaZoneMapping> {
-    val raw = gardenScopedString(context, "tuya_device_mapping", "")
+fun getTuyaZoneMappings(context: Context): List<TuyaZoneMapping> = getTuyaZoneMappingsFor(context, effectiveGardenId(context))
+fun getTuyaZoneMappingsFor(context: Context, gardenId: String): List<TuyaZoneMapping> {
+    val raw = gardenScopedString(context, "tuya_device_mapping", "", gardenIdOverride = gardenId)
     return raw.split("|").filter { it.contains("=") }.mapNotNull { entry ->
         val parts = entry.split("=", limit = 2)
         if (parts.size != 2) return@mapNotNull null
@@ -462,16 +465,18 @@ fun setTuyaZoneMappings(context: Context, mappings: List<TuyaZoneMapping>) {
 }
 
 /** Each user connects their own Tuya Cloud project — nothing is shared between installs. migrateCredential is a one-time, garden-independent hop from the old general prefs file into credentialPrefs; gardenScopedString's own legacy-key fallback then takes it from there per garden. */
-fun getTuyaClientId(context: Context): String {
+fun getTuyaClientId(context: Context): String = getTuyaClientIdFor(context, effectiveGardenId(context))
+fun getTuyaClientIdFor(context: Context, gardenId: String): String {
     migrateCredential(context, "tuya_client_id")
-    return gardenScopedString(context, "tuya_client_id", "", credentialPrefs(context))
+    return gardenScopedString(context, "tuya_client_id", "", credentialPrefs(context), gardenIdOverride = gardenId)
 }
 fun setTuyaClientId(context: Context, value: String) {
     setGardenScopedString(context, "tuya_client_id", value, credentialPrefs(context))
 }
-fun getTuyaClientSecret(context: Context): String {
+fun getTuyaClientSecret(context: Context): String = getTuyaClientSecretFor(context, effectiveGardenId(context))
+fun getTuyaClientSecretFor(context: Context, gardenId: String): String {
     migrateCredential(context, "tuya_client_secret")
-    return gardenScopedString(context, "tuya_client_secret", "", credentialPrefs(context))
+    return gardenScopedString(context, "tuya_client_secret", "", credentialPrefs(context), gardenIdOverride = gardenId)
 }
 fun setTuyaClientSecret(context: Context, value: String) {
     setGardenScopedString(context, "tuya_client_secret", value, credentialPrefs(context))
@@ -486,8 +491,9 @@ fun setTuyaClientSecret(context: Context, value: String) {
 
 data class RachioZoneMapping(val zone: String, val deviceId: String, val zoneId: String)
 
-fun getRachioZoneMappings(context: Context): List<RachioZoneMapping> {
-    val raw = gardenScopedString(context, "rachio_device_mapping", "")
+fun getRachioZoneMappings(context: Context): List<RachioZoneMapping> = getRachioZoneMappingsFor(context, effectiveGardenId(context))
+fun getRachioZoneMappingsFor(context: Context, gardenId: String): List<RachioZoneMapping> {
+    val raw = gardenScopedString(context, "rachio_device_mapping", "", gardenIdOverride = gardenId)
     return raw.split("|").filter { it.contains("=") }.mapNotNull { entry ->
         val parts = entry.split("=", limit = 2)
         if (parts.size != 2) return@mapNotNull null
@@ -505,7 +511,14 @@ fun setRachioZoneMappings(context: Context, mappings: List<RachioZoneMapping>) {
 }
 
 /** Each user connects their own Rachio account via a personal API token — nothing is shared between installs. */
-fun getRachioApiToken(context: Context): String = gardenScopedString(context, "rachio_api_token", "", credentialPrefs(context))
+fun getRachioApiToken(context: Context): String = getRachioApiTokenFor(context, effectiveGardenId(context))
+fun getRachioApiTokenFor(context: Context, gardenId: String): String = gardenScopedString(context, "rachio_api_token", "", credentialPrefs(context), gardenIdOverride = gardenId)
+
+/** When [gardenId]'s watering history was last pulled from Tuya/Rachio without any zone failing (manual button or IrrigationHistorySyncWorker) — 0 if never. */
+fun getLastIrrigationSyncAt(context: Context, gardenId: String): Long =
+    gardenScopedString(context, "irrigation_last_sync_at", "", gardenIdOverride = gardenId).toLongOrNull() ?: 0L
+fun setLastIrrigationSyncAt(context: Context, gardenId: String, millis: Long) =
+    setGardenScopedString(context, "irrigation_last_sync_at", millis.toString(), gardenIdOverride = gardenId)
 fun setRachioApiToken(context: Context, value: String) {
     setGardenScopedString(context, "rachio_api_token", value, credentialPrefs(context))
 }
@@ -1875,9 +1888,11 @@ class MainActivity : ComponentActivity() {
         GardenMembershipStore.setActiveGardenId(applicationContext, null)
         EntitlementLiveState.value = EntitlementManager.getCached(applicationContext)
         NotificationHelper.createChannels(applicationContext)
-        if (getNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
+        if (anyGardenNotificationsEnabled(applicationContext)) scheduleWateringReminders(applicationContext)
+        scheduleIrrigationHistorySync(applicationContext)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
         PendingPlantEditState.plantId = intent.getStringExtra("widget_plant_id")
+        PendingPlantEditState.gardenId = intent.getStringExtra("widget_garden_id")
         setContent {
             MaterialTheme {
                 var showSplash by remember { mutableStateOf(true) }
@@ -8135,6 +8150,14 @@ fun HelpScreen(
             val syncResult by wateringViewModel.lastSyncResult.collectAsState()
             Button(onClick = { wateringViewModel.sync(context) }, modifier = Modifier.fillMaxWidth(), enabled = !syncing) { Text(if (syncing) "Syncing…" else "Sync watering history") }
             syncResult?.let { Spacer(Modifier.height(6.dp)); Text(it, fontSize = 12.sp, color = Color.Gray) }
+            // Re-read whenever a manual sync finishes (syncing flips back to false) or the garden changes.
+            val lastIrrigationSyncAt = remember(ActiveGardenState.activeGardenId, syncing) { getLastIrrigationSyncAt(context, effectiveGardenId(context)) }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Also syncs automatically every $IRRIGATION_AUTO_SYNC_DAYS days in the background." +
+                    if (lastIrrigationSyncAt > 0L) " Last synced ${java.text.SimpleDateFormat("d MMM yyyy, h:mm a", Locale.getDefault()).format(java.util.Date(lastIrrigationSyncAt))}." else "",
+                fontSize = 11.sp, color = Color.Gray
+            )
             Spacer(Modifier.height(12.dp))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

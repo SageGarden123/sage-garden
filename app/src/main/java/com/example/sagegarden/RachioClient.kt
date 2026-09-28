@@ -29,8 +29,9 @@ object RachioClient {
     data class RachioZoneInfo(val id: String, val name: String, val zoneNumber: Int, val enabled: Boolean)
     data class RachioDeviceInfo(val id: String, val name: String, val zones: List<RachioZoneInfo>)
 
-    private fun requireToken(context: Context): String {
-        val token = getRachioApiToken(context)
+    /** [gardenId] defaults to the active garden; background callers pass the garden they're syncing explicitly. */
+    private fun requireToken(context: Context, gardenId: String = effectiveGardenId(context)): String {
+        val token = getRachioApiTokenFor(context, gardenId)
         if (token.isBlank()) throw RuntimeException("Rachio isn't connected — add your API token in Help first")
         return token
     }
@@ -76,9 +77,10 @@ object RachioClient {
      * Tuya's dp-logs can.
      */
     suspend fun fetchWateringEvents(
-        context: Context, deviceId: String, zoneId: String, zoneName: String, startMs: Long, endMs: Long
+        context: Context, deviceId: String, zoneId: String, zoneName: String, startMs: Long, endMs: Long,
+        gardenId: String = effectiveGardenId(context)
     ): List<WateringEvent> {
-        val token = requireToken(context)
+        val token = requireToken(context, gardenId)
         val body = get("/public/device/$deviceId/event?startTime=$startMs&endTime=$endMs", token)
         val arr = JSONArray(body)
 
