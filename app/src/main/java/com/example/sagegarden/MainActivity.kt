@@ -216,10 +216,14 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         syncIfNotActiveGarden(getApplication(), stamped.gardenId)
     }
     fun save(plant: PlantEntity) = viewModelScope.launch { saveSync(plant) }
-    fun delete(id: String) = viewModelScope.launch {
-        val gardenId = dao.getById(id)?.gardenId ?: effectiveGardenId(getApplication())
+    /** [gardenId] must be the plant's own real garden — the caller (FormScreen) already resolved this
+     * via resolvePlantById when it loaded the plant, so re-deriving it here via another bare-id lookup
+     * would just reopen the same cross-garden ambiguity (see resolvePlantById's doc comment) for a
+     * DELETE specifically — the one operation where getting the wrong garden's same-id plant would be
+     * genuinely destructive, not just a wrong-screen display. */
+    fun delete(gardenId: String, id: String) = viewModelScope.launch {
         GardenSyncStore.recordPlantDeleted(getApplication(), gardenId, id)
-        dao.deleteById(id)
+        dao.deleteById(gardenId, id)
         syncIfNotActiveGarden(getApplication(), gardenId)
     }
     fun resetAll() = viewModelScope.launch {
@@ -247,7 +251,26 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    suspend fun getById(id: String): PlantEntity? = dao.getById(id)
+    suspend fun getById(id: String): PlantEntity? = resolvePlantById(getApplication(), id)
+}
+
+/**
+ * Resolves a plant by its bare id — every route/deep-link that opens a plant (`form_edit/{id}`,
+ * `growth/{id}`, `care/{id}`, a widget row tap, a notification tap) only ever carries the plant's
+ * bare id, never its gardenId. That was harmless while `id` alone was the table's primary key, but
+ * now that (gardenId, id) is (see PlantEntity's doc comment / feedback_plant_id_cross_garden_collision),
+ * two different gardens synced onto the same device can legitimately share an id — a bare
+ * `PlantDao.getById(id)` is then ambiguous and, confirmed in practice 2026-09-08, resolved to the
+ * WRONG garden's plant (viewing a shared garden's plant showed the device's own same-numbered plant
+ * instead). Fixed by preferring the CURRENTLY ACTIVE garden's own copy first — correct for ordinary
+ * in-app navigation, since Map/List/Irrigation/Dashboard only ever show the active garden's own
+ * plants, so a tapped id always means THAT garden's copy — falling back to the ambiguous cross-garden
+ * lookup only when the active garden has no matching plant at all, which is the one legitimate case
+ * for that: a widget/notification deep link opening a plant in a garden that isn't currently active.
+ */
+suspend fun resolvePlantById(context: Context, id: String): PlantEntity? {
+    val dao = AppDatabase.getInstance(context).plantDao()
+    return dao.getByIdForGarden(effectiveGardenId(context), id) ?: dao.getById(id)
 }
 
 // ============================================================================
@@ -1027,6 +1050,12 @@ object PendingNotificationState {
 
 object PendingPlantEditState {
     var plantId by mutableStateOf<String?>(null)
+    // Which garden the tapped plant actually belongs to — set alongside plantId whenever the source
+    // (currently only the widget) knows it. Without this, opening a shared garden's plant via a deep
+    // link while a DIFFERENT (possibly colliding-id) garden is active could resolve the wrong plant —
+    // see resolvePlantById's doc comment. Null for older/other entry points that don't supply it yet;
+    // the consuming LaunchedEffect falls back to the pre-existing bare-id-only behavior in that case.
+    var gardenId by mutableStateOf<String?>(null)
 }
 
 /** Set before navigating to Help from the Map tab's "no garden address set" guidance, so the Weather-aware reminders section (where the address field lives) opens already expanded. Reset once HelpScreen consumes it. */
@@ -1846,6 +1875,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         PendingNotificationState.type = intent.getStringExtra("notification_type")
         PendingPlantEditState.plantId = intent.getStringExtra("widget_plant_id")
+        PendingPlantEditState.gardenId = intent.getStringExtra("widget_garden_id")
     }
 }
 
@@ -2060,8 +2090,19 @@ fun GardenMapperApp() {
     LaunchedEffect(PendingPlantEditState.plantId) {
         val id = PendingPlantEditState.plantId
         if (id != null) {
+            // Switch into the plant's own garden first, when known — otherwise resolvePlantById's
+            // "prefer the active garden" lookup (see its doc comment) could resolve to a DIFFERENT
+            // garden's same-id plant if one happens to be active/colliding, exactly the bug this was
+            // added to close. Also just correct UX: tapping a shared garden's plant from the widget
+            // should land you in that garden, not leave you on your own while viewing someone else's.
+            val targetGardenId = PendingPlantEditState.gardenId
+            if (!targetGardenId.isNullOrBlank() && targetGardenId != effectiveGardenId(context)) {
+                val installId = getOrCreateInstallId(context)
+                GardenMembershipStore.setActiveGardenId(context, if (targetGardenId == installId) null else targetGardenId)
+            }
             navController.navigate("form_edit/$id")
             PendingPlantEditState.plantId = null
+            PendingPlantEditState.gardenId = null
         }
     }
 
@@ -5123,17 +5164,21 @@ fun FormScreen(
     suspend fun saveThenNavigateToPlacement(route: String) {
         val plant = buildPlant()
         viewModel.saveSync(plant)
+        // Not plant.gardenId directly — a brand-new plant's still carries the blank it was built
+        // with (PlantViewModel.saveSync stamps the real one internally but doesn't hand it back);
+        // this mirrors that exact stamping so logCareSync gets the garden the row actually landed in.
+        val savedGardenId = plant.gardenId.ifBlank { effectiveGardenId(context) }
         if (lastWateredDate != originalLastWateredDate) {
-            plant.lastWateredDate?.let { careLogViewModel.logCareSync(plant.id, "watering", it) }
+            plant.lastWateredDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "watering", it) }
         }
         if (lastFertilisedDate != originalLastFertilisedDate) {
-            plant.lastFertilisedDate?.let { careLogViewModel.logCareSync(plant.id, "fertilise", it) }
+            plant.lastFertilisedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "fertilise", it) }
         }
         if (lastPrunedDate != originalLastPrunedDate) {
-            plant.lastPrunedDate?.let { careLogViewModel.logCareSync(plant.id, "prune", it) }
+            plant.lastPrunedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "prune", it) }
         }
         if (lastFedDate != originalLastFedDate) {
-            plant.lastFedDate?.let { careLogViewModel.logCareSync(plant.id, "feed", it) }
+            plant.lastFedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "feed", it) }
         }
         onNavigateToPlacement(route)
     }
@@ -5769,17 +5814,19 @@ fun FormScreen(
                     // Sequenced (not fired in parallel): each log call re-reads the plant to apply its one field,
                     // so overlapping writes here would race and could silently drop an earlier change.
                     viewModel.saveSync(plant)
+                    // Not plant.gardenId directly — see saveThenNavigateToPlacement's identical comment.
+                    val savedGardenId = plant.gardenId.ifBlank { effectiveGardenId(context) }
                     if (lastWateredDate != originalLastWateredDate) {
-                        plant.lastWateredDate?.let { careLogViewModel.logCareSync(plant.id, "watering", it) }
+                        plant.lastWateredDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "watering", it) }
                     }
                     if (lastFertilisedDate != originalLastFertilisedDate) {
-                        plant.lastFertilisedDate?.let { careLogViewModel.logCareSync(plant.id, "fertilise", it) }
+                        plant.lastFertilisedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "fertilise", it) }
                     }
                     if (lastPrunedDate != originalLastPrunedDate) {
-                        plant.lastPrunedDate?.let { careLogViewModel.logCareSync(plant.id, "prune", it) }
+                        plant.lastPrunedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "prune", it) }
                     }
                     if (lastFedDate != originalLastFedDate) {
-                        plant.lastFedDate?.let { careLogViewModel.logCareSync(plant.id, "feed", it) }
+                        plant.lastFedDate?.let { careLogViewModel.logCareSync(plant.id, savedGardenId, "feed", it) }
                     }
 
                     if (plant.lastWateredDate != null && location.isNotBlank() && lastWateredDate != originalLastWateredDate) {
@@ -5833,7 +5880,7 @@ fun FormScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
-                    plantId?.let { viewModel.delete(it) }
+                    plantId?.let { viewModel.delete(gardenId, it) }
                     scope.launch { snackbarHostState.showSnackbar("Plant deleted") }
                     onDone()
                 }) { Text("Delete") }
@@ -5995,7 +6042,7 @@ fun FormScreen(
                                         (bulkApplyToSystem && systemName != null && p.wateringSystem == systemName))
                             }.forEach { p ->
                                 viewModel.saveSync(p.copy(lastWateredDate = dateMillis))
-                                careLogViewModel.logCareSync(p.id, "watering", dateMillis)
+                                careLogViewModel.logCareSync(p.id, p.gardenId, "watering", dateMillis)
                             }
                             checkPlacementPrompts(plant)
                         }

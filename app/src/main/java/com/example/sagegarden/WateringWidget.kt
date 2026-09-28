@@ -178,8 +178,18 @@ fun cancelWidgetRefresh(context: Context, appWidgetId: Int) {
 // update() and hope. Bumping this timestamp is that "something changed" signal.
 private val refreshTriggerKey = longPreferencesKey("refresh_trigger")
 
+// Strictly greater than whatever's already stored, not just "now" — syncAllKnownGardens can fire
+// several of these back-to-back (once per garden it syncs, via GardenSyncClient.sync's own internal
+// refreshWateringWidgets call, then the caller's own final bump right after), and two calls landing
+// in the same millisecond would otherwise write the IDENTICAL value. LaunchedEffect(refreshTrigger)
+// only restarts when the key actually CHANGES, so an unchanged repeat is silently ignored — the
+// widget would keep showing whatever the earlier (possibly incomplete/mid-sync) load produced,
+// intermittently missing the final, fully-synced refresh.
 private suspend fun bumpRefreshTrigger(context: Context, glanceId: GlanceId) {
-    updateAppWidgetState(context, glanceId) { prefs -> prefs[refreshTriggerKey] = System.currentTimeMillis() }
+    updateAppWidgetState(context, glanceId) { prefs ->
+        val current = prefs[refreshTriggerKey] ?: 0L
+        prefs[refreshTriggerKey] = maxOf(current + 1, System.currentTimeMillis())
+    }
 }
 
 /** Refreshes every placed instance immediately — called after anything that could change what's "due" (saving a plant, logging care, restoring a backup). */
@@ -209,11 +219,10 @@ class WateringWidgetRefreshWorker(context: Context, params: WorkerParameters) : 
         try {
             // Same reasoning as WateringReminderWorker: pull fresh data for every known garden
             // before recomputing what's due, since the foreground auto-sync loop only keeps
-            // whichever garden is currently active in the UI up to date.
+            // whichever garden is currently active in the UI up to date. syncAllKnownGardens already
+            // refreshes every placed widget instance (including this one) exactly once, after every
+            // garden has finished — no separate bump/update needed here.
             GardenSyncClient.syncAllKnownGardens(applicationContext)
-            val glanceId = GlanceAppWidgetManager(applicationContext).getGlanceIdBy(appWidgetId)
-            bumpRefreshTrigger(applicationContext, glanceId)
-            WateringWidget().update(applicationContext, glanceId)
         } catch (_: Exception) {
             // widget was removed since the alarm was scheduled — nothing to refresh
         }
@@ -225,8 +234,10 @@ class WateringWidgetRefreshWorker(context: Context, params: WorkerParameters) : 
 // WIDGET
 // ============================================================================
 
-/** One row's worth of due-care info — the widget can mix care types together in one list. */
-private data class WidgetDueItem(val plant: PlantEntity, val status: WateringStatus, val careIcon: String, val careLabel: String)
+/** One row's worth of due-care info — the widget can mix care types together in one list.
+ * [gardenName] is null whenever only one garden is in scope, so a single-garden widget (or one
+ * explicitly narrowed to one garden in its settings) renders exactly as it always did. */
+private data class WidgetDueItem(val plant: PlantEntity, val status: WateringStatus, val careIcon: String, val careLabel: String, val gardenName: String?)
 
 private data class WidgetLoadResult(
     val noPlantsAtAll: Boolean,
@@ -238,7 +249,10 @@ private data class WidgetLoadResult(
 private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLoadResult {
     val config = getWidgetConfig(context, appWidgetId)
     val now = System.currentTimeMillis()
-    val cutoff = now + config.lookaheadDays * 86_400_000L
+    // +1 day then -1ms: matches the truncated-days math computeWateringStatus's label uses ("Due in
+    // 2 day(s)" covers anything from 48h up to just under 72h away), so a plant the app itself labels
+    // "due in {lookaheadDays} days" doesn't get excluded by an exact-hours cutoff a few hours short of it.
+    val cutoff = now + (config.lookaheadDays + 1) * 86_400_000L - 1
 
     // Empty selection means "every garden" (see WidgetConfig.selectedGardenIds) — this is also what
     // makes a widget placed before multi-garden sharing existed keep showing everything unchanged.
@@ -249,6 +263,9 @@ private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLo
     val plantDao = AppDatabase.getInstance(context).plantDao()
     val allPlants = gardenIds.flatMap { plantDao.getAllOnceForGarden(it) }
     val hemisphereByGarden = gardenIds.associateWith { getHemisphereFor(context, it) }
+    // Only worth labelling rows by garden when more than one is actually in scope — a single-garden
+    // widget (or one explicitly narrowed to one garden) renders exactly as it always did.
+    val gardenNameById = if (gardenIds.size > 1) knownGardensIncludingOwn(context).associate { it.gardenId to it.name } else emptyMap()
 
     val careTypes = buildList {
         if (config.includeWatering) add(Triple("💧", "Water", { p: PlantEntity, t: Long -> computeWateringStatus(p, t, hemisphereByGarden[p.gardenId] ?: Hemisphere.SOUTHERN) }))
@@ -260,7 +277,7 @@ private suspend fun loadWidgetData(context: Context, appWidgetId: Int): WidgetLo
     val dueSoon = allPlants
         .flatMap { p ->
             careTypes.mapNotNull { (icon, label, compute) ->
-                compute(p, now)?.let { status -> WidgetDueItem(p, status, icon, label) }
+                compute(p, now)?.let { status -> WidgetDueItem(p, status, icon, label, gardenNameById[p.gardenId]) }
             }
         }
         .filter { it.status.nextDueMillis == null || it.status.nextDueMillis <= cutoff }
@@ -311,12 +328,12 @@ class WateringWidget : GlanceAppWidget() {
     }
 }
 
-/** Wired to the widget's own refresh button — recomputes [WateringWidget]'s content for just this instance immediately, rather than waiting for the next scheduled alarm. */
+/** Wired to the widget's own refresh button — recomputes [WateringWidget]'s content for every placed
+ * instance immediately, rather than waiting for the next scheduled alarm. syncAllKnownGardens already
+ * refreshes every instance exactly once, after every garden has finished syncing — see its own doc. */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         GardenSyncClient.syncAllKnownGardens(context)
-        bumpRefreshTrigger(context, glanceId)
-        WateringWidget().update(context, glanceId)
     }
 }
 
@@ -385,11 +402,12 @@ private fun WateringWidgetContent(
 @Composable
 private fun WateringWidgetRow(item: WidgetDueItem) {
     val context = LocalContext.current
-    val (plant, status, careIcon, careLabel) = item
+    val (plant, status, careIcon, careLabel, gardenName) = item
     val overdue = status.label.startsWith("Overdue") || status.label.startsWith("Never")
     val intent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         putExtra("widget_plant_id", plant.id)
+        putExtra("widget_garden_id", plant.gardenId)
     }
 
     Row(
@@ -403,7 +421,7 @@ private fun WateringWidgetRow(item: WidgetDueItem) {
         Spacer(GlanceModifier.width(8.dp))
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
-                plant.name, maxLines = 1,
+                if (gardenName != null) "${plant.name} · $gardenName" else plant.name, maxLines = 1,
                 style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ColorProvider(Color(0xFF233821)))
             )
             Text(

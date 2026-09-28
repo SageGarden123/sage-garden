@@ -1,11 +1,20 @@
 package com.example.sagegarden
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "plants")
+// Composite primary key (gardenId, id) — not `id` alone. A plant id like "P0001" is assigned by
+// plantIdPrefixForGarden, whose letter-prefix scheme is per-DEVICE local state: it stops one
+// device's OWN gardens from colliding with each other, but two DIFFERENT devices each starting
+// their own "original default" garden at "P" independently produces identical raw ids for
+// completely unrelated plants. Once both gardens are known to (and synced onto) the same device —
+// e.g. your own garden plus a shared garden you were invited to — the old id-alone primary key let
+// Room's REPLACE-based upsert (PlantDao.upsert) silently reparent one garden's row onto another's
+// same-id row, corrupting the local cache (see feedback_plant_id_cross_garden_collision — this is
+// the same bug class recurring via a cross-device vector instead of the originally-fixed
+// cross-garden-on-one-device vector). See migration29To30 for the table-recreation migration.
+@Entity(tableName = "plants", primaryKeys = ["gardenId", "id"])
 data class PlantEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val name: String,
     val sci: String,
     val location: String,

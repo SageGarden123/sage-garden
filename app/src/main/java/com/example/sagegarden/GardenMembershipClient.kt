@@ -70,8 +70,14 @@ object GardenMembershipStore {
         }
     }
     fun setKnownGardens(context: Context, gardens: List<KnownGarden>) {
+        // Sorted here (owned first, then alphabetically by name, gardenId as a tie-breaker) rather
+        // than trusting whatever order the server returned — listMyGardens reads gardens out of a
+        // Firestore map field, and Firestore doesn't guarantee map-field key ordering is stable
+        // across reads. Every reader of getKnownGardens sees the same stable order this way, instead
+        // of each screen needing to remember to sort it themselves.
+        val sorted = gardens.sortedWith(compareByDescending<KnownGarden> { it.role == "owner" }.thenBy { it.name }.thenBy { it.gardenId })
         val arr = JSONArray()
-        gardens.forEach { g ->
+        sorted.forEach { g ->
             arr.put(JSONObject().apply {
                 put("gardenId", g.gardenId); put("name", g.name); put("role", g.role)
                 put("permission", g.permission); put("memberToken", g.memberToken)
@@ -206,6 +212,25 @@ fun allKnownGardenIds(context: Context): List<String> {
     val ownId = getOrCreateInstallId(context)
     val known = GardenMembershipStore.getKnownGardens(context).map { it.gardenId }
     return (listOf(ownId) + known).distinct()
+}
+
+/** Same as [allKnownGardenIds] but keeping each garden's name/role/permission — the device's own
+ * default garden is synthesized as "My Garden" if it isn't already in the known-gardens cache (e.g.
+ * a device that's never gone through create/join, which never populates that cache for its own
+ * garden). Used wherever a UI needs to show every garden by NAME, not just filter/query by id.
+ *
+ * Sorted deterministically (owned gardens first, then alphabetically by name, gardenId as a final
+ * tie-breaker) rather than trusting whatever order the server happens to return — listMyGardens
+ * reads gardens out of a Firestore map field (deviceGardens/{deviceId}.gardens), and Firestore
+ * doesn't guarantee map-field key ordering is stable across reads, which was surfacing as the
+ * garden checklist (widget settings, "Sync with other devices") visibly reordering itself between
+ * refreshes for no apparent reason. */
+fun knownGardensIncludingOwn(context: Context): List<KnownGarden> {
+    val installId = getOrCreateInstallId(context)
+    val known = GardenMembershipStore.getKnownGardens(context)
+    val all = if (known.any { it.gardenId == installId }) known
+    else listOf(KnownGarden(installId, "My Garden", "owner", "write", "")) + known
+    return all.sortedWith(compareByDescending<KnownGarden> { it.role == "owner" }.thenBy { it.name }.thenBy { it.gardenId })
 }
 
 sealed class GardenMembershipResult<out T> {

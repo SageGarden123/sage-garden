@@ -20,18 +20,52 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (String) -> Unit = {}) {
     val context = LocalContext.current
-    val viewModel: PlantViewModel = viewModel(
-        factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
-    )
-    val plants by viewModel.plants.collectAsState()
     val now = remember { System.currentTimeMillis() }
 
+    // Every known garden, not just the active one — WateringReminderWorker (which built the
+    // notification this screen is reached from) already checks every garden this device has
+    // access to, so a "plant X needs watering" tap can be about a plant in ANY of them. Reading
+    // only PlantViewModel.plants (active-garden-scoped) meant this screen could show "nothing due"
+    // for the exact plant the notification was just about, whenever a different garden happened to
+    // be active at the time — confirmed in practice 2026-09-15. Each garden's plants are checked
+    // against that garden's own hemisphere for watering status, same reasoning as the widget/worker.
+    var gardenPlants by remember { mutableStateOf<List<Pair<String, List<PlantEntity>>>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        // refreshKnownGardens FIRST — allKnownGardenIds reads GardenMembershipStore's local cache,
+        // which is only otherwise kept fresh by the foreground app's own 60s loop. A cold-started
+        // MainActivity (the common way this screen is actually reached — tapping a notification)
+        // hasn't necessarily had that loop tick yet, so the cache can still be missing a garden the
+        // tapped notification is genuinely about — confirmed in practice 2026-09-16: same symptom
+        // ("nothing due" here despite the widget/app agreeing something was) survived the first fix
+        // above because THIS gap, not the active-garden one, was still live. Same lesson as Round 5's
+        // widget-config-screen fix for the identical stale-known-gardens-cache bug class.
+        GardenMembershipClient.refreshKnownGardens(context)
+        val dao = AppDatabase.getInstance(context).plantDao()
+        gardenPlants = allKnownGardenIds(context).map { gardenId -> gardenId to dao.getAllOnceForGarden(gardenId) }
+    }
+    val plants = remember(gardenPlants) { gardenPlants.flatMap { it.second } }
+    val hemisphereByGarden = remember(gardenPlants) {
+        gardenPlants.associate { (gardenId, _) -> gardenId to getHemisphereFor(context, gardenId) }
+    }
+    // Only worth labelling rows by garden when more than one is actually in scope — a single-garden
+    // device renders exactly as it always did.
+    val gardenNameById = remember(gardenPlants) {
+        if (gardenPlants.size > 1) knownGardensIncludingOwn(context).associate { it.gardenId to it.name } else emptyMap()
+    }
+    fun wateringStatusFor(p: PlantEntity) = computeWateringStatus(p, now, hemisphereByGarden[p.gardenId] ?: HemisphereState.value)
+
     if (type == "progress_photo") {
+        val viewModel: PlantViewModel = viewModel(
+            factory = ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as Application)
+        )
         var photos by remember { mutableStateOf<List<LocationPhotoEntity>>(emptyList()) }
         LaunchedEffect(Unit) {
             photos = AppDatabase.getInstance(context).locationPhotoDao().getAllOnceForGarden(effectiveGardenId(context))
         }
-        val dueZones = remember(plants, photos, now) { dueProgressPhotoZones(plants, photos, now) }
+        // Progress-photo zones are still active-garden-only for now (matches the existing "add a
+        // photo" flow, which only ever writes to the active garden) — not part of this fix.
+        val activePlants by viewModel.plants.collectAsState()
+        val dueZones = remember(activePlants, photos, now) { dueProgressPhotoZones(activePlants, photos, now) }
 
         Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
             TextButton(onClick = onBack) { Text("‹ Back") }
@@ -80,8 +114,8 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
             )
             else -> Triple(
                 "Plants needing water",
-                plants.filter { computeWateringStatus(it, now)?.nextDueMillis?.let { d -> d <= now } == true },
-                { p: PlantEntity -> computeWateringStatus(p, now)?.label ?: "" }
+                plants.filter { wateringStatusFor(it)?.nextDueMillis?.let { d -> d <= now } == true },
+                { p: PlantEntity -> wateringStatusFor(p)?.label ?: "" }
             )
         }
     }
@@ -99,7 +133,8 @@ fun NotificationDetailsScreen(type: String, onBack: () -> Unit, onOpenZone: (Str
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(plant.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            val gardenSuffix = gardenNameById[plant.gardenId]?.let { " · $it" } ?: ""
+                            Text(plant.name + gardenSuffix, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text(plant.location.ifBlank { "No location" }, fontSize = 11.sp, color = Color.Gray)
                         }
                         Text(subtitleFor(plant), fontSize = 12.sp, color = Color(0xFFB23B3B), fontWeight = FontWeight.SemiBold)

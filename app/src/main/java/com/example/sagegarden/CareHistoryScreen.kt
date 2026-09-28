@@ -31,7 +31,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
     // history") for a plant belonging to a garden other than whichever one is active in the UI.
     var gardenId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(plantId) {
-        gardenId = AppDatabase.getInstance(context).plantDao().getById(plantId)?.gardenId ?: effectiveGardenId(context)
+        gardenId = resolvePlantById(context, plantId)?.gardenId ?: effectiveGardenId(context)
     }
     val canEdit = remember(ActiveGardenState.activeGardenId, gardenId) { gardenId?.let { hasWriteAccessToGarden(context, it) } ?: false }
     val entries by remember(plantId, gardenId) { careViewModel.getForPlant(plantId, gardenId ?: "") }.collectAsState()
@@ -94,7 +94,7 @@ fun CareHistoryScreen(plantId: String, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val millis = dateStringToMillis(logDate) ?: System.currentTimeMillis()
-                    careViewModel.logCare(plantId, type, millis)
+                    careViewModel.logCare(plantId, gardenId ?: effectiveGardenId(context), type, millis)
                     pendingLogType = null
                 }) { Text("Save") }
             },

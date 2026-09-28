@@ -83,7 +83,7 @@ fun GrowthTimelineScreen(plantId: String, onBack: () -> Unit) {
     // showing none of the plant's real photos and mis-scoping anything newly added.
     var gardenId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(plantId) {
-        gardenId = AppDatabase.getInstance(context).plantDao().getById(plantId)?.gardenId ?: effectiveGardenId(context)
+        gardenId = resolvePlantById(context, plantId)?.gardenId ?: effectiveGardenId(context)
     }
     val canEdit = remember(ActiveGardenState.activeGardenId, gardenId) { gardenId?.let { hasWriteAccessToGarden(context, it) } ?: false }
     val photos by remember(plantId, gardenId) { growthViewModel.getForPlant(plantId, gardenId ?: "") }.collectAsState()

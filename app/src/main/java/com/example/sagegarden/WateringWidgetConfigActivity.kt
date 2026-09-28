@@ -60,7 +60,13 @@ class WateringWidgetConfigActivity : ComponentActivity() {
                         setWidgetConfig(this, appWidgetId, config)
                         scheduleWidgetRefresh(this, appWidgetId, config.intervalDays)
                         lifecycleScope.launch {
-                            refreshWateringWidgets(this@WateringWidgetConfigActivity)
+                            // Actually pulls fresh data for every known garden before repainting —
+                            // previously this only called refreshWateringWidgets(), which just
+                            // re-renders whatever was already cached in Room. That meant hitting
+                            // Save here could never be the thing that fixes a garden showing empty;
+                            // it could only ever reflect a sync that had (or hadn't) already happened
+                            // some other way.
+                            GardenSyncClient.syncAllKnownGardens(this@WateringWidgetConfigActivity)
                             setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId))
                             finish()
                         }
@@ -87,30 +93,32 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
 
     // Only shown when this device actually knows about more than one garden — a single-garden
     // install keeps the exact widget config screen it always had, no new clutter.
-    fun currentKnownGardens(): List<KnownGarden> {
-        val installId = getOrCreateInstallId(context)
-        val known = GardenMembershipStore.getKnownGardens(context)
-        return if (known.any { it.gardenId == installId }) known
-        else listOf(KnownGarden(installId, "My Garden", "owner", "write", "")) + known
-    }
-    var knownGardens by remember { mutableStateOf(currentKnownGardens()) }
-    var selectedGardenIds by remember {
-        mutableStateOf(initialConfig.selectedGardenIds.ifEmpty { knownGardens.map { it.gardenId }.toSet() })
-    }
+    var knownGardens by remember { mutableStateOf(knownGardensIncludingOwn(context)) }
     // This activity is launched fresh from the home screen (not from within MainActivity's Help
     // screen), so it only ever sees whatever known-gardens cache happened to already be on disk from
-    // an earlier session — this was stale/incomplete for a device that hadn't recently opened Help's
-    // "Sync with other devices" section, making the garden checklist below silently under-report
-    // (or never show at all, if it thought there was only one garden), which is exactly why the
-    // widget looked like it was stuck on a single garden regardless of what was actually configured.
-    var hasUserEditedSelection by remember { mutableStateOf(false) }
+    // an earlier session — stale/incomplete for a device that hadn't recently opened Help's "Sync
+    // with other devices" section (very plausible right after first placing the widget).
+    //
+    // null means "no explicit choice made — follow every garden this device has, including any
+    // joined/created later" (WidgetConfig.selectedGardenIds' own "empty means all" sentinel). The
+    // previous version eagerly resolved that into a concrete Set the instant this screen composed,
+    // using whatever knownGardens happened to be at that exact moment — on a stale cache that meant
+    // just this device's own garden, and since the checklist below only renders once knownGardens.size
+    // > 1, the user saw no checklist at all and had no idea a restriction was being silently saved.
+    // Worse, initialConfig.selectedGardenIds was then permanently non-empty from that point on, so
+    // this never self-corrected even after the cache caught up on a later visit. Keeping the "no
+    // explicit choice" state as a live null — not resolved into a snapshot until the user actually
+    // taps a checkbox — fixes both: nothing is saved unless the user genuinely chose it, and "all
+    // gardens" keeps meaning ALL, forever, including ones that don't exist yet.
+    var selectedGardenIds by remember { mutableStateOf(initialConfig.selectedGardenIds.ifEmpty { null }) }
+    // onSave triggers a full syncAllKnownGardens() before this activity finishes — a real network
+    // round trip across every known garden, not instant — so without this a slow connection invited
+    // repeat taps, each queuing up its own sync behind the last (harmless since GardenSyncClient's
+    // per-garden mutex serializes them, but wasteful and confusing).
+    var saving by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         GardenMembershipClient.refreshKnownGardens(context)
-        val refreshed = currentKnownGardens()
-        knownGardens = refreshed
-        if (initialConfig.selectedGardenIds.isEmpty() && !hasUserEditedSelection) {
-            selectedGardenIds = refreshed.map { it.gardenId }.toSet()
-        }
+        knownGardens = knownGardensIncludingOwn(context)
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
@@ -171,31 +179,35 @@ fun WidgetConfigScreen(initialConfig: WidgetConfig, onSave: (WidgetConfig) -> Un
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Checkbox(
-                        checked = garden.gardenId in selectedGardenIds,
+                        // No explicit selection yet (null) reads as every garden checked — the "all,
+                        // always" default — rather than materializing a snapshot just to render this.
+                        checked = selectedGardenIds?.contains(garden.gardenId) ?: true,
                         onCheckedChange = { checked ->
-                            hasUserEditedSelection = true
-                            selectedGardenIds = if (checked) selectedGardenIds + garden.gardenId else selectedGardenIds - garden.gardenId
+                            val current = selectedGardenIds ?: knownGardens.map { it.gardenId }.toSet()
+                            selectedGardenIds = if (checked) current + garden.gardenId else current - garden.gardenId
                         }
                     )
                     Text(garden.name, fontSize = 13.sp)
                 }
             }
-            if (selectedGardenIds.isEmpty()) {
+            if (selectedGardenIds?.isEmpty() == true) {
                 Text("Pick at least one garden, or the widget will have nothing to show.", fontSize = 11.sp, color = Color(0xFFB23B3B))
             }
         }
         Spacer(Modifier.height(28.dp))
         Button(
             onClick = {
+                saving = true
                 onSave(
                     WidgetConfig(
                         intervalDays, maxPlants, lookaheadDays,
                         includeWatering, includePruning, includeFertilising, includeFeeding,
-                        selectedGardenIds
+                        selectedGardenIds ?: emptySet()
                     )
                 )
             },
+            enabled = !saving,
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Save") }
+        ) { Text(if (saving) "Saving, please wait…" else "Save") }
     }
 }

@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class, ManualZoneScheduleEntity::class], version = 28, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class, ManualZoneScheduleEntity::class], version = 30, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -32,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context), MIGRATION_27_28)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context), MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
                     .build().also { INSTANCE = it }
             }
         }
@@ -319,5 +319,63 @@ val MIGRATION_27_28 = object : Migration(27, 28) {
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_zone_schedules_zone` ON `manual_zone_schedules` (`zone`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_zone_schedules_gardenId` ON `manual_zone_schedules` (`gardenId`)")
+    }
+}
+
+val MIGRATION_28_29 = object : Migration(28, 29) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Defaults existing entries (entered before this field existed) to 6:00 AM — a reasonable
+        // placeholder for a garden watering schedule; there's no edit flow for an existing entry
+        // (only add/delete), so anyone who wants an accurate start time on an old entry re-adds it.
+        db.execSQL("ALTER TABLE manual_zone_schedules ADD COLUMN startTimeMinutes INTEGER NOT NULL DEFAULT 360")
+    }
+}
+
+/**
+ * plants' primary key changes from `id` alone to (`gardenId`, `id`) — see PlantEntity's own doc
+ * comment for why `id` alone was never actually safe (a plant id is only unique within the device
+ * that generated it, not globally). SQLite can't alter a primary key in place, so recreate the table
+ * (same pattern as migration24To25's water_flow_rates rebuild). This only rebuilds the LOCAL cache —
+ * each garden's real data lives in its own separate Firestore document server-side, so nothing here
+ * risks losing data; a device that's had two same-id gardens collide locally (confirmed happening in
+ * practice 2026-09-08 — a device's own garden lost 27 of its 85 locally-cached plants to a shared
+ * "Polana" garden that happened to use the same "P0001..." ids) self-heals on its next per-garden sync,
+ * since (gardenId, id) pairs from two different gardens can no longer overwrite each other.
+ */
+val MIGRATION_29_30 = object : Migration(29, 30) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `plants_new` (
+                `id` TEXT NOT NULL, `name` TEXT NOT NULL, `sci` TEXT NOT NULL, `location` TEXT NOT NULL,
+                `sun` TEXT NOT NULL, `water` TEXT NOT NULL, `soil` TEXT NOT NULL, `soilPh` TEXT NOT NULL DEFAULT '',
+                `category` TEXT NOT NULL DEFAULT '', `frost` TEXT NOT NULL, `native` TEXT NOT NULL,
+                `pollinator` TEXT NOT NULL, `source` TEXT NOT NULL, `date` TEXT NOT NULL, `qty` INTEGER NOT NULL,
+                `notes` TEXT NOT NULL, `wateringSystem` TEXT NOT NULL, `lat` REAL, `lng` REAL,
+                `photoUri` TEXT, `photoUris` TEXT NOT NULL, `photoThumbnailBase64` TEXT,
+                `mapX` REAL, `mapY` REAL, `lastWateredDate` INTEGER, `wateringFrequencyDays` INTEGER,
+                `manualWateringOnly` INTEGER NOT NULL DEFAULT 0, `isIndoor` INTEGER NOT NULL DEFAULT 0,
+                `summerWateringFrequencyDays` INTEGER, `winterWateringFrequencyDays` INTEGER,
+                `lastFertilisedDate` INTEGER, `fertiliseFrequencyDays` INTEGER,
+                `lastPrunedDate` INTEGER, `pruneFrequencyDays` INTEGER,
+                `lastFedDate` INTEGER, `feedFrequencyDays` INTEGER,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0, `gardenId` TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY(`gardenId`, `id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO plants_new
+            SELECT id, name, sci, location, sun, water, soil, soilPh, category, frost, native, pollinator,
+                   source, date, qty, notes, wateringSystem, lat, lng, photoUri, photoUris, photoThumbnailBase64,
+                   mapX, mapY, lastWateredDate, wateringFrequencyDays, manualWateringOnly, isIndoor,
+                   summerWateringFrequencyDays, winterWateringFrequencyDays, lastFertilisedDate, fertiliseFrequencyDays,
+                   lastPrunedDate, pruneFrequencyDays, lastFedDate, feedFrequencyDays, updatedAt, gardenId
+            FROM plants
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE plants")
+        db.execSQL("ALTER TABLE plants_new RENAME TO plants")
     }
 }

@@ -21,10 +21,20 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
      * Suspends until both writes land — callers that log multiple types for the same plant in one action (e.g. FormScreen's
      * save button) must call this sequentially via their own coroutine rather than firing several off in parallel, since each
      * call re-reads the plant to apply its single-field change and a stale read would silently drop an earlier change.
+     *
+     * [gardenId] must be the plant's own real garden, not derived here — every caller already has the
+     * full plant object (or a resolved gardenId) in hand by the time it logs care against it. This
+     * used to re-look the plant up by bare id (resolvePlantById, "prefer the active garden"), which
+     * was wrong whenever the plant being edited belonged to a garden other than whichever was active
+     * at that moment (e.g. reached via a cross-garden fallback lookup) — confirmed in practice
+     * 2026-09-15: editing "Last watered" on such a plant correctly logged the care-log entry (this
+     * function's own dao.upsert, keyed by a fresh UUID, never ambiguous) but silently rewrote a
+     * DIFFERENT, same-id plant's lastWateredDate — the one in the wrong (active) garden — leaving the
+     * plant actually being edited showing its old date despite the new log entry existing.
      */
-    suspend fun logCareSync(plantId: String, type: String, date: Long, notes: String = "") {
+    suspend fun logCareSync(plantId: String, gardenId: String, type: String, date: Long, notes: String = "") {
         val now = System.currentTimeMillis()
-        val plant = plantDao.getById(plantId) ?: return
+        val plant = plantDao.getByIdForGarden(gardenId, plantId) ?: return
         dao.upsert(CareLogEntity(id = UUID.randomUUID().toString(), plantId = plantId, type = type, date = date, notes = notes, updatedAt = now, gardenId = plant.gardenId))
         val updated = when (type) {
             "watering" -> plant.copy(lastWateredDate = date)
@@ -44,8 +54,8 @@ class CareLogViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** Fire-and-forget wrapper for simple single-call sites (e.g. the dedicated "Log watering/fertilising/pruning" buttons). */
-    fun logCare(plantId: String, type: String, date: Long, notes: String = "") {
-        viewModelScope.launch { logCareSync(plantId, type, date, notes) }
+    fun logCare(plantId: String, gardenId: String, type: String, date: Long, notes: String = "") {
+        viewModelScope.launch { logCareSync(plantId, gardenId, type, date, notes) }
     }
 
     fun delete(id: String) = viewModelScope.launch {
