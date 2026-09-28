@@ -2,7 +2,14 @@ package com.example.sagegarden
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -10,6 +17,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 sealed class GardenSyncResult {
@@ -36,6 +44,28 @@ object GardenSyncClient {
         .writeTimeout(20, TimeUnit.SECONDS)
         .build()
     private const val BASE_URL = BuildConfig.SAGE_API_BASE_URL
+
+    // One sync in flight per garden at a time. With several independent triggers (widget refresh,
+    // widget-config save, the daily notification worker, the foreground auto-sync loop) all able to
+    // call sync() for the same gardenId, two calls can genuinely overlap — e.g. tapping "Save" again
+    // while an earlier, slower save for the same garden is still finishing its network round trip.
+    // Each call reads local Room state at its OWN start and reflects a merge from whenever ITS
+    // response happened to arrive; if an older, slower call's response lands and commits AFTER a
+    // newer, faster call already committed correct data, its stale merge (and stale tombstone list)
+    // can delete rows the newer call just correctly wrote — confirmed by a report where the sync
+    // summary reported the right plant count for a garden every time, yet the widget's actual due
+    // list sometimes excluded that garden entirely. Serializing per gardenId means a second call for
+    // the same garden always starts AFTER the first has fully committed, so it only ever sees (and
+    // can only ever produce) the latest state — no response can ever race another for the same garden.
+    private val gardenMutexes = ConcurrentHashMap<String, Mutex>()
+    private fun mutexFor(gardenId: String): Mutex = gardenMutexes.getOrPut(gardenId) { Mutex() }
+
+    // Local plants/care-log fingerprint (see PlantDao.syncFingerprint) as of each garden's last
+    // successful sync, captured inside the merge transaction. MainActivity pushes local edits by
+    // watching the live fingerprint and syncing only when it differs from this — which is how a
+    // sync's own merge writes (which change the fingerprint too) avoid triggering another sync.
+    private val lastSyncedFingerprints = ConcurrentHashMap<String, String>()
+    fun lastSyncedFingerprint(gardenId: String): String? = lastSyncedFingerprints[gardenId]
 
     private fun jsonBody(json: JSONObject) =
         json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -132,7 +162,13 @@ object GardenSyncClient {
             SyncTombstone(o.getString("id"), o.getLong("deletedAt"))
         }
 
-    suspend fun sync(context: Context, deviceId: String, gardenId: String = deviceId): GardenSyncResult = withContext(Dispatchers.IO) {
+    /** [notifyWidgets] is false only for syncAllKnownGardens' per-garden calls below — it coalesces
+     * everyone's individual widget refresh into one, fired after ALL gardens have finished, instead of
+     * each garden's completion independently repainting the widget from a still-partially-synced
+     * state (visible as due items from another garden briefly appearing then disappearing again as
+     * each subsequent garden's sync landed in whatever order they happened to finish). */
+    suspend fun sync(context: Context, deviceId: String, gardenId: String = deviceId, notifyWidgets: Boolean = true): GardenSyncResult = withContext(Dispatchers.IO) {
+        mutexFor(gardenId).withLock {
         try {
             val db = AppDatabase.getInstance(context)
             val plantDao = db.plantDao()
@@ -195,9 +231,18 @@ object GardenSyncClient {
             val request = Request.Builder().url("$BASE_URL/syncGarden").post(jsonBody(body)).build()
 
             httpClient.newCall(request).execute().use { response ->
-                val text = response.body?.string() ?: return@withContext GardenSyncResult.NetworkError
-                if (response.code == 403) return@withContext GardenSyncResult.NotAuthorized
-                if (!response.isSuccessful) return@withContext GardenSyncResult.ServerError
+                val text = response.body?.string() ?: run {
+                    Log.w("GardenSyncClient", "sync($gardenId) failed: empty response body")
+                    return@withContext GardenSyncResult.NetworkError
+                }
+                if (response.code == 403) {
+                    Log.w("GardenSyncClient", "sync($gardenId) failed: 403 not authorized")
+                    return@withContext GardenSyncResult.NotAuthorized
+                }
+                if (!response.isSuccessful) {
+                    Log.w("GardenSyncClient", "sync($gardenId) failed: HTTP ${response.code}")
+                    return@withContext GardenSyncResult.ServerError
+                }
                 val json = JSONObject(text)
 
                 // The server may auto-provision membership (a brand-new garden, or a legacy pre-sharing
@@ -214,25 +259,34 @@ object GardenSyncClient {
                 }
 
                 val mergedPlantsArr = json.getJSONArray("plants")
-                val mergedPlantIds = mutableSetOf<String>()
-                for (i in 0 until mergedPlantsArr.length()) {
-                    val plant = jsonToPlant(mergedPlantsArr.getJSONObject(i)).copy(gardenId = gardenId)
-                    plantDao.upsert(plant)
-                    mergedPlantIds += plant.id
-                }
-                val plantTombstones = jsonToTombstones(json.getJSONArray("plantTombstones"))
-                plantTombstones.forEach { if (it.id !in mergedPlantIds) plantDao.deleteById(it.id) }
-                GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
-
                 val mergedCareLogArr = json.getJSONArray("careLog")
-                val mergedCareLogIds = mutableSetOf<String>()
-                for (i in 0 until mergedCareLogArr.length()) {
-                    val entry = jsonToCareLog(mergedCareLogArr.getJSONObject(i)).copy(gardenId = gardenId)
-                    careLogDao.upsert(entry)
-                    mergedCareLogIds += entry.id
-                }
+                val plantTombstones = jsonToTombstones(json.getJSONArray("plantTombstones"))
                 val careLogTombstones = jsonToTombstones(json.getJSONArray("careLogTombstones"))
-                careLogTombstones.forEach { if (it.id !in mergedCareLogIds) careLogDao.deleteById(it.id) }
+                // One transaction for the whole merge, not one commit per row — Room's live Flow
+                // (e.g. the Dashboard's plant count) re-queries and emits on every individual
+                // upsert/delete, so a large garden's merge was visibly observable mid-flight as a
+                // transient undercount (only the rows written so far) that "jumped" to the real
+                // total once the loop finished. Wrapping it means the Flow only ever sees the
+                // fully-merged before/after states, never a partial one.
+                db.withTransaction {
+                    val mergedPlantIds = mutableSetOf<String>()
+                    for (i in 0 until mergedPlantsArr.length()) {
+                        val plant = jsonToPlant(mergedPlantsArr.getJSONObject(i)).copy(gardenId = gardenId)
+                        plantDao.upsert(plant)
+                        mergedPlantIds += plant.id
+                    }
+                    plantTombstones.forEach { if (it.id !in mergedPlantIds) plantDao.deleteById(gardenId, it.id) }
+
+                    val mergedCareLogIds = mutableSetOf<String>()
+                    for (i in 0 until mergedCareLogArr.length()) {
+                        val entry = jsonToCareLog(mergedCareLogArr.getJSONObject(i)).copy(gardenId = gardenId)
+                        careLogDao.upsert(entry)
+                        mergedCareLogIds += entry.id
+                    }
+                    careLogTombstones.forEach { if (it.id !in mergedCareLogIds) careLogDao.deleteById(it.id) }
+                    lastSyncedFingerprints[gardenId] = plantDao.syncFingerprintOnce(gardenId) + "|" + careLogDao.syncFingerprintOnce(gardenId)
+                }
+                GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
                 GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
 
                 json.optString("gardenAddress", "").takeIf { it.isNotBlank() }?.let { setGardenAddress(context, it) }
@@ -248,10 +302,12 @@ object GardenSyncClient {
                 }
 
                 GardenSyncStore.setLastSyncedAt(context, System.currentTimeMillis())
-                refreshWateringWidgets(context)
+                if (notifyWidgets) refreshWateringWidgets(context)
+                Log.d("GardenSyncClient", "sync($gardenId) succeeded: ${mergedPlantsArr.length()} plants, ${mergedCareLogArr.length()} care log entries")
                 GardenSyncResult.Success(mergedPlantsArr.length(), mergedCareLogArr.length(), json.optString("permission", "write"))
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("GardenSyncClient", "sync($gardenId) threw", e)
             GardenSyncResult.NetworkError
         }
     }
@@ -266,8 +322,28 @@ object GardenSyncClient {
      * itself never throws) so one flaky network call or revoked membership doesn't stop the rest
      * from refreshing.
      */
-    suspend fun syncAllKnownGardens(context: Context) {
+    suspend fun syncAllKnownGardens(context: Context) = coroutineScope {
+        GardenMembershipClient.refreshKnownGardens(context)
+        }
         val deviceId = getOrCreateInstallId(context)
-        allKnownGardenIds(context).forEach { gardenId -> sync(context, deviceId, gardenId) }
+        val gardenIds = allKnownGardenIds(context)
+        gardenIds.map { gardenId -> async { sync(context, deviceId, gardenId, notifyWidgets = false) } }.awaitAll()
+        refreshWateringWidgets(context)
     }
 }
+     *
+     * Refreshes the known-gardens list itself first (none of this method's background callers ever
+     * did — only the foreground UI does, on its own 60s loop or when the sharing/widget-config screens
+     * open), so a garden joined/created since the app was last opened isn't silently skipped here.
+     * Then syncs every garden CONCURRENTLY rather than one at a time — a background job (WorkManager)
+     * only gets a limited window of guaranteed network access, and two-plus sequential HTTP round
+     * trips (one per garden) risk the later ones getting cut off before they complete; sync() logs
+     * its own per-garden outcome, so a logcat capture around a "some gardens didn't refresh" report
+     * shows exactly which garden failed and why (network/auth/server error) instead of guessing.
+     *
+     * Each individual sync() call suppresses its own widget refresh (notifyWidgets = false) — with
+     * several gardens finishing concurrently in unpredictable order, letting each one repaint the
+     * widget independently meant the widget would show whatever partial state Room happened to be in
+     * after JUST that one garden's sync landed, then repaint again as the next garden finished — a
+     * garden's due plants visibly appearing and then disappearing again before the final, fully-synced
+     * state settled. One refresh, fired here after every garden has finished, replaces all of those.
