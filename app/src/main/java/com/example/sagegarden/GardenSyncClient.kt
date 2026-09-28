@@ -231,7 +231,11 @@ object GardenSyncClient {
                     getGardenLocationsFor(context, gardenId)?.let { locs -> put("gardenLocations", JSONArray(locs)) }
                 }
             }
-            val request = Request.Builder().url("$BASE_URL/syncGarden").post(jsonBody(body)).build()
+            // Lets the server grant this device realtime change signals for the garden — see RealtimeGardenSync.
+            val idToken = RealtimeGardenSync.idTokenOrNull()
+            val request = Request.Builder().url("$BASE_URL/syncGarden").post(jsonBody(body))
+                .apply { if (idToken != null) header("X-Firebase-Id-Token", idToken) }
+                .build()
 
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string() ?: run {
@@ -305,6 +309,11 @@ object GardenSyncClient {
                     setGardenLocationsFor(context, gardenId, (0 until arr.length()).map { arr.getString(it) })
                 }
 
+                // Absent from older server versions — only trust the grant once the server confirms it understands signals.
+                val serverSupportsSignals = json.has("signalRev")
+                if (serverSupportsSignals) GardenSyncStore.setSignalRev(context, gardenId, json.getLong("signalRev"))
+                RealtimeGardenSync.onSynced(context, gardenId, granted = idToken != null && serverSupportsSignals)
+
                 GardenSyncStore.setLastSyncedAt(context, System.currentTimeMillis())
                 if (notifyWidgets) refreshWateringWidgets(context)
                 Log.d("GardenSyncClient", "sync($gardenId) succeeded: ${mergedPlantsArr.length()} plants, ${mergedCareLogArr.length()} care log entries")
@@ -313,6 +322,7 @@ object GardenSyncClient {
         } catch (e: Exception) {
             Log.w("GardenSyncClient", "sync($gardenId) threw", e)
             GardenSyncResult.NetworkError
+        }
         }
     }
 
@@ -325,16 +335,6 @@ object GardenSyncClient {
      * see stale or entirely empty local data for it. Failures are per-garden and swallowed (sync()
      * itself never throws) so one flaky network call or revoked membership doesn't stop the rest
      * from refreshing.
-     */
-    suspend fun syncAllKnownGardens(context: Context) = coroutineScope {
-        GardenMembershipClient.refreshKnownGardens(context)
-        }
-        val deviceId = getOrCreateInstallId(context)
-        val gardenIds = allKnownGardenIds(context)
-        gardenIds.map { gardenId -> async { sync(context, deviceId, gardenId, notifyWidgets = false) } }.awaitAll()
-        refreshWateringWidgets(context)
-    }
-}
      *
      * Refreshes the known-gardens list itself first (none of this method's background callers ever
      * did — only the foreground UI does, on its own 60s loop or when the sharing/widget-config screens
@@ -351,3 +351,12 @@ object GardenSyncClient {
      * after JUST that one garden's sync landed, then repaint again as the next garden finished — a
      * garden's due plants visibly appearing and then disappearing again before the final, fully-synced
      * state settled. One refresh, fired here after every garden has finished, replaces all of those.
+     */
+    suspend fun syncAllKnownGardens(context: Context) = coroutineScope {
+        GardenMembershipClient.refreshKnownGardens(context)
+        val deviceId = getOrCreateInstallId(context)
+        val gardenIds = allKnownGardenIds(context)
+        gardenIds.map { gardenId -> async { sync(context, deviceId, gardenId, notifyWidgets = false) } }.awaitAll()
+        refreshWateringWidgets(context)
+    }
+}

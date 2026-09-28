@@ -152,6 +152,11 @@ object GardenAddressState {
     var locations by mutableStateOf<List<String>?>(null)
 }
 
+/** Bumped by the Help screen's garden address/zones editors after a USER edit, so GardenMapperApp pushes it straight away — see its event-driven sync comment. */
+object GardenSettingsEdits {
+    var count by mutableStateOf(0)
+}
+
 /** The garden id that should actually be used for sync/data calls right now: the explicitly-selected active garden, or this device's own install-id-keyed default garden if none has been chosen. */
 /**
  * ActiveGardenState.activeGardenId is only synced from persisted storage in MainActivity.onCreate

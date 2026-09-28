@@ -68,6 +68,15 @@ object GardenSyncStore {
     fun recordCareLogDeleted(context: Context, gardenId: String, id: String) =
         addTombstone(context, scopedKey(KEY_CARE_LOG_TOMBSTONES, gardenId), id)
 
+    /** The gardenSignals rev this device's local copy of [gardenId] is current as of — see RealtimeGardenSync. */
+    fun getSignalRev(context: Context, gardenId: String): Long = prefs(context).getLong(scopedKey("signal_rev", gardenId), -1L)
+    fun setSignalRev(context: Context, gardenId: String, rev: Long) = prefs(context).edit().putLong(scopedKey("signal_rev", gardenId), rev).apply()
+    /** Whether the server has confirmed this device's Firebase uid may listen to [gardenId]'s change signal. */
+    fun isSignalGranted(context: Context, gardenId: String): Boolean = prefs(context).getBoolean(scopedKey("signal_granted", gardenId), false)
+    fun setSignalGranted(context: Context, gardenId: String, granted: Boolean) = prefs(context).edit().putBoolean(scopedKey("signal_granted", gardenId), granted).apply()
+    fun getMembershipRev(context: Context, gardenId: String): Long = prefs(context).getLong(scopedKey("membership_rev", gardenId), -1L)
+    fun setMembershipRev(context: Context, gardenId: String, rev: Long) = prefs(context).edit().putLong(scopedKey("membership_rev", gardenId), rev).apply()
+
     fun getLastSyncedAt(context: Context): Long = prefs(context).getLong(KEY_LAST_SYNCED_AT, 0L)
     fun setLastSyncedAt(context: Context, millis: Long) = prefs(context).edit().putLong(KEY_LAST_SYNCED_AT, millis).apply()
 }

@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
+import { bumpMembershipRev } from "../gardenSignals";
 import { verifyOwner } from "../gardenMembers";
 
 /**
@@ -31,6 +32,8 @@ export const renameGarden = onRequest({ cors: false }, async (req, res) => {
 
   try {
     await db.collection("gardens").doc(gardenId).update({ name });
+    // Best-effort: lets other members' open apps show the new name straight away.
+    await bumpMembershipRev(db, gardenId).catch((e) => console.warn("bumpMembershipRev failed", e));
     res.status(200).json({ name });
   } catch (err) {
     console.error("renameGarden failed", err);

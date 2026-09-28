@@ -126,6 +126,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -2027,7 +2029,7 @@ fun PlantTooltipCard(plant: PlantEntity, onEdit: () -> Unit, onDismiss: () -> Un
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun GardenMapperApp() {
     val navController = rememberNavController()
@@ -2082,34 +2084,60 @@ fun GardenMapperApp() {
         )
     }
 
-    // Auto-syncs plant/care-log data so neither side of a shared garden needs to remember to tap
-    // "Sync plants & care history" manually. Keyed on the active garden id: switching gardens (or
-    // joining/creating one) cancels the previous loop and starts a fresh one that syncs immediately,
-    // then keeps syncing periodically for as long as that garden stays active and the app is open.
+    // Event-driven sync — replaces the old "sync the active garden every 60s" loop:
+    //  • OUTBOUND: any local plant/care-log change in the active garden (watering, edits, deletes,
+    //    imports — every write path, without each one having to remember to call sync) shows up as
+    //    a change in the Room fingerprint below and is pushed ~1.5s later. The fingerprint captured
+    //    inside each sync's own merge transaction is what stops the merge's writes re-triggering it.
+    //    (Edits to a NON-active garden are already pushed at their call sites — syncIfNotActiveGarden.)
+    //  • INBOUND: RealtimeGardenSync listens to each garden's server-side change signal while the app
+    //    is in the foreground and syncs only when another device actually changed something.
+    //  • SAFETY NET: a slow loop (15 min while the listener is live, 60s — the old behaviour — when it
+    //    isn't, e.g. Anonymous Auth unavailable) also keeps the known-gardens cache fresh, which the
+    //    widget and reminder worker read via allKnownGardenIds.
+    LaunchedEffect(ActiveGardenState.activeGardenId) {
+        val gardenId = effectiveGardenId(context)
+        val db = AppDatabase.getInstance(context)
+        combine(db.plantDao().syncFingerprint(gardenId), db.careLogDao().syncFingerprint(gardenId)) { p, c -> "$p|$c" }
+            .debounce(1_500L)
+            .collect { fingerprint ->
+                if (fingerprint != GardenSyncClient.lastSyncedFingerprint(gardenId)) {
+                    GardenSyncClient.sync(context, getOrCreateInstallId(context), gardenId)
+                }
+            }
+    }
+    // Address/zones live in prefs, not Room, so the fingerprint above can't see them — the Help
+    // screen's address/zone editors bump this counter instead (never sync itself, which also writes
+    // them, so a sync can't trigger another sync).
+    LaunchedEffect(GardenSettingsEdits.count) {
+        if (GardenSettingsEdits.count > 0) GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
+    }
     LaunchedEffect(ActiveGardenState.activeGardenId) {
         while (true) {
-            GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context))
-            // Keeps the local known-gardens cache (GardenMembershipStore) fresh continuously, not just
-            // when the user happens to open Help's "Sync with other devices" section — allKnownGardenIds
-            // (used by the watering-reminder worker and the home-screen widget's garden filter) reads
-            // straight from that cache, so letting it go stale silently under-covers gardens whose
-            // membership changed elsewhere (approved on another device, left, etc.) until someone
-            // manually reopens the sharing UI.
             GardenMembershipClient.refreshKnownGardens(context)
-            delay(60_000L)
+            RealtimeGardenSync.refreshListeners(context)
+            val gardenId = effectiveGardenId(context)
+            delay(if (RealtimeGardenSync.isLive(gardenId)) 15 * 60_000L else 60_000L)
+            GardenSyncClient.sync(context, getOrCreateInstallId(context), gardenId)
         }
     }
-    // Also syncs right away whenever the app returns to the foreground, so bringing the app back
-    // after the other party has made changes doesn't mean waiting out the rest of the periodic delay.
+    // Listeners only while visible (no open connection in the background), plus an immediate sync on
+    // resume in case anything changed while the app was in the background with no listener attached.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch { GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context)) }
+            when (event) {
+                Lifecycle.Event.ON_START -> RealtimeGardenSync.start(context, scope)
+                Lifecycle.Event.ON_STOP -> RealtimeGardenSync.stop()
+                Lifecycle.Event.ON_RESUME -> scope.launch { GardenSyncClient.sync(context, getOrCreateInstallId(context), effectiveGardenId(context)) }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            RealtimeGardenSync.stop()
+        }
     }
 
     LaunchedEffect(SageFabResetState.requested) {
@@ -6593,7 +6621,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                                 }
                                 gardenSessionToken = AutocompleteSessionToken.newInstance() // this session is spent — start a fresh one for the next search
                                 gardenAddressQuery = prediction.getFullText(null).toString()
-                                setGardenAddress(context, gardenAddressQuery)
+                                setGardenAddress(context, gardenAddressQuery); GardenSettingsEdits.count++
                                 gardenAddressEditedByUser = false
                                 gardenPredictions = emptyList()
                             }.padding(12.dp),
@@ -6608,7 +6636,7 @@ fun GardenAddressSection(context: Context, scope: CoroutineScope, snackbarHostSt
                                 gardenCoords = address.latitude to address.longitude
                                 setGardenLatLng(context, address.latitude, address.longitude)
                                 gardenAddressQuery = address.getAddressLine(0) ?: ""
-                                setGardenAddress(context, gardenAddressQuery)
+                                setGardenAddress(context, gardenAddressQuery); GardenSettingsEdits.count++
                                 gardenAddressEditedByUser = false
                                 gardenGeocoderPredictions = emptyList()
                                 scope.launch { snackbarHostState.showSnackbar("Garden location saved") }
@@ -6670,7 +6698,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                     TextButton(onClick = {
                         if (renameText.isNotBlank()) {
                             gardenLocations = gardenLocations.toMutableList().also { it[index] = renameText.trim() }
-                            setGardenLocations(context, gardenLocations)
+                            setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
                         }
                         renamingIndex = -1
                     }) { Text("Save") }
@@ -6683,7 +6711,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                         TextButton(onClick = { renamingIndex = index; renameText = loc }) { Text("Rename", fontSize = 11.sp) }
                         TextButton(onClick = {
                             gardenLocations = gardenLocations.filterIndexed { i, _ -> i != index }
-                            setGardenLocations(context, gardenLocations)
+                            setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
                         }) { Text("Remove", fontSize = 11.sp, color = Color(0xFFB23B3B)) }
                     }
                 }
@@ -6704,7 +6732,7 @@ fun GardenZonesSection(context: Context, plants: List<PlantEntity>) {
                 val trimmed = newLocationText.trim()
                 if (trimmed.isNotBlank() && trimmed !in gardenLocations) {
                     gardenLocations = gardenLocations + trimmed
-                    setGardenLocations(context, gardenLocations)
+                    setGardenLocations(context, gardenLocations); GardenSettingsEdits.count++
                 }
                 newLocationText = ""
             }) { Text("Add") }

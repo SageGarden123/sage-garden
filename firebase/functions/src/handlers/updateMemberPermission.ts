@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
+import { bumpMembershipRev } from "../gardenSignals";
 import { DeviceGardensDoc, MemberDoc, MemberPermission, verifyOwner } from "../gardenMembers";
 
 /** Owner-only: changes an existing member's read/write access after the fact (e.g. upgrading a viewer to editor, or the reverse). */
@@ -49,6 +50,8 @@ export const updateMemberPermission = onRequest({ cors: false }, async (req, res
         }
       }
     });
+    // Best-effort: lets the affected member's open app pick up its new permission straight away.
+    await bumpMembershipRev(db, gardenId).catch((e) => console.warn("bumpMembershipRev failed", e));
 
     res.status(200).json({ success: true });
   } catch (err) {

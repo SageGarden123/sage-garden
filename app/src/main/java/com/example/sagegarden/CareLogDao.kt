@@ -8,6 +8,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CareLogDao {
+    /** See PlantDao.syncFingerprint. */
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM care_log WHERE gardenId = :gardenId")
+    fun syncFingerprint(gardenId: String): Flow<String>
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM care_log WHERE gardenId = :gardenId")
+    suspend fun syncFingerprintOnce(gardenId: String): String
+
     // Scoped by gardenId too, not just plantId — plant ids like "P0001" are generated fresh per
     // garden and can collide across different gardens sharing this same device (see
     // PlantViewModel.getAllPlantsOnDevice), which would otherwise leak one garden's plant's care

@@ -1,7 +1,8 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { emptyGardenDoc, mergeGarden, GardenDoc, GardenPayload, SyncRecord, Tombstone } from "../gardenSync";
 import { DeviceGardensDoc, emptyDeviceGardensDoc, generateMemberToken, MemberDoc, MemberPermission, MemberRole } from "../gardenMembers";
+import { GardenSignalDoc, readerRef, signalRef, verifiedListenerUid } from "../gardenSignals";
 
 // Generous ceiling for a personal garden — guards against a malformed/oversized payload, not a
 // real multi-tenant quota. A single Firestore document tops out at 1MB, which comfortably fits
@@ -112,10 +113,13 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
   const gardenRef = db.collection("gardens").doc(gardenId);
   const memberRef = gardenRef.collection("members").doc(deviceId);
   const deviceGardensRef = db.collection("deviceGardens").doc(deviceId);
+  const gardenSignalRef = signalRef(db, gardenId);
+  // Verified outside the transaction (a network call to Auth that shouldn't be retried with it).
+  const listenerUid = await verifiedListenerUid(req);
 
   try {
     const outcome = await db.runTransaction(async (tx) => {
-      const [gardenSnap, memberSnap, deviceGardensSnap] = await Promise.all([tx.get(gardenRef), tx.get(memberRef), tx.get(deviceGardensRef)]);
+      const [gardenSnap, memberSnap, deviceGardensSnap, signalSnap] = await Promise.all([tx.get(gardenRef), tx.get(memberRef), tx.get(deviceGardensRef), tx.get(gardenSignalRef)]);
       const existingMeta = gardenSnap.exists ? (gardenSnap.data() as Record<string, unknown>) : undefined;
 
       let permission: MemberPermission;
@@ -213,9 +217,39 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       if (Buffer.byteLength(JSON.stringify(toWrite), "utf8") > 900_000) {
         throw new SyncTooLargeError();
       }
-      tx.set(gardenRef, toWrite, { merge: true });
 
-      return { result, permission, responseToken, responseGardenAddress, responseGardenLat, responseGardenLng, responseGardenLocations };
+      // Only write (and signal) when something actually changed. Every open app used to poll this
+      // once a minute, and each poll rewrote the entire garden doc (up to ~900KB) even when nothing
+      // had changed. mergeGarden keeps stored records by reference and in their original key order,
+      // so an unchanged merge serializes identically; a false "changed" only costs one extra write
+      // and one extra signal, never a missed change.
+      const storedData = { plants: stored.plants, plantTombstones: stored.plantTombstones, careLog: stored.careLog, careLogTombstones: stored.careLogTombstones };
+      const changed = !gardenSnap.exists || needsMetaStamp ||
+        JSON.stringify(result) !== JSON.stringify(storedData) ||
+        responseGardenAddress !== ((existingMeta?.gardenAddress as string | undefined) ?? "") ||
+        responseGardenLat !== ((existingMeta?.gardenLat as number | undefined) ?? null) ||
+        responseGardenLng !== ((existingMeta?.gardenLng as number | undefined) ?? null) ||
+        JSON.stringify(responseGardenLocations) !== JSON.stringify((existingMeta?.gardenLocations as string[] | undefined) ?? null);
+
+      const currentRev = signalSnap.exists ? ((signalSnap.data() as GardenSignalDoc).rev ?? 0) : 0;
+      const signalRev = changed ? currentRev + 1 : currentRev;
+      if (changed) {
+        tx.set(gardenRef, toWrite, { merge: true });
+        tx.set(gardenSignalRef, { rev: signalRev, updatedAt: Date.now() }, { merge: true });
+      }
+
+      // Membership is verified by this point (every rejecting branch above has already thrown), so
+      // grant this device's Firebase uid read access to the garden's change signal. Written once per
+      // uid — the member doc remembers it so the grant can be revoked when access is removed.
+      if (listenerUid) {
+        const knownUids = memberSnap.exists ? ((memberSnap.data() as MemberDoc).listenerUids ?? []) : [];
+        if (!knownUids.includes(listenerUid)) {
+          tx.set(readerRef(db, gardenId, listenerUid), { deviceId, grantedAt: Date.now() });
+          tx.set(memberRef, { listenerUids: FieldValue.arrayUnion(listenerUid) }, { merge: true });
+        }
+      }
+
+      return { result, permission, responseToken, responseGardenAddress, responseGardenLat, responseGardenLng, responseGardenLocations, signalRev };
     });
 
     res.status(200).json({
@@ -230,6 +264,9 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       gardenLat: outcome.responseGardenLat,
       gardenLng: outcome.responseGardenLng,
       gardenLocations: outcome.responseGardenLocations,
+      // The change-signal rev this response is current as of — the client ignores listener events
+      // at or below it, so its own write doesn't bounce straight back as a redundant sync.
+      signalRev: outcome.signalRev,
     });
   } catch (err) {
     if (err instanceof SyncAuthError) {

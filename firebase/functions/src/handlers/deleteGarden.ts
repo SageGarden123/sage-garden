@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { GardenMetaDoc, DeviceGardensDoc, verifyOwner } from "../gardenMembers";
+import { signalRef } from "../gardenSignals";
 
 /**
  * Owner-only: permanently deletes a garden — every member (including the owner) loses access, and
@@ -38,10 +39,11 @@ export const deleteGarden = onRequest({ cors: false }, async (req, res) => {
   const gardenRef = db.collection("gardens").doc(gardenId);
 
   try {
-    const [gardenSnap, membersSnap, joinRequestsSnap] = await Promise.all([
+    const [gardenSnap, membersSnap, joinRequestsSnap, signalReadersSnap] = await Promise.all([
       gardenRef.get(),
       gardenRef.collection("members").get(),
       gardenRef.collection("joinRequests").get(),
+      signalRef(db, gardenId).collection("readers").get(),
     ]);
 
     const batch = db.batch();
@@ -67,6 +69,11 @@ export const deleteGarden = onRequest({ cors: false }, async (req, res) => {
     for (const joinRequestDoc of joinRequestsSnap.docs) {
       batch.delete(joinRequestDoc.ref);
     }
+    // Revokes every realtime listener along with the garden (see gardenSignals.ts).
+    for (const readerDoc of signalReadersSnap.docs) {
+      batch.delete(readerDoc.ref);
+    }
+    batch.delete(signalRef(db, gardenId));
     batch.delete(gardenRef);
 
     await batch.commit();

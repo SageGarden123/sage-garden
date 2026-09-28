@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
-import { DeviceGardensDoc, verifyOwner } from "../gardenMembers";
+import { DeviceGardensDoc, MemberDoc, verifyOwner } from "../gardenMembers";
+import { revokeListeners } from "../gardenSignals";
 
 /** Owner-only: revokes another member's access to this garden. The removed device keeps its own local cache until it next calls listMyGardens/syncGarden, at which point the missing membership/token surfaces as "no longer has access". */
 export const removeMember = onRequest({ cors: false }, async (req, res) => {
@@ -35,7 +36,8 @@ export const removeMember = onRequest({ cors: false }, async (req, res) => {
   try {
     await db.runTransaction(async (tx) => {
       // Read before write — see requestJoinGarden.ts for why this ordering matters in a transaction.
-      const deviceSnap = await tx.get(deviceGardensRef);
+      const [memberSnap, deviceSnap] = await Promise.all([tx.get(memberRef), tx.get(deviceGardensRef)]);
+      if (memberSnap.exists) revokeListeners(db, tx, gardenId, (memberSnap.data() as MemberDoc).listenerUids);
       tx.delete(memberRef);
       if (deviceSnap.exists) {
         const deviceDoc = deviceSnap.data() as DeviceGardensDoc;

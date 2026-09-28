@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { DeviceGardensDoc, MemberDoc } from "../gardenMembers";
+import { revokeListeners } from "../gardenSignals";
 
 /** Self-service: a member removes their own access to someone else's shared garden. The owner can't leave their own garden this way (there's no ownership transfer) — they'd need to delete/stop sharing it instead. */
 export const leaveGarden = onRequest({ cors: false }, async (req, res) => {
@@ -31,6 +32,7 @@ export const leaveGarden = onRequest({ cors: false }, async (req, res) => {
       if (member.memberToken !== memberToken) throw new Error("not_authorized");
       if (member.role === "owner") throw new Error("owner_cannot_leave");
 
+      revokeListeners(db, tx, gardenId, member.listenerUids);
       tx.delete(memberRef);
       if (deviceSnap.exists) {
         const deviceDoc = deviceSnap.data() as DeviceGardensDoc;

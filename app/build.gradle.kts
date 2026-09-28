@@ -119,6 +119,9 @@ dependencies {
 // Firebase App Check (Play Integrity) — attests requests to the Sage Cloud Functions backend
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.appcheck.playintegrity)
+// Realtime garden sync — anonymous Auth + a Firestore listener on the tiny gardenSignals/{gardenId} doc (see RealtimeGardenSync.kt)
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
 
 
 }

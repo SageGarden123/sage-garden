@@ -8,6 +8,12 @@ interface PlantDao {
     @Query("SELECT * FROM plants WHERE gardenId = :gardenId ORDER BY name ASC")
     fun getAll(gardenId: String): Flow<List<PlantEntity>>
 
+    /** Changes whenever any plant in [gardenId] is added, deleted, or edited (every real edit bumps updatedAt) — see GardenSyncClient's local-change push. */
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM plants WHERE gardenId = :gardenId")
+    fun syncFingerprint(gardenId: String): Flow<String>
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM plants WHERE gardenId = :gardenId")
+    suspend fun syncFingerprintOnce(gardenId: String): String
+
     @Query("SELECT * FROM plants WHERE gardenId = :gardenId")
     suspend fun getAllOnceForGarden(gardenId: String): List<PlantEntity>
 

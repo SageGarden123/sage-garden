@@ -21,6 +21,8 @@ export interface MemberDoc {
   memberToken: string;
   joinedAt: number;
   displayName?: string | null;
+  /** Firebase Auth uids granted read access to gardenSignals/{gardenId} for this member — see gardenSignals.ts. */
+  listenerUids?: string[];
 }
 
 export interface JoinRequestDoc {
