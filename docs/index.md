@@ -4,38 +4,42 @@ title: Sage Garden — Privacy Policy
 
 # Privacy Policy for Sage Garden
 
-**Last updated: 22 August 2026**
+**Last updated: 28 September 2026**
 
-Sage Garden ("the app") is a personal garden-tracking app developed by Sage Garden. This page explains what data the app collects, why, and who it's shared with.
+Sage Garden ("the app") is a personal garden-tracking app developed by Sage Garden. This page explains what data the app collects, why, where it's stored, and who it's shared with.
 
 ## Data the app collects
 
-**Garden and plant data.** Plant names, photos, locations on your map, care schedules and history (watering, fertilising, pruning, feeding), and notes you enter. This is stored locally on your device in the app's own database. It leaves your device only if you choose to back it up to Dropbox, or when a photo is sent for AI plant identification or AI care-suggestion features (see below).
+**Garden and plant data.** Plant names and details, notes, care schedules and history (watering, fertilising, pruning, feeding), garden zones, your garden's name, and where plants sit on your map. This is stored on your device, and is also synced to the app's cloud backend (Google Firebase) so your gardens stay in sync across your devices and with anyone you choose to share a garden with.
 
-**Photos.** Camera or gallery photos you attach to a plant. Stored locally by default; optionally stored in a Dropbox folder you choose, if you connect Dropbox.
+**Photos.** Photos you attach to plants are stored on your device by default, or in a Dropbox folder you choose if you connect Dropbox. A small, low-resolution thumbnail of each plant's main photo is synced to the app's cloud backend with the plant, so it can be shown on your other devices and to people you share the garden with. Full-size photos are never uploaded to Sage Garden's backend.
 
-**Location.** If you grant location permission, it's used to help place plants on the real-world map and to determine your garden's coordinates for weather-aware watering reminders and frost warnings. If you enter a garden address instead, that address is sent to Google's Places/Geocoding APIs to convert it into coordinates.
+**Location.** If you set a garden address, the address and its coordinates are stored with the garden and synced to the app's cloud backend (so everyone sharing the garden sees it in the right place). Address searches are sent to Google's Places/Geocoding APIs to turn them into coordinates. The garden's coordinates are sent to Open-Meteo to fetch the weather forecast for weather-aware reminders and frost warnings. If you grant location permission, your device's location is used to help place plants on the map; it isn't stored separately.
 
-**A random device identifier.** The app generates a random ID (not tied to your name, email, or Google account) to track Sage assistant usage and any redeemed promo code. This ID, and nothing else personally identifying, is sent to the app's backend (hosted on Google Firebase) each time this status is checked.
+**Identifiers.** The app generates a random install ID (not tied to your name, email or Google account), and signs in anonymously to Firebase, which assigns a random user ID. These identify your device to the app's backend for syncing, garden sharing, Sage assistant usage limits and promo codes. The app does not ask for or collect your name, email address or phone number. If you share a garden, the device name you choose (for example "Dan's phone") is shown to the garden's other members.
 
-**AI assistant conversations and photos.** If you use "Sage" (the in-app AI assistant) or the AI auto-fill/photo-identification features, your typed questions and/or plant photos are sent to third-party AI providers to generate a response (see below).
+**AI assistant and identification.** If you use Sage (the in-app AI assistant), your typed questions are sent to Anthropic to generate a response. If you use Sage's plant suggestions, the plant's scientific name is sent. If you identify a plant from a photo, that photo is sent to Pl@ntNet.
 
-**Smart-irrigation credentials.** If you connect a Tuya or Rachio irrigation account, the credentials you enter (API token, or client ID/secret) are stored locally on your device only, and used to talk directly to that vendor's own cloud API from your device — they are never sent to Sage Garden's own backend.
+**Smart-irrigation credentials.** If you connect a Tuya or Rachio irrigation account, the credentials you enter are stored on your device only, and used to talk directly to that vendor's cloud from your device. They are never sent to Sage Garden's backend or included in backups.
 
 ## Who your data is shared with
 
-- **Anthropic** (Claude AI) — receives your Sage chat messages and, for auto-fill, plant species names — to generate responses. See [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).
-- **Pl@ntNet** — receives a plant photo when you use AI photo identification, to return a species match. See [Pl@ntNet's privacy policy](https://identify.plantnet.org/data-privacy).
-- **Google** (Maps/Places APIs) — receives address search text and/or coordinates for map display and address autocomplete.
-- **Dropbox** — only if you connect a Dropbox account, receives the photos/backup files you choose to store there, under your own Dropbox account's terms.
-- **Tuya / Rachio** — only if you connect one, your device talks directly to that vendor's cloud using the credentials you provide, to read watering activity.
-- **Google Firebase / Google Cloud** — hosts the app's backend (entitlement checks, AI request relaying, promo code redemption). Firebase does not receive your plant data, photos, or location.
+- **Google Firebase / Google Cloud** — hosts the app's backend: garden sync and sharing, change notifications between devices, AI request relaying, usage limits and promo codes.
+- **People you share a garden with** — see that garden's plants (with thumbnails), care history, name, address and zones, and the device names of its members.
+- **Anthropic** (Claude AI) — your Sage chat messages, and plant scientific names for suggestions. See [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).
+- **Pl@ntNet** — a plant photo, when you identify a plant. See [Pl@ntNet's privacy policy](https://identify.plantnet.org/data-privacy).
+- **Google Maps / Places** — address search text and map coordinates, for maps and address lookup.
+- **Open-Meteo** — your garden's coordinates, for weather and frost forecasts. See [Open-Meteo's terms](https://open-meteo.com/en/terms).
+- **Dropbox** — only if you connect it: the photos, backups and irrigation logs you choose to store there, under your own Dropbox account.
+- **Tuya / Rachio** — only if you connect one: your device talks directly to that vendor's cloud, to read watering history.
 
-The app does not use advertising or analytics/tracking SDKs, and does not sell your data to anyone.
+All data is sent over encrypted connections (HTTPS). The app has no advertising or analytics/tracking SDKs, and your data is never sold.
 
 ## Data retention and deletion
 
-Your plant data, photos, and settings live on your device and are deleted when you uninstall the app (unless separately backed up to Dropbox, which you control). To request deletion of the anonymous device record held on the app's backend, contact the email below with your device's install ID (found in Help → About).
+Data on your device is deleted when you uninstall the app (except anything you've backed up to your own Dropbox, which you control).
+
+Garden data synced to the app's backend is kept while the garden exists, so it stays in sync and can be shared. Deleting a plant removes it from the backend; deleting a garden you own (Settings → This garden) removes it and all its data from the backend for everyone. To have all data linked to your device deleted from the backend — including your own default garden — email us with your Install ID (Settings → Help & about) and we'll delete it.
 
 ## Children's privacy
 
