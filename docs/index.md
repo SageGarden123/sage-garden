@@ -12,6 +12,8 @@ Sage Garden ("the app") is a personal garden-tracking app developed by Sage Gard
 
 **Garden and plant data.** Plant names and details, notes, care schedules and history (watering, fertilising, pruning, feeding), garden zones, your garden's name, and where plants sit on your map. This is stored on your device, and is also synced to the app's cloud backend (Google Firebase) so your gardens stay in sync across your devices and with anyone you choose to share a garden with.
 
+**Garden map and layout.** If you upload a plan or drawing of your garden, a downscaled copy of that image — together with the irrigation lines, sun zones and irrigation zone names you draw on it — is synced to the app's cloud backend, so it can be shown to people you share the garden with and used by the Sage Garden desktop app to print garden reports.
+
 **Photos.** Photos you attach to plants are stored on your device by default, or in a Dropbox folder you choose if you connect Dropbox. A small, low-resolution thumbnail of each plant's main photo is synced to the app's cloud backend with the plant, so it can be shown on your other devices and to people you share the garden with. Full-size photos are never uploaded to Sage Garden's backend.
 
 **Location.** If you set a garden address, the address and its coordinates are stored with the garden and synced to the app's cloud backend (so everyone sharing the garden sees it in the right place). Address searches are sent to Google's Places/Geocoding APIs to turn them into coordinates. The garden's coordinates are sent to Open-Meteo to fetch the weather forecast for weather-aware reminders and frost warnings. If you grant location permission, your device's location is used to help place plants on the map; it isn't stored separately.
@@ -25,7 +27,7 @@ Sage Garden ("the app") is a personal garden-tracking app developed by Sage Gard
 ## Who your data is shared with
 
 - **Google Firebase / Google Cloud** — hosts the app's backend: garden sync and sharing, change notifications between devices, AI request relaying, usage limits and promo codes.
-- **People you share a garden with** — see that garden's plants (with thumbnails), care history, name, address and zones, and the device names of its members.
+- **People you share a garden with** — see that garden's plants (with thumbnails), care history, name, address and zones, the owner's garden map with its irrigation lines and sun zones, and the device names of its members.
 - **Anthropic** (Claude AI) — your Sage chat messages, and plant scientific names for suggestions. See [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).
 - **Pl@ntNet** — a plant photo, when you identify a plant. See [Pl@ntNet's privacy policy](https://identify.plantnet.org/data-privacy).
 - **Google Maps / Places** — address search text and map coordinates, for maps and address lookup.
