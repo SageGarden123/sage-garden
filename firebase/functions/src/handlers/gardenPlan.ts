@@ -31,6 +31,28 @@ export interface GardenPlanDoc {
   updatedAt: number;
 }
 
+/**
+ * How the plan is actually stored. Firestore can't hold arrays directly inside arrays, and every
+ * irrigation line and sun zone is a list of [x, y] points — so paths and sun zones are stored as
+ * JSON text and turned back into arrays for callers. (Storing them as-is failed with "Property
+ * array contains an invalid nested entity".)
+ */
+interface StoredPlanDoc extends Omit<GardenPlanDoc, "paths" | "sunZones"> {
+  pathsJson: string;
+  sunZonesJson: string;
+}
+
+function toStored(plan: GardenPlanDoc): StoredPlanDoc {
+  const { paths, sunZones, ...rest } = plan;
+  return { ...rest, pathsJson: JSON.stringify(paths), sunZonesJson: JSON.stringify(sunZones) };
+}
+
+function fromStored(doc: StoredPlanDoc): GardenPlanDoc {
+  const { pathsJson, sunZonesJson, ...rest } = doc;
+  const parse = (s: string | undefined) => { try { return JSON.parse(s ?? "[]"); } catch { return []; } };
+  return { ...rest, paths: parse(pathsJson), sunZones: parse(sunZonesJson) };
+}
+
 export function planRef(db: Firestore, gardenId: string) {
   return db.collection("gardens").doc(gardenId).collection("plan").doc("current");
 }
@@ -45,6 +67,15 @@ export async function verifyMember(db: Firestore, gardenId: string, deviceId: st
   if (!snap.exists) return null;
   const member = snap.data() as MemberDoc;
   return member.status === "approved" && member.memberToken === memberToken ? member : null;
+}
+
+/** JSON with object keys sorted, so a plan read back from Firestore compares equal to the same plan re-sent. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as object).sort().map((k) => `${JSON.stringify(k)}:${stableJson((value as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function str(x: unknown): string {
@@ -96,13 +127,13 @@ export const syncGardenPlan = onRequest({ cors: false, memory: "512MiB" }, async
 
       planRev = await db.runTransaction(async (tx) => {
         const [currentSnap, signalSnap] = await Promise.all([tx.get(planRef(db, gardenId)), tx.get(signalRef(db, gardenId))]);
-        const current = currentSnap.exists ? (currentSnap.data() as GardenPlanDoc) : null;
+        const current = currentSnap.exists ? fromStored(currentSnap.data() as StoredPlanDoc) : null;
         const rev = signalSnap.exists ? ((signalSnap.data() as GardenSignalDoc).planRev ?? 0) : 0;
         const same = current !== null &&
-          JSON.stringify({ ...current, updatedAt: 0 }) === JSON.stringify({ ...next, updatedAt: 0 });
+          stableJson({ ...current, updatedAt: 0 }) === stableJson({ ...next, updatedAt: 0 });
         if (same && !image) return rev;
 
-        tx.set(planRef(db, gardenId), next);
+        tx.set(planRef(db, gardenId), toStored(next));
         if (image && imageHash) tx.set(planImageRef(db, gardenId), { data: image, hash: imageHash });
         if (!imageHash) tx.delete(planImageRef(db, gardenId));
         tx.set(signalRef(db, gardenId), { planRev: FieldValue.increment(1), updatedAt: Date.now() }, { merge: true });
@@ -111,7 +142,7 @@ export const syncGardenPlan = onRequest({ cors: false, memory: "512MiB" }, async
     }
 
     const [planSnap, signalSnap] = await Promise.all([planRef(db, gardenId).get(), signalRef(db, gardenId).get()]);
-    const plan = planSnap.exists ? (planSnap.data() as GardenPlanDoc) : null;
+    const plan = planSnap.exists ? fromStored(planSnap.data() as StoredPlanDoc) : null;
     let image: string | null = null;
     if (plan?.imageHash && plan.imageHash !== knownImageHash) {
       const imageSnap = await planImageRef(db, gardenId).get();

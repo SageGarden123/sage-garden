@@ -18,13 +18,21 @@ const empty = { plants: [], plantTombstones: [], careLog: [], careLogTombstones:
   const desktopToken = (await call("syncGarden", { deviceId: desktop, gardenId: owner, deviceName: "Desktop app", ...empty })).memberToken;
 
   // Owner pushes a plan with an image.
-  const plan = { paths: [{ id: "p1", zone: "Front", outletX: 0.1, outletY: 0.2, segments: [] }], sunZones: [], irrigationZones: ["Front"], imageHash: "h1", imageWidth: 800, imageHeight: 600 };
+  // Real shapes: segments and sun zones hold [x, y] point pairs — arrays inside arrays, which Firestore
+  // can't store directly (this is what broke the first production upload).
+  const plan = {
+    paths: [{ id: "p1", zone: "Front", outletX: 0.1, outletY: 0.2, segments: [{ type: "main", points: [[0.1, 0.2], [0.4, 0.2]], targets: [] }, { type: "sprinkler", points: [[0.5, 0.5]], radius: 0.08, targets: [] }] }],
+    sunZones: [{ id: "s1", category: "full_sun", mapType: "custom", points: [[0, 0], [1, 0], [1, 1]] }],
+    irrigationZones: ["Front"], imageHash: "h1", imageWidth: 800, imageHeight: 600,
+  };
   const pushed = await call("syncGardenPlan", { deviceId: owner, gardenId: owner, memberToken: ownerToken, plan, image: "SU1BR0U=" });
   assert.equal(pushed.planRev, 1);
 
   // A member sees it — image only when their cached hash differs.
   const pulled = await call("syncGardenPlan", { deviceId: desktop, gardenId: owner, memberToken: desktopToken });
   assert.equal(pulled.plan.irrigationZones[0], "Front");
+  assert.deepEqual(pulled.plan.paths[0].segments[0].points, [[0.1, 0.2], [0.4, 0.2]]);
+  assert.deepEqual(pulled.plan.sunZones[0].points[2], [1, 1]);
   assert.equal(pulled.image, "SU1BR0U=");
   const cached = await call("syncGardenPlan", { deviceId: desktop, gardenId: owner, memberToken: desktopToken, knownImageHash: "h1" });
   assert.equal(cached.image, null);
