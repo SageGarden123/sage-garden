@@ -411,7 +411,7 @@ fun GardenMapperApp() {
                     viewModel = viewModel, plantId = null,
                     initialLat = lat, initialLng = lng, initialMapX = mapX, initialMapY = mapY,
                     snackbarHostState = snackbarHostState, scope = scope,
-                    onDone = { navController.navigate("list") { popUpTo("map") } },
+                    onDone = { navController.navigate("list") { popUpTo(navController.graph.startDestinationId) } },
                     onCancel = { navController.popBackStack() },
                     onNavigateToPlacement = { route -> navController.navigate(route) }
                 )
@@ -424,7 +424,7 @@ fun GardenMapperApp() {
                 FormScreen(
                     viewModel = viewModel, plantId = id, initialLat = null, initialLng = null,
                     snackbarHostState = snackbarHostState, scope = scope,
-                    onDone = { navController.navigate("list") { popUpTo("map") } },
+                    onDone = { navController.navigate("list") { popUpTo(navController.graph.startDestinationId) } },
                     onCancel = { navController.popBackStack() },
                     onNavigateToPlacement = { route -> navController.navigate(route) },
                     onOpenGrowthTimeline = { navController.navigate("growth/$it") },
@@ -441,7 +441,7 @@ fun GardenMapperApp() {
                     // the user back through the form's own "Save plant" button (and its blank-name
                     // check) instead of dropping them on the list, where a plant saved mid-placement
                     // with no name yet could otherwise go unnoticed.
-                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo("map") } },
+                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo(navController.graph.startDestinationId) } },
                     startOnCustom = false
                 )
             }
@@ -449,7 +449,7 @@ fun GardenMapperApp() {
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 MapTabScreen(
                     viewModel = viewModel, onMarkerClick = { },
-                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo("map") } },
+                    placementModeForPlantId = id, onPlacementSaved = { navController.navigate("form_edit/$id") { popUpTo(navController.graph.startDestinationId) } },
                     startOnCustom = true
                 )
             }

@@ -303,6 +303,7 @@ fun DashboardScreen(viewModel: PlantViewModel, header: @Composable () -> Unit = 
             .padding(16.dp)
     ) {
         header()
+        if (allPlants.isEmpty()) return@Column
         Text(
             stringResource(R.string.home_overview), style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(top = 8.dp).semantics { heading() }
