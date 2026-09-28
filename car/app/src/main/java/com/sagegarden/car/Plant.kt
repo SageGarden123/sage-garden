@@ -90,8 +90,13 @@ data class CareStatus(val label: String, val overdue: Boolean, val dueToday: Boo
 fun careStatus(last: Long?, frequencyDays: Int?, now: Long): CareStatus? {
     val freq = frequencyDays ?: return null
     if (last == null) return CareStatus("Never — do now", overdue = true, dueToday = false)
-    val nextDue = last + freq * 86_400_000L
-    val diffDays = ((nextDue - now) / 86_400_000L).toInt()
+    // Calendar days in the local time zone, same as the phone: picked dates are stored as UTC
+    // midnight, and counting 24-hour periods showed plants as due a day early east of UTC.
+    val zone = java.time.ZoneId.systemDefault()
+    val lastDay = if (last % 86_400_000L == 0L) java.time.Instant.ofEpochMilli(last).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+        else java.time.Instant.ofEpochMilli(last).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val diffDays = java.time.temporal.ChronoUnit.DAYS.between(today, lastDay.plusDays(freq.toLong())).toInt()
     return when {
         diffDays < 0 -> CareStatus("Overdue by ${-diffDays} day(s)", overdue = true, dueToday = false)
         diffDays == 0 -> CareStatus("Due today", overdue = false, dueToday = true)

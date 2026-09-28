@@ -350,7 +350,7 @@ fun App() {
                     syncing = syncing,
                     onSyncNow = {
                         if (appState.activeGardenId == null) {
-                            scope.launch { snackbarHostState.showSnackbar("Link your phone first — enter its Install ID (on the phone: Settings → Help & about).") }
+                            scope.launch { snackbarHostState.showSnackbar("Link your phone first — enter its Install ID (on the phone: Settings → About).") }
                         } else {
                             syncing = true
                             scope.launch {
@@ -551,7 +551,7 @@ private fun Sidebar(
                 value = appState.linkedDeviceId,
                 onValueChange = { appState.updateLinkedDeviceId(it) },
                 label = { Text("Your phone's Install ID") },
-                supportingText = { Text("On the phone: Settings → Help & about") },
+                supportingText = { Text("On the phone: Settings → About") },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Button(onClick = onSyncNow, enabled = !syncing, modifier = Modifier.fillMaxWidth()) {

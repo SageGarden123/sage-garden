@@ -328,6 +328,7 @@ h3 { font-size: 10.5pt; color: $BRAND_DARK; margin: 12pt 0 4pt 0; }
 .band { background: #F1EEE6; border-left: 4pt solid $BRAND; padding: 8pt 10pt; margin: 10pt 0; }
 table { border-collapse: collapse; width: 100%; }
 .tiles td { width: 25%; padding: 4pt; vertical-align: top; }
+.tiles2 td { width: 50%; padding: 4pt; vertical-align: top; }
 .tile { border: 0.75pt solid #CBC6B5; border-radius: 4pt; padding: 7pt 8pt; background: #FBFAF6; }
 .tile .v { font-size: 17pt; font-weight: bold; color: $BRAND_DARK; }
 .tile .l { font-size: 7.5pt; color: #4A4739; text-transform: uppercase; letter-spacing: 0.5pt; }
@@ -354,8 +355,11 @@ private fun header(eyebrow: String, input: ReportInput, extra: String = ""): Str
 <div class="band"><b>${esc(season.name)}</b> — ${esc(season.growingPeriod)}${if (extra.isNotBlank()) "<br/>$extra" else ""}</div>"""
 }
 
-private fun embedSvg(svg: String, widthCss: String) =
-    """<div style="width: $widthCss;">${svg.replaceFirst("<svg ", "<svg style=\"width: 100%; height: auto;\" ")}</div>"""
+/** Maps go into PDFs as a high-resolution PNG (rendered from the same SVG) — reliable in the PDF renderer and crisp in print. */
+private fun embedSvg(svg: String, widthCss: String, pixelWidth: Float = 2200f): String {
+    val png = Base64.getEncoder().encodeToString(renderPngBytes(svg, pixelWidth))
+    return """<img src="data:image/png;base64,$png" style="width: $widthCss;" alt="Garden map"/>"""
+}
 
 /** The holistic garden report: at a glance, garden health, and the full garden map with its index. */
 fun gardenReportXhtml(input: ReportInput): String {
@@ -379,10 +383,10 @@ fun gardenReportXhtml(input: ReportInput): String {
 
     val thumb = mapSvg(input, MapOptions(width = 600, numbered = false, showLegend = false))
     val glance = """<table><tr><td style="width: 62%; vertical-align: top; padding-right: 8pt;">
-<table class="tiles"><tr>${tile(plants.size, "Plants")}${tile(plants.sumOf { max(it.qty, 1) }, "Individual plants")}</tr>
+<table class="tiles2"><tr>${tile(plants.size, "Unique plants")}${tile(plants.sumOf { max(it.qty, 1) }, "Individual plants")}</tr>
 <tr>${tile(varieties, "Varieties")}${tile(zones.size, "Garden zones")}</tr>
 <tr>${tile(irrigationZones.size, "Irrigation zones")}${tile(needsAttention, "Need care this week")}</tr></table>
-</td><td style="vertical-align: top;">${embedSvg(thumb, "100%")}<div class="muted" style="font-size: 7.5pt; margin-top: 3pt;">Garden map — full page overleaf.</div></td></tr></table>"""
+</td><td style="vertical-align: top;">${embedSvg(thumb, "190pt", 1200f)}<div class="muted" style="font-size: 7.5pt; margin-top: 3pt;">Garden map — full page overleaf.</div></td></tr></table>"""
 
     val careDue = """<table class="tiles"><tr>${dueTile("Water", "To water")}${dueTile("Prune", "To prune")}${dueTile("Fertilise", "To fertilise")}${dueTile("Feed", "To feed")}</tr></table>
 <div class="muted" style="font-size: 8pt;">Due within the next 7 days, including anything overdue. The plant care checklist has the details.</div>"""
@@ -450,7 +454,11 @@ fun careReportXhtml(input: ReportInput, horizonDays: Int = 14): String {
 /** A one-page map export (landscape A4): title, map and legend. */
 fun mapExportXhtml(input: ReportInput, options: MapOptions): String {
     val svg = mapSvg(input, options.copy(title = null))
+    // Fit map + legend on one landscape page: about 265mm wide by 145mm tall below the heading.
+    val w = Regex("""width="(\d+)"""").find(svg)?.groupValues?.get(1)?.toDouble() ?: 1000.0
+    val h = Regex("""height="(\d+)"""").find(svg)?.groupValues?.get(1)?.toDouble() ?: 1000.0
+    val widthMm = min(265.0, 145.0 * w / h)
     val body = """<div class="eyebrow">Garden map</div><h1>${esc(input.gardenName)}</h1><div class="sub">${esc(dateFmt.format(Date(input.now)))}</div>""" +
-        embedSvg(svg, "100%")
+        """<div style="text-align: center;">${embedSvg(svg, "${"%.1f".format(Locale.US, widthMm)}mm")}</div>"""
     return page("${input.gardenName} — Garden map", body, landscape = true)
 }

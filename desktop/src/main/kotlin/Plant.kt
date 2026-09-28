@@ -87,6 +87,25 @@ data class GardenMeta(val address: String = "", val lat: Double? = null, val lng
 
 data class WateringStatus(val nextDueMillis: Long?, val label: String)
 
+/**
+ * Due dates are whole CALENDAR days in this computer's time zone (same as the phone). Dates picked in
+ * the app are stored as UTC midnight; counting 24-hour periods from that showed plants as due a day
+ * early east of UTC. Anything not exactly UTC midnight is a real moment, read in local time.
+ */
+fun careDateToLocalDate(millis: Long): java.time.LocalDate =
+    if (millis % 86_400_000L == 0L) java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+    else java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+private fun localDateOf(millis: Long) = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+fun daysUntil(dueMillis: Long, nowMillis: Long = System.currentTimeMillis()): Int =
+    java.time.temporal.ChronoUnit.DAYS.between(localDateOf(nowMillis), localDateOf(dueMillis)).toInt()
+private fun nextDueMillis(lastDate: Long, frequencyDays: Int): Long =
+    careDateToLocalDate(lastDate).plusDays(frequencyDays.toLong()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+private fun dueLabel(diffDays: Int) = when {
+    diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
+    diffDays == 0 -> "Due today"
+    else -> "Due in $diffDays day(s)"
+}
+
 /** Same seasons as the phone: Dec–Feb summer / Jun–Aug winter in the south, flipped in the north; blank overrides fall back to the normal frequency. */
 fun effectiveWateringFrequencyDays(plant: Plant, nowMillis: Long, southernHemisphere: Boolean): Int? {
     val month = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }.get(java.util.Calendar.MONTH)
@@ -104,26 +123,16 @@ fun effectiveWateringFrequencyDays(plant: Plant, nowMillis: Long, southernHemisp
 fun computeWateringStatus(plant: Plant, nowMillis: Long = System.currentTimeMillis(), southernHemisphere: Boolean = true): WateringStatus? {
     val freq = effectiveWateringFrequencyDays(plant, nowMillis, southernHemisphere) ?: return null
     val last = plant.lastWateredDate ?: return WateringStatus(null, "Never watered — water now")
-    val nextDue = last + freq * 86_400_000L
-    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
-    val label = when {
-        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
-        diffDays == 0 -> "Due today"
-        else -> "Due in $diffDays day(s)"
-    }
+    val nextDue = nextDueMillis(last, freq)
+    val label = dueLabel(daysUntil(nextDue, nowMillis))
     return WateringStatus(nextDue, label)
 }
 
 private fun computeCareStatus(lastDate: Long?, frequencyDays: Int?, nowMillis: Long): WateringStatus? {
     val freq = frequencyDays ?: return null
     val last = lastDate ?: return WateringStatus(nextDueMillis = null, label = "Never — do now")
-    val nextDue = last + freq * 86_400_000L
-    val diffDays = ((nextDue - nowMillis) / 86_400_000L).toInt()
-    val label = when {
-        diffDays < 0 -> "Overdue by ${-diffDays} day(s)"
-        diffDays == 0 -> "Due today"
-        else -> "Due in $diffDays day(s)"
-    }
+    val nextDue = nextDueMillis(last, freq)
+    val label = dueLabel(daysUntil(nextDue, nowMillis))
     return WateringStatus(nextDueMillis = nextDue, label = label)
 }
 
