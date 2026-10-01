@@ -75,3 +75,18 @@ compose.desktop {
         }
     }
 }
+
+// jpackage's own English installer text says "The folder … already exist" (a typo in the JDK).
+// See packaging/fix-msi-text.ps1 for why it's patched in the built MSI rather than overridden.
+tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+    if (name == "packageMsi" || name == "packageReleaseMsi") {
+        val script = layout.projectDirectory.file("packaging/fix-msi-text.ps1").asFile
+        doLast {
+            destinationDir.get().asFile.listFiles { f -> f.extension == "msi" }?.forEach { msi ->
+                val result = ProcessBuilder("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.absolutePath, "-Msi", msi.absolutePath)
+                    .inheritIO().start().waitFor()
+                if (result != 0) logger.warn("Couldn't fix the installer text in ${msi.name} (exit $result) — the MSI still works.")
+            }
+        }
+    }
+}
