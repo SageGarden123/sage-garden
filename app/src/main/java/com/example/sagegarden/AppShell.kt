@@ -208,7 +208,7 @@ fun GardenMapperApp() {
     LaunchedEffect(ActiveGardenState.activeGardenId) {
         val gardenId = effectiveGardenId(context)
         val db = AppDatabase.getInstance(context)
-        combine(db.plantDao().syncFingerprint(gardenId), db.careLogDao().syncFingerprint(gardenId)) { p, c -> "$p|$c" }
+        GardenSyncClient.localFingerprint(db, gardenId)
             .debounce(1_500L)
             .collect { fingerprint ->
                 if (fingerprint != GardenSyncClient.lastSyncedFingerprint(gardenId)) {

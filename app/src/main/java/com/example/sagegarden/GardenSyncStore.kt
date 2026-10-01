@@ -9,6 +9,7 @@ data class SyncTombstone(val id: String, val deletedAt: Long)
 private const val SYNC_PREFS = "garden_mapper_sync_prefs"
 private const val KEY_PLANT_TOMBSTONES = "plant_tombstones"
 private const val KEY_CARE_LOG_TOMBSTONES = "care_log_tombstones"
+private const val KEY_PHOTO_TOMBSTONES = "photo_tombstones"
 private const val KEY_LAST_SYNCED_AT = "garden_last_synced_at"
 
 /**
@@ -67,6 +68,15 @@ object GardenSyncStore {
         setTombstones(context, scopedKey(KEY_CARE_LOG_TOMBSTONES, gardenId), tombstones)
     fun recordCareLogDeleted(context: Context, gardenId: String, id: String) =
         addTombstone(context, scopedKey(KEY_CARE_LOG_TOMBSTONES, gardenId), id)
+
+    /** One shared set for all three photo tables (extra / progress / growth) — they sync as one
+     * "photos" collection, and their ids are UUID-based so they can't collide across kinds. */
+    fun getPhotoTombstones(context: Context, gardenId: String): List<SyncTombstone> =
+        getTombstones(context, scopedKey(KEY_PHOTO_TOMBSTONES, gardenId))
+    fun setPhotoTombstones(context: Context, gardenId: String, tombstones: List<SyncTombstone>) =
+        setTombstones(context, scopedKey(KEY_PHOTO_TOMBSTONES, gardenId), tombstones)
+    fun recordPhotoDeleted(context: Context, gardenId: String, id: String) =
+        addTombstone(context, scopedKey(KEY_PHOTO_TOMBSTONES, gardenId), id)
 
     /** The gardenSignals rev this device's local copy of [gardenId] is current as of — see RealtimeGardenSync. */
     fun getSignalRev(context: Context, gardenId: String): Long = prefs(context).getLong(scopedKey("signal_rev", gardenId), -1L)

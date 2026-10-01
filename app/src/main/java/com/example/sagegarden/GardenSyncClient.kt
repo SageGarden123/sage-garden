@@ -8,6 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -66,6 +68,17 @@ object GardenSyncClient {
     // sync's own merge writes (which change the fingerprint too) avoid triggering another sync.
     private val lastSyncedFingerprints = ConcurrentHashMap<String, String>()
     fun lastSyncedFingerprint(gardenId: String): String? = lastSyncedFingerprints[gardenId]
+
+    /** Everything that syncs for [gardenId] — plants, care log and all three photo tables — so an edit to any of them triggers a sync. */
+    fun localFingerprint(db: AppDatabase, gardenId: String): Flow<String> = combine(
+        db.plantDao().syncFingerprint(gardenId), db.careLogDao().syncFingerprint(gardenId),
+        db.extraPhotoDao().syncFingerprint(gardenId), db.locationPhotoDao().syncFingerprint(gardenId), db.growthPhotoDao().syncFingerprint(gardenId)
+    ) { parts -> parts.joinToString("|") }
+
+    suspend fun localFingerprintOnce(db: AppDatabase, gardenId: String): String = listOf(
+        db.plantDao().syncFingerprintOnce(gardenId), db.careLogDao().syncFingerprintOnce(gardenId),
+        db.extraPhotoDao().syncFingerprintOnce(gardenId), db.locationPhotoDao().syncFingerprintOnce(gardenId), db.growthPhotoDao().syncFingerprintOnce(gardenId)
+    ).joinToString("|")
 
     private fun jsonBody(json: JSONObject) =
         json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -150,6 +163,27 @@ object GardenSyncClient {
         updatedAt = o.optLong("updatedAt", 0L)
     )
 
+    // ---- Photos -------------------------------------------------------------------------------
+    // Extra, progress (zone) and growth-timeline photos sync as ONE "photos" collection, told apart
+    // by "kind". Only http(s) — i.e. Dropbox-uploaded — photos are ever sent: a content:// URI points
+    // at this phone's own storage and is useless to any other device. A phone-local photo starts
+    // syncing once it's uploaded (updateUri bumps its updatedAt).
+
+    private fun isShareableUri(uri: String) = uri.startsWith("http://") || uri.startsWith("https://")
+
+    private fun extraPhotoToJson(p: ExtraPhotoEntity) = JSONObject().apply {
+        put("id", p.id); put("kind", "extra"); put("plantId", p.plantId); put("uri", p.uri)
+        put("label", p.label); put("takenAt", p.addedAt); put("updatedAt", p.updatedAt)
+    }
+    private fun progressPhotoToJson(p: LocationPhotoEntity) = JSONObject().apply {
+        put("id", p.id); put("kind", "progress"); put("location", p.location); put("uri", p.uri)
+        put("label", p.label); put("takenAt", p.takenAt); put("updatedAt", p.updatedAt)
+    }
+    private fun growthPhotoToJson(p: GrowthPhotoEntity) = JSONObject().apply {
+        put("id", p.id); put("kind", "growth"); put("plantId", p.plantId); put("uri", p.uri)
+        put("label", p.label); put("takenAt", p.takenAt); put("updatedAt", p.updatedAt)
+    }
+
     private fun tombstonesToJson(tombstones: List<SyncTombstone>): JSONArray {
         val arr = JSONArray()
         tombstones.forEach { arr.put(JSONObject().put("id", it.id).put("deletedAt", it.deletedAt)) }
@@ -213,6 +247,12 @@ object GardenSyncClient {
                 put("plantTombstones", tombstonesToJson(GardenSyncStore.getPlantTombstones(context, gardenId)))
                 put("careLog", JSONArray(careLogDao.getAllOnceForGarden(gardenId).map { careLogToJson(it) }))
                 put("careLogTombstones", tombstonesToJson(GardenSyncStore.getCareLogTombstones(context, gardenId)))
+                put("photos", JSONArray().apply {
+                    db.extraPhotoDao().getAllOnceForGarden(gardenId).filter { isShareableUri(it.uri) }.forEach { put(extraPhotoToJson(it)) }
+                    db.locationPhotoDao().getAllOnceForGarden(gardenId).filter { isShareableUri(it.uri) }.forEach { put(progressPhotoToJson(it)) }
+                    db.growthPhotoDao().getAllOnceForGarden(gardenId).filter { isShareableUri(it.uri) }.forEach { put(growthPhotoToJson(it)) }
+                })
+                put("photoTombstones", tombstonesToJson(GardenSyncStore.getPhotoTombstones(context, gardenId)))
                 // The garden address/coordinates/zones are basic shared context (unlike the custom map
                 // image or irrigation setup, which stay device-local) — pushed here so a view-only
                 // member who never set their own address for this garden still sees where it actually
@@ -269,6 +309,8 @@ object GardenSyncClient {
                 val mergedCareLogArr = json.getJSONArray("careLog")
                 val plantTombstones = jsonToTombstones(json.getJSONArray("plantTombstones"))
                 val careLogTombstones = jsonToTombstones(json.getJSONArray("careLogTombstones"))
+                val mergedPhotosArr = json.optJSONArray("photos")
+                val photoTombstones = json.optJSONArray("photoTombstones")?.let { jsonToTombstones(it) }
                 // One transaction for the whole merge, not one commit per row — Room's live Flow
                 // (e.g. the Dashboard's plant count) re-queries and emits on every individual
                 // upsert/delete, so a large garden's merge was visibly observable mid-flight as a
@@ -303,9 +345,44 @@ object GardenSyncClient {
                         careLogDao.upsert(entry)
                     }
                     careLogTombstones.forEach { if (it.id !in mergedCareLogIds) careLogDao.deleteById(it.id) }
+
+                    // Absent from a server that predates photo sync — leave local photos (and their
+                    // tombstones) entirely alone rather than treating that as "everything deleted".
+                    if (mergedPhotosArr != null && photoTombstones != null) {
+                        val extraDao = db.extraPhotoDao(); val progressDao = db.locationPhotoDao(); val growthDao = db.growthPhotoDao()
+                        val mergedPhotoIds = mutableSetOf<String>()
+                        for (i in 0 until mergedPhotosArr.length()) {
+                            val o = mergedPhotosArr.getJSONObject(i)
+                            val id = o.getString("id"); val updatedAt = o.optLong("updatedAt", 0L)
+                            val takenAt = o.optLong("takenAt", updatedAt); val uri = o.optString("uri", ""); val label = o.optString("label", "")
+                            mergedPhotoIds += id
+                            when (o.optString("kind")) {
+                                "extra" -> {
+                                    val local = extraDao.getById(id)
+                                    if (local != null && local.updatedAt > updatedAt) { keptNewerLocal = true; continue }
+                                    extraDao.upsert(ExtraPhotoEntity(id, o.optString("plantId"), uri, label, takenAt, gardenId, updatedAt))
+                                }
+                                "progress" -> {
+                                    val local = progressDao.getById(id)
+                                    if (local != null && local.updatedAt > updatedAt) { keptNewerLocal = true; continue }
+                                    progressDao.upsert(LocationPhotoEntity(id, o.optString("location"), uri, label, takenAt, gardenId, updatedAt))
+                                }
+                                "growth" -> {
+                                    val local = growthDao.getById(id)
+                                    if (local != null && local.updatedAt > updatedAt) { keptNewerLocal = true; continue }
+                                    growthDao.upsert(GrowthPhotoEntity(id, o.optString("plantId"), uri, takenAt, label, gardenId, updatedAt))
+                                }
+                            }
+                        }
+                        photoTombstones.forEach {
+                            if (it.id !in mergedPhotoIds) { extraDao.deleteById(it.id); progressDao.deleteById(it.id); growthDao.deleteById(it.id) }
+                        }
+                    }
+
                     if (keptNewerLocal) lastSyncedFingerprints.remove(gardenId)
-                    else lastSyncedFingerprints[gardenId] = plantDao.syncFingerprintOnce(gardenId) + "|" + careLogDao.syncFingerprintOnce(gardenId)
+                    else lastSyncedFingerprints[gardenId] = localFingerprintOnce(db, gardenId)
                 }
+                if (photoTombstones != null) GardenSyncStore.setPhotoTombstones(context, gardenId, photoTombstones)
                 GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
                 GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
 

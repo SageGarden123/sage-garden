@@ -36,19 +36,24 @@ class ExtraPhotoViewModel(application: Application) : AndroidViewModel(applicati
                     id = "EP-${java.util.UUID.randomUUID()}",
                     plantId = plantId, uri = uri, label = label,
                     addedAt = System.currentTimeMillis(),
-                    gardenId = gardenId
+                    gardenId = gardenId,
+                    updatedAt = System.currentTimeMillis()
                 )
             )
         }
     }
 
     fun updateLabel(photo: ExtraPhotoEntity, label: String) {
-        viewModelScope.launch { dao.upsert(photo.copy(label = label)) }
+        viewModelScope.launch { dao.upsert(photo.copy(label = label, updatedAt = System.currentTimeMillis())) }
     }
 
     fun updateUri(photo: ExtraPhotoEntity, uri: String) {
-        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri, updatedAt = System.currentTimeMillis())) }
     }
 
-    fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
+    /** Records a sync tombstone first, so other devices drop it too rather than syncing it back. */
+    fun delete(id: String) = viewModelScope.launch {
+        dao.getById(id)?.let { GardenSyncStore.recordPhotoDeleted(getApplication(), it.gardenId, id) }
+        dao.deleteById(id)
+    }
 }

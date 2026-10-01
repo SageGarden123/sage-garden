@@ -115,7 +115,7 @@ object BackupHelper {
         db.growthPhotoDao().getAllOnceForGarden(backupGardenId).forEach { g ->
             val o = JSONObject()
             o.put("id", g.id); o.put("plantId", g.plantId); o.put("uri", g.uri)
-            o.put("takenAt", g.takenAt); o.put("label", g.label); o.put("gardenId", g.gardenId)
+            o.put("takenAt", g.takenAt); o.put("label", g.label); o.put("gardenId", g.gardenId); o.put("updatedAt", g.updatedAt)
             growthPhotosArr.put(o)
         }
         root.put("growthPhotos", growthPhotosArr)
@@ -124,7 +124,7 @@ object BackupHelper {
         db.extraPhotoDao().getAllOnceForGarden(backupGardenId).forEach { e ->
             val o = JSONObject()
             o.put("id", e.id); o.put("plantId", e.plantId); o.put("uri", e.uri)
-            o.put("label", e.label); o.put("addedAt", e.addedAt); o.put("gardenId", e.gardenId)
+            o.put("label", e.label); o.put("addedAt", e.addedAt); o.put("gardenId", e.gardenId); o.put("updatedAt", e.updatedAt)
             extraPhotosArr.put(o)
         }
         root.put("extraPhotos", extraPhotosArr)
@@ -133,7 +133,7 @@ object BackupHelper {
         db.locationPhotoDao().getAllOnceForGarden(backupGardenId).forEach { l ->
             val o = JSONObject()
             o.put("id", l.id); o.put("location", l.location); o.put("uri", l.uri)
-            o.put("label", l.label); o.put("takenAt", l.takenAt); o.put("gardenId", l.gardenId)
+            o.put("label", l.label); o.put("takenAt", l.takenAt); o.put("gardenId", l.gardenId); o.put("updatedAt", l.updatedAt)
             locationPhotosArr.put(o)
         }
         root.put("locationPhotos", locationPhotosArr)
@@ -358,7 +358,8 @@ object BackupHelper {
                 GrowthPhotoEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), uri = o.getString("uri"),
                     takenAt = o.getLong("takenAt"), label = o.optString("label", ""),
-                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId },
+                    updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", o.getLong("takenAt"))
                 )
             )
         }
@@ -370,7 +371,8 @@ object BackupHelper {
                 ExtraPhotoEntity(
                     id = o.getString("id"), plantId = o.getString("plantId"), uri = o.getString("uri"),
                     label = o.optString("label", ""), addedAt = o.optLong("addedAt", System.currentTimeMillis()),
-                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId },
+                    updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", o.optLong("addedAt", 0L))
                 )
             )
         }
@@ -382,7 +384,8 @@ object BackupHelper {
                 LocationPhotoEntity(
                     id = o.getString("id"), location = o.getString("location"), uri = o.getString("uri"),
                     label = o.optString("label", ""), takenAt = o.optLong("takenAt", System.currentTimeMillis()),
-                    gardenId = o.optString("gardenId", "").ifBlank { gardenId }
+                    gardenId = o.optString("gardenId", "").ifBlank { gardenId },
+                    updatedAt = if (forceFresh) System.currentTimeMillis() else o.optLong("updatedAt", o.optLong("takenAt", 0L))
                 )
             )
         }

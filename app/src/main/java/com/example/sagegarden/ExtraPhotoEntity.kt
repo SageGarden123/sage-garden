@@ -11,5 +11,6 @@ data class ExtraPhotoEntity(
     val uri: String,
     val label: String = "",
     val addedAt: Long,
-    val gardenId: String = "" // which garden this entry belongs to — blank means "not yet stamped"
+    val gardenId: String = "", // which garden this entry belongs to — blank means "not yet stamped"
+    val updatedAt: Long = 0L // last local write time — used only by GardenSyncClient's last-write-wins merge
 )

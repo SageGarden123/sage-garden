@@ -34,4 +34,13 @@ interface ExtraPhotoDao {
 
     @Query("DELETE FROM extra_photos WHERE gardenId = :gardenId")
     suspend fun deleteForGarden(gardenId: String)
+
+    @Query("SELECT * FROM extra_photos WHERE id = :id")
+    suspend fun getById(id: String): ExtraPhotoEntity?
+
+    /** See PlantDao.syncFingerprint — lets a photo edit trigger a sync just like a plant edit. */
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM extra_photos WHERE gardenId = :gardenId")
+    fun syncFingerprint(gardenId: String): Flow<String>
+    @Query("SELECT COUNT(*) || ':' || IFNULL(SUM(updatedAt), 0) FROM extra_photos WHERE gardenId = :gardenId")
+    suspend fun syncFingerprintOnce(gardenId: String): String
 }

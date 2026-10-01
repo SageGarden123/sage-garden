@@ -42,7 +42,8 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
                     id = "LP-${java.util.UUID.randomUUID()}",
                     location = location, uri = uri,
                     takenAt = takenAt, label = label,
-                    gardenId = effectiveGardenId(getApplication())
+                    gardenId = effectiveGardenId(getApplication()),
+                    updatedAt = System.currentTimeMillis()
                 )
             )
         }
@@ -65,7 +66,7 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun updateUri(photo: LocationPhotoEntity, uri: String) {
-        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri, updatedAt = System.currentTimeMillis())) }
     }
 
     /**
@@ -77,9 +78,13 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
     fun swapOrder(moving: LocationPhotoEntity, neighbour: LocationPhotoEntity, moveLater: Boolean) = viewModelScope.launch {
         val (movingAt, neighbourAt) = if (moving.takenAt != neighbour.takenAt) neighbour.takenAt to moving.takenAt
             else (neighbour.takenAt + if (moveLater) 1 else -1) to neighbour.takenAt
-        dao.upsert(moving.copy(takenAt = movingAt))
-        dao.upsert(neighbour.copy(takenAt = neighbourAt))
+        dao.upsert(moving.copy(takenAt = movingAt, updatedAt = System.currentTimeMillis()))
+        dao.upsert(neighbour.copy(takenAt = neighbourAt, updatedAt = System.currentTimeMillis()))
     }
 
-    fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
+    /** Records a sync tombstone first, so other devices drop it too rather than syncing it back. */
+    fun delete(id: String) = viewModelScope.launch {
+        dao.getById(id)?.let { GardenSyncStore.recordPhotoDeleted(getApplication(), it.gardenId, id) }
+        dao.deleteById(id)
+    }
 }

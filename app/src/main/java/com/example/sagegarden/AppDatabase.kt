@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class, ManualZoneScheduleEntity::class], version = 30, exportSchema = false)
+@Database(entities = [PlantEntity::class, WateringEvent::class, IrrigationPathEntity::class, GrowthPhotoEntity::class, CareLogEntity::class, SunZoneEntity::class, WaterFlowRateEntity::class, SageChatMessageEntity::class, ExtraPhotoEntity::class, LocationPhotoEntity::class, ManualZoneScheduleEntity::class], version = 31, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun plantDao(): PlantDao
@@ -32,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "garden_mapper.db"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context), MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, migration23To24(context), migration24To25(context), MIGRATION_25_26, migration26To27(context), MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
                     .build().also { INSTANCE = it }
             }
         }
@@ -377,5 +377,18 @@ val MIGRATION_29_30 = object : Migration(29, 30) {
         )
         db.execSQL("DROP TABLE plants")
         db.execSQL("ALTER TABLE plants_new RENAME TO plants")
+    }
+}
+/** Photo records (extra / progress / growth) now sync between devices, so — like plants and care log —
+ * they need a last-write time for the last-write-wins merge. Seeded from each photo's own date so
+ * existing rows have a sensible, non-zero value. */
+val MIGRATION_30_31 = object : Migration(30, 31) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE extra_photos ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE extra_photos SET updatedAt = addedAt")
+        db.execSQL("ALTER TABLE location_photos ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE location_photos SET updatedAt = takenAt")
+        db.execSQL("ALTER TABLE growth_photos ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE growth_photos SET updatedAt = takenAt")
     }
 }

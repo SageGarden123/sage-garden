@@ -44,7 +44,8 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
                     id = "GP-${java.util.UUID.randomUUID()}",
                     plantId = plantId, uri = uri,
                     takenAt = takenAt, label = label,
-                    gardenId = gardenId
+                    gardenId = gardenId,
+                    updatedAt = System.currentTimeMillis()
                 )
             )
         }
@@ -67,8 +68,12 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun updateUri(photo: GrowthPhotoEntity, uri: String) {
-        viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+        viewModelScope.launch { dao.upsert(photo.copy(uri = uri, updatedAt = System.currentTimeMillis())) }
     }
 
-    fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }
+    /** Records a sync tombstone first, so other devices drop it too rather than syncing it back. */
+    fun delete(id: String) = viewModelScope.launch {
+        dao.getById(id)?.let { GardenSyncStore.recordPhotoDeleted(getApplication(), it.gardenId, id) }
+        dao.deleteById(id)
+    }
 }

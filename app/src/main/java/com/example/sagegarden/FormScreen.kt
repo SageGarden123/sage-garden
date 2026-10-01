@@ -886,7 +886,12 @@ fun FormScreen(
                 // they were staged against a display ID that's about to become meaningless.
                 if (plantId == null && displayId.isNotBlank()) {
                     val extraPhotoDao = AppDatabase.getInstance(context).extraPhotoDao()
-                    scope.launch { extraPhotoDao.deleteForPlant(displayId) }
+                    scope.launch {
+                        // Tombstoned so any already uploaded to Dropbox (and so synced) go everywhere else too.
+                        extraPhotoDao.getAllOnce().filter { it.plantId == displayId }
+                            .forEach { GardenSyncStore.recordPhotoDeleted(context, it.gardenId, it.id) }
+                        extraPhotoDao.deleteForPlant(displayId)
+                    }
                 }
                 onCancel()
             },
