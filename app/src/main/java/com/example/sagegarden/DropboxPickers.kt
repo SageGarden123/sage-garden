@@ -133,8 +133,13 @@ suspend fun getDropboxDirectLink(context: Context, filePath: String): String? = 
 @Composable
 fun DropboxImagePickerDialog(
     context: Context, onDismiss: () -> Unit, onImageSelected: (String, Long?) -> Unit,
-    initialPath: String = "", onPathChanged: ((String) -> Unit)? = null
+    initialPath: String = "", onPathChanged: ((String) -> Unit)? = null,
+    /** When set, tapping images ticks them instead of picking one, and "Add" hands back every
+     * ticked image's (link, clientModified) at once. Selections survive moving between folders. */
+    onImagesSelected: ((List<Pair<String, Long?>>) -> Unit)? = null
 ) {
+    val multiSelect = onImagesSelected != null
+    val selected = remember { mutableStateMapOf<String, DropboxEntry.Image>() }
     var currentPath by remember { mutableStateOf(initialPath) }
     var currentLabel by remember { mutableStateOf(initialPath.trim('/').substringAfterLast("/").ifBlank { "Dropbox (root)" }) }
     var entries by remember { mutableStateOf<List<DropboxEntry>>(emptyList()) }
@@ -193,7 +198,9 @@ fun DropboxImagePickerDialog(
                                                 pathStack.add(currentPath to currentLabel)
                                                 currentPath = entry.path; currentLabel = entry.name
                                             }
-                                            is DropboxEntry.Image -> scope.launch {
+                                            is DropboxEntry.Image -> if (multiSelect) {
+                                                if (selected.remove(entry.path) == null) selected[entry.path] = entry
+                                            } else scope.launch {
                                                 resolving = true; error = null
                                                 val link = getDropboxDirectLink(context, entry.path)
                                                 resolving = false
@@ -214,6 +221,9 @@ fun DropboxImagePickerDialog(
                                         when (entry) { is DropboxEntry.Folder -> entry.name; is DropboxEntry.Image -> entry.name; is DropboxEntry.File -> entry.name },
                                         fontSize = 14.sp, modifier = Modifier.weight(1f)
                                     )
+                                    if (multiSelect && entry is DropboxEntry.Image) {
+                                        Checkbox(checked = entry.path in selected, onCheckedChange = null)
+                                    }
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             }
@@ -221,7 +231,33 @@ fun DropboxImagePickerDialog(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.care_cancel)) }
+                if (multiSelect) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_cancel)) }
+                        Button(
+                            enabled = selected.isNotEmpty() && !resolving,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                scope.launch {
+                                    resolving = true; error = null
+                                    val picked = mutableListOf<Pair<String, Long?>>()
+                                    // Oldest first, so photos land in the order they were taken.
+                                    selected.values.sortedBy { it.clientModified ?: Long.MAX_VALUE }.forEach { image ->
+                                        val link = getDropboxDirectLink(context, image.path)
+                                        if (link != null) { picked += link to image.clientModified; selected.remove(image.path) }
+                                    }
+                                    resolving = false
+                                    if (picked.isNotEmpty()) onImagesSelected?.invoke(picked)
+                                    // Anything still ticked couldn't be linked — keep the dialog open to say so.
+                                    if (selected.isEmpty()) onDismiss()
+                                    else error = "Couldn't get a link for ${selected.size} photo(s) — check their sharing settings in Dropbox. The others were added."
+                                }
+                            }
+                        ) { Text(stringResource(R.string.dropbox_add_selected, selected.size)) }
+                    }
+                } else {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.care_cancel)) }
+                }
             }
         }
     }
@@ -345,14 +381,35 @@ fun DropboxCsvPickerDialog(context: Context, onDismiss: () -> Unit, onFileSelect
 fun DropboxFolderPickerDialog(
     context: Context,
     onDismiss: () -> Unit,
-    onFolderSelected: (String) -> Unit
+    onFolderSelected: (String) -> Unit,
+    /** Opens here instead of the root, with working "‹ Back" breadcrumbs. [initialDisplayPath] (same
+     * segments, original capitalisation) supplies the breadcrumb labels — Dropbox paths are lowercase. */
+    initialPath: String = "",
+    initialDisplayPath: String = "",
+    /** Also receives the picked folder as a readable "Garden/Images/Back Garden" path. */
+    onFolderSelectedWithDisplayPath: ((path: String, displayPath: String) -> Unit)? = null
 ) {
-    var currentPath by remember { mutableStateOf("") }
-    var currentLabel by remember { mutableStateOf("Dropbox (root)") }
+    val initialSegments = remember { initialPath.trim('/').split("/").filter { it.isNotBlank() } }
+    val initialLabels = remember {
+        initialDisplayPath.trim('/').split("/").filter { it.isNotBlank() }.takeIf { it.size == initialSegments.size } ?: initialSegments
+    }
+    var currentPath by remember { mutableStateOf(initialPath) }
+    var currentLabel by remember { mutableStateOf(initialLabels.lastOrNull() ?: "Dropbox (root)") }
     var folders by remember { mutableStateOf<List<DropboxFolderEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    val pathStack = remember { mutableStateListOf<Pair<String, String>>() } // path, label
+    val pathStack = remember { // path, label
+        val stack = mutableStateListOf<Pair<String, String>>()
+        if (initialSegments.isNotEmpty()) {
+            stack.add("" to "Dropbox (root)")
+            var acc = ""
+            for (i in 0 until initialSegments.size - 1) {
+                acc = "$acc/${initialSegments[i]}"
+                stack.add(acc to initialLabels[i])
+            }
+        }
+        stack
+    }
 
     suspend fun load(path: String) {
         loading = true
@@ -413,7 +470,14 @@ fun DropboxFolderPickerDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.care_cancel)) }
                     Button(
-                        onClick = { onFolderSelected(currentPath); onDismiss() },
+                        onClick = {
+                            onFolderSelected(currentPath)
+                            // Root entry ("Dropbox (root)") isn't part of the path.
+                            val displayPath = (pathStack.drop(1).map { it.second } + currentLabel)
+                                .takeIf { currentPath.isNotBlank() }?.joinToString("/") ?: ""
+                            onFolderSelectedWithDisplayPath?.invoke(currentPath, displayPath)
+                            onDismiss()
+                        },
                         modifier = Modifier.weight(1f)
                     ) { Text(stringResource(R.string.dropbox_use_this_folder)) }
                 }

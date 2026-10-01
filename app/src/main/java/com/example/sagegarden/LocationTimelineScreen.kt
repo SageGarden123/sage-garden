@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,6 +36,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -90,8 +95,12 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     var pendingCameraUri by rememberSaveable(stateSaver = UriSaver) { mutableStateOf<Uri?>(null) }
     var showDropboxPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var uploadingPhotoId by remember { mutableStateOf<String?>(null) }
-    var uploadFailedId by remember { mutableStateOf<String?>(null) }
+    // Uploads run one at a time in tap order (Mutex is first-come-first-served), and a tapped photo's
+    // name is pinned until it's done — so tapping "_1" then "_2" in quick succession always gives _1
+    // and _2. Previously they ran in parallel: if _2 finished first, _1 re-numbered itself past it.
+    val uploadQueue = remember { Mutex() }
+    val queuedUploadNames = remember { mutableStateMapOf<String, String>() }
+    val uploadFailedIds = remember { mutableStateListOf<String>() }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && pendingCameraUri != null) locationViewModel.addPhoto(location, pendingCameraUri.toString())
@@ -99,11 +108,38 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { val uri = createImageUri(context); pendingCameraUri = uri; cameraLauncher.launch(uri) }
     }
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
+    // Multi-select: progress photos are often added in a batch (a season's worth at once).
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach { uri ->
             try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             locationViewModel.addPhoto(location, uri.toString())
         }
+    }
+
+    // One Dropbox upload name per not-yet-uploaded photo, numbered oldest first and continuing from
+    // the highest progress_<zone>_N already in Dropbox — so two pending photos preview _3 and _4
+    // rather than both showing _3. Recomputed whenever a photo is added, uploaded or deleted.
+    val localPhotos = remember(sorted) {
+        sorted.filter { Uri.parse(it.uri).scheme.let { s -> s != "http" && s != "https" } }
+    }
+    var uploadNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // The zone's Dropbox folder only changes via the "Dropbox folder › Change" row; bumping this re-reads it.
+    var zoneFolderVersion by remember { mutableStateOf(0) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    // Where uploads land (see uploadPhotoToDropboxAsProgressPhoto).
+    val uploadFolderName = remember(zoneFolderVersion, location) {
+        progressPhotoUploadFolder(context, location).trim('/').substringAfterLast('/').ifBlank { null }
+    }
+    LaunchedEffect(localPhotos.map { it.id }, DropboxAuthState.token, canEdit, uploadFolderName, queuedUploadNames.toMap()) {
+        // Uploaded (now a Dropbox link) or deleted photos release their pin.
+        val localIds = localPhotos.map { it.id }.toSet()
+        queuedUploadNames.keys.filter { it !in localIds }.forEach { queuedUploadNames.remove(it) }
+        // Queued photos keep their pinned names; everyone else is numbered around them.
+        val unqueued = localPhotos.filter { it.id !in queuedUploadNames }
+        val reserved = queuedUploadNames.values.mapNotNull { progressPhotoSuffixOf(it) }.toSet()
+        uploadNames = if (!canEdit || DropboxAuthState.token == null || unqueued.isEmpty()) emptyMap()
+        else previewProgressPhotoDropboxUploadNames(context, location, unqueued.size, reserved)
+            ?.let { names -> unqueued.zip(names).associate { (photo, name) -> photo.id to name } } ?: emptyMap()
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
@@ -138,6 +174,25 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                 }
             )
         }
+
+        // The zone's Dropbox folder: where its uploads go and where its Dropbox photo picker opens.
+        if (canEdit && DropboxAuthState.token != null) {
+            val folderDisplay = remember(zoneFolderVersion, location) {
+                getProgressPhotoDropboxFolderDisplay(context, location)?.takeIf { getProgressPhotoDropboxFolder(context, location)?.isNotBlank() == true }
+            }
+            val mainFolderDisplay = remember { getDropboxPhotoFolderPath(context)?.trim('/')?.ifBlank { null } ?: "Dropbox root" }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.zonephotos_dropbox_folder), fontSize = 14.sp)
+                    Text(
+                        folderDisplay ?: stringResource(R.string.zonephotos_dropbox_folder_main, mainFolderDisplay),
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showFolderPicker = true }) { Text(stringResource(R.string.zonephotos_change)) }
+            }
+        }
         Spacer(Modifier.height(14.dp))
 
         if (sorted.size >= 2) {
@@ -169,7 +224,13 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
         Text(stringResource(R.string.growth_all_photos, sorted.size), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
         val sdf = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
-        sorted.reversed().forEach { photo ->
+        val newestFirst = sorted.reversed()
+        newestFirst.forEachIndexed { index, photo ->
+            // Same-day photos can be reordered (only the date is shown, so their real order is
+            // otherwise arbitrary). Newest is on top, so "up" means later in the sequence.
+            val day = sdf.format(Date(photo.takenAt))
+            val above = newestFirst.getOrNull(index - 1)?.takeIf { sdf.format(Date(it.takenAt)) == day }
+            val below = newestFirst.getOrNull(index + 1)?.takeIf { sdf.format(Date(it.takenAt)) == day }
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -179,35 +240,49 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
                             onSuccess = { Log.d("LocationPhoto", "list thumbnail load OK for ${photo.uri}") }
                         )
                         Spacer(Modifier.width(10.dp))
-                        Text(sdf.format(Date(photo.takenAt)), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(day, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        if (canEdit && (above != null || below != null)) {
+                            IconButton(onClick = { above?.let { locationViewModel.swapOrder(photo, it, moveLater = true) } }, enabled = above != null) {
+                                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = stringResource(R.string.zonephotos_move_up))
+                            }
+                            IconButton(onClick = { below?.let { locationViewModel.swapOrder(photo, it, moveLater = false) } }, enabled = below != null) {
+                                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = stringResource(R.string.zonephotos_move_down))
+                            }
+                        }
                         if (canEdit) {
                             TextButton(onClick = { locationViewModel.delete(photo.id) }) { Text(stringResource(R.string.care_delete), fontSize = 12.sp) }
                         }
                     }
                     val localUriScheme = Uri.parse(photo.uri).scheme
                     if (canEdit && DropboxAuthState.token != null && localUriScheme != "http" && localUriScheme != "https") {
-                        var previewName by remember(photo.id) { mutableStateOf<String?>(null) }
-                        LaunchedEffect(photo.id) {
-                            previewProgressPhotoDropboxUploadName(context, location)?.let { previewName = it.removeSuffix(".jpg") }
-                        }
+                        val queuedName = queuedUploadNames[photo.id]
+                        val previewName = (queuedName ?: uploadNames[photo.id])?.removeSuffix(".jpg")
                         TextButton(
                             onClick = {
-                                uploadingPhotoId = photo.id; uploadFailedId = null
+                                val name = uploadNames[photo.id] ?: return@TextButton
+                                queuedUploadNames[photo.id] = name
+                                uploadFailedIds.remove(photo.id)
                                 scope.launch {
-                                    val link = uploadPhotoToDropboxAsProgressPhoto(context, Uri.parse(photo.uri), location)
-                                    uploadingPhotoId = null
-                                    if (link != null) locationViewModel.updateUri(photo, link) else uploadFailedId = photo.id
+                                    val link = uploadQueue.withLock {
+                                        uploadPhotoToDropboxAsProgressPhoto(context, Uri.parse(photo.uri), location, preferredName = name)
+                                    }
+                                    // On success it stays pinned until the row actually turns into a Dropbox
+                                    // link (cleared below) — unpinning now left a moment where the button
+                                    // was live again and a second tap could upload it twice.
+                                    if (link != null) locationViewModel.updateUri(photo, link)
+                                    else { uploadFailedIds.add(photo.id); queuedUploadNames.remove(photo.id) }
                                 }
                             },
-                            enabled = uploadingPhotoId != photo.id
+                            enabled = queuedName == null && uploadNames[photo.id] != null
                         ) {
                             Text(
-                                if (uploadingPhotoId == photo.id) stringResource(R.string.form_uploading)
-                                else stringResource(R.string.form_upload_to_dropbox) + (previewName?.let { " as $it" } ?: ""),
+                                if (queuedName != null) stringResource(R.string.form_uploading) + " " + queuedName.removeSuffix(".jpg")
+                                else stringResource(R.string.form_upload_to_dropbox) + (previewName?.let { " as $it" } ?: "") +
+                                    (uploadFolderName?.let { " in $it" } ?: ""),
                                 fontSize = 12.sp
                             )
                         }
-                        if (uploadFailedId == photo.id) {
+                        if (photo.id in uploadFailedIds) {
                             Text(stringResource(R.string.form_upload_failed_try_again), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -221,8 +296,22 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
         DropboxImagePickerDialog(
             context, onDismiss = { showDropboxPicker = false },
             onImageSelected = { link, clientModified -> locationViewModel.addPhoto(location, link, takenAtOverride = clientModified) },
-            initialPath = remember(location) { getProgressPhotoDropboxFolder(context, location) ?: "" },
-            onPathChanged = { path -> setProgressPhotoDropboxFolder(context, location, path) }
+            onImagesSelected = { picked -> picked.forEach { (link, clientModified) -> locationViewModel.addPhoto(location, link, takenAtOverride = clientModified) } },
+            // Opens in the zone's folder; browsing elsewhere no longer changes it (see the Change row).
+            initialPath = remember(location, zoneFolderVersion) { progressPhotoUploadFolder(context, location) }
+        )
+    }
+
+    if (showFolderPicker) {
+        DropboxFolderPickerDialog(
+            context, onDismiss = { showFolderPicker = false },
+            onFolderSelected = {},
+            initialPath = remember(location, zoneFolderVersion) { progressPhotoUploadFolder(context, location) },
+            initialDisplayPath = remember(location, zoneFolderVersion) { getProgressPhotoDropboxFolderDisplay(context, location) ?: "" },
+            onFolderSelectedWithDisplayPath = { path, displayPath ->
+                setProgressPhotoDropboxFolder(context, location, path, displayPath)
+                zoneFolderVersion++
+            }
         )
     }
 }

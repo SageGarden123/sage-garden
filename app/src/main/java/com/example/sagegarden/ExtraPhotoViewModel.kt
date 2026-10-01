@@ -33,7 +33,7 @@ class ExtraPhotoViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             dao.upsert(
                 ExtraPhotoEntity(
-                    id = "EP-${System.currentTimeMillis()}",
+                    id = "EP-${java.util.UUID.randomUUID()}",
                     plantId = plantId, uri = uri, label = label,
                     addedAt = System.currentTimeMillis(),
                     gardenId = gardenId

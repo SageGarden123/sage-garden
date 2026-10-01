@@ -381,30 +381,68 @@ fun sanitizeForDropboxFilename(raw: String): String =
  * Deliberately left with a plain numeric suffix (no letter tag) — unlike Extra/Growth photos,
  * these don't share a naming pool with anything else, so there's nothing to disambiguate from.
  */
-suspend fun previewProgressPhotoDropboxUploadName(context: Context, location: String): String? {
+private fun progressPhotoBaseName(location: String) = "progress_${sanitizeForDropboxFilename(location)}"
+
+/** Where [location]'s progress photos upload: the zone's own Dropbox folder (the one its picker last
+ * browsed, e.g. ".../Progress Photos/Back Garden"), or the main photo folder for a zone that has never
+ * had one picked. */
+fun progressPhotoUploadFolder(context: Context, location: String): String =
+    getProgressPhotoDropboxFolder(context, location)?.takeIf { it.isNotBlank() } ?: getDropboxPhotoFolderPath(context) ?: ""
+
+/**
+ * The highest N already used by a "progress_<zone>_<N>.*" file in the folder the zone uploads to, so
+ * numbering carries on from what's really there instead of filling an old gap or restarting at 1.
+ * Only that folder counts: scanning the main photo folder too made a zone start at _2 whenever an
+ * earlier build had uploaded a stray _1 there.
+ */
+private fun highestProgressPhotoSuffix(location: String, existingNames: Set<String>): Int {
+    val pattern = Regex("^${Regex.escape(progressPhotoBaseName(location))}_(\\d+)\\.[a-z0-9]+$", RegexOption.IGNORE_CASE)
+    return existingNames.mapNotNull { pattern.find(it)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0
+}
+
+private suspend fun progressPhotoFolderNames(context: Context, client: DbxClientV2, location: String): Set<String> =
+    try { listDropboxFileNames(client, progressPhotoUploadFolder(context, location)) } catch (_: Exception) { emptySet() }
+
+/** The N of a "progress_<zone>_<N>.jpg" name, or null. */
+fun progressPhotoSuffixOf(name: String): Int? = name.removeSuffix(".jpg").substringAfterLast('_').toIntOrNull()
+
+/**
+ * The next [count] upload names for [location]'s progress photos, in order — one per not-yet-uploaded
+ * photo, so several pending photos each preview their own name (_3, _4, …) rather than all showing
+ * the same next free one. Skips [reservedSuffixes] (names already promised to queued uploads) so a
+ * re-preview mid-queue can't hand out a queued photo's number again. Null when Dropbox isn't reachable.
+ */
+suspend fun previewProgressPhotoDropboxUploadNames(
+    context: Context, location: String, count: Int, reservedSuffixes: Set<Int> = emptySet()
+): List<String>? {
     return withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext null
-            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
-            val baseName = "progress_${sanitizeForDropboxFilename(location)}"
-            val existingNames = listDropboxFileNames(client, folderPath)
-            var suffix = 1
-            while ("${baseName}_$suffix.jpg" in existingNames) suffix++
-            "${baseName}_$suffix.jpg"
+            var n = highestProgressPhotoSuffix(location, progressPhotoFolderNames(context, client, location))
+            List(count) {
+                do { n++ } while (n in reservedSuffixes)
+                "${progressPhotoBaseName(location)}_$n.jpg"
+            }
         } catch (_: Exception) {
             null
         }
     }
 }
 
-/** Uploads a local progress photo to the configured Dropbox photo folder under the name
- * [previewProgressPhotoDropboxUploadName] computes for [location]. Mirrors [uploadPhotoToDropboxAsPlantId]. */
-suspend fun uploadPhotoToDropboxAsProgressPhoto(context: Context, localUri: Uri, location: String): String? {
+/** Uploads a local progress photo as [preferredName] (the name its row previewed) unless a file of that
+ * exact name already exists — then the next number past the highest — into [progressPhotoUploadFolder]
+ * so a zone's photos stay together. Keeping the preferred name even when it's below the current highest
+ * is what lets a queued _1 still land as _1 after a later-tapped _2 finished first. Mirrors
+ * [uploadPhotoToDropboxAsPlantId]. */
+suspend fun uploadPhotoToDropboxAsProgressPhoto(context: Context, localUri: Uri, location: String, preferredName: String? = null): String? {
     return withContext(Dispatchers.IO) {
         try {
             val client = getDropboxClient(context) ?: return@withContext null
-            val folderPath = getDropboxPhotoFolderPath(context) ?: ""
-            val targetName = previewProgressPhotoDropboxUploadName(context, location) ?: return@withContext null
+            val folderPath = progressPhotoUploadFolder(context, location)
+            val existing = progressPhotoFolderNames(context, client, location)
+            val taken = existing.mapTo(mutableSetOf()) { it.lowercase() }
+            val targetName = if (preferredName != null && preferredName.lowercase() !in taken) preferredName
+                else "${progressPhotoBaseName(location)}_${highestProgressPhotoSuffix(location, existing) + 1}.jpg"
 
             val bytes = resizeImageForDropboxUpload(context, localUri) ?: return@withContext null
             val filePath = "$folderPath/$targetName".replace("//", "/")
@@ -511,17 +549,27 @@ fun setIrrigationLogDropboxFolderPath(context: Context, path: String?) {
     prefs.edit().putString("irrigation_log_dropbox_folder_path", path).apply()
 }
 
-/** Remembers the last Dropbox folder browsed to for a given zone's progress photos, so reopening
- * that zone's picker starts back where you left off — keyed per zone (not shared with any other
- * zone or with the main Photos & cloud storage Dropbox folder) since different zones' reference
- * photos often live in entirely different Dropbox folders. */
+/** A zone's progress-photo Dropbox folder — where its uploads go and where its photo picker opens —
+ * keyed per zone since different zones' photos often live in different folders. Only set by the
+ * zone page's "Change" button. (It used to silently follow whatever folder the zone's photo picker
+ * last browsed; values saved that way are kept as each zone's starting folder.) */
 fun getProgressPhotoDropboxFolder(context: Context, location: String): String? {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
     return prefs.getString("progress_photo_dropbox_folder.$location", null)
 }
-fun setProgressPhotoDropboxFolder(context: Context, location: String, path: String) {
+/** [displayPath] is the same path with Dropbox's original capitalisation ([path] is lowercase), for showing to the user. */
+fun setProgressPhotoDropboxFolder(context: Context, location: String, path: String, displayPath: String) {
     val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
-    prefs.edit().putString("progress_photo_dropbox_folder.$location", path).apply()
+    prefs.edit()
+        .putString("progress_photo_dropbox_folder.$location", path)
+        .putString("progress_photo_dropbox_folder_display.$location", displayPath)
+        .apply()
+}
+/** Readable form of [getProgressPhotoDropboxFolder]; falls back to the lowercase path for a folder saved before display paths were kept. */
+fun getProgressPhotoDropboxFolderDisplay(context: Context, location: String): String? {
+    val prefs = context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE)
+    return prefs.getString("progress_photo_dropbox_folder_display.$location", null)
+        ?: getProgressPhotoDropboxFolder(context, location)?.trim('/')
 }
 
 fun getDropboxPhotoFolderPath(context: Context): String? {

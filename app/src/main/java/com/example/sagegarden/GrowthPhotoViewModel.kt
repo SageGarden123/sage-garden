@@ -41,7 +41,7 @@ class GrowthPhotoViewModel(application: Application) : AndroidViewModel(applicat
             val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(
                 GrowthPhotoEntity(
-                    id = "GP-${System.currentTimeMillis()}",
+                    id = "GP-${java.util.UUID.randomUUID()}",
                     plantId = plantId, uri = uri,
                     takenAt = takenAt, label = label,
                     gardenId = gardenId

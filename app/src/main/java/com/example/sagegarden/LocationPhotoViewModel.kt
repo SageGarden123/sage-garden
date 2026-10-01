@@ -37,7 +37,9 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
             val takenAt = takenAtOverride ?: withContext(Dispatchers.IO) { extractPhotoTakenAt(getApplication(), uri) }
             dao.upsert(
                 LocationPhotoEntity(
-                    id = "LP-${System.currentTimeMillis()}",
+                    // UUID, not a millisecond timestamp: a multi-select add saves several photos within
+                    // the same millisecond, and the colliding ids silently replaced each other.
+                    id = "LP-${java.util.UUID.randomUUID()}",
                     location = location, uri = uri,
                     takenAt = takenAt, label = label,
                     gardenId = effectiveGardenId(getApplication())
@@ -64,6 +66,19 @@ class LocationPhotoViewModel(application: Application) : AndroidViewModel(applic
 
     fun updateUri(photo: LocationPhotoEntity, uri: String) {
         viewModelScope.launch { dao.upsert(photo.copy(uri = uri)) }
+    }
+
+    /**
+     * Swaps the order of two same-day photos by exchanging their takenAt times — order is purely
+     * takenAt-based (the timeline and before/after slider both sort on it) and only the date is ever
+     * shown, so this needs no extra column. Identical times (common for a batch from Dropbox) are
+     * split by a millisecond instead, putting [moving] just after/before [neighbour].
+     */
+    fun swapOrder(moving: LocationPhotoEntity, neighbour: LocationPhotoEntity, moveLater: Boolean) = viewModelScope.launch {
+        val (movingAt, neighbourAt) = if (moving.takenAt != neighbour.takenAt) neighbour.takenAt to moving.takenAt
+            else (neighbour.takenAt + if (moveLater) 1 else -1) to neighbour.takenAt
+        dao.upsert(moving.copy(takenAt = movingAt))
+        dao.upsert(neighbour.copy(takenAt = neighbourAt))
     }
 
     fun delete(id: String) = viewModelScope.launch { dao.deleteById(id) }

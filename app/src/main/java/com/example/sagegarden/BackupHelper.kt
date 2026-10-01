@@ -227,6 +227,12 @@ object BackupHelper {
             .filterKeys { it.startsWith("progress_photo_dropbox_folder.") }
             .forEach { (k, v) -> progressPhotoFolders.put(k.removePrefix("progress_photo_dropbox_folder."), v as? String ?: "") }
         settings.put("progressPhotoDropboxFolders", progressPhotoFolders)
+        // Their readable (original-capitalisation) forms, shown on each zone's page.
+        val progressPhotoFolderDisplays = JSONObject()
+        context.getSharedPreferences("garden_mapper_prefs", Context.MODE_PRIVATE).all
+            .filterKeys { it.startsWith("progress_photo_dropbox_folder_display.") }
+            .forEach { (k, v) -> progressPhotoFolderDisplays.put(k.removePrefix("progress_photo_dropbox_folder_display."), v as? String ?: "") }
+        settings.put("progressPhotoDropboxFolderDisplays", progressPhotoFolderDisplays)
         root.put("settings", settings)
 
         val mapUri = gardenSettings.customMapUri
@@ -489,8 +495,12 @@ object BackupHelper {
                 ?.let { setIrrigationLogFolderUri(context, Uri.parse(it)) }
             s.optString("irrigationLogDropboxFolderPath", "").takeIf { it.isNotBlank() }
                 ?.let { setIrrigationLogDropboxFolderPath(context, it) }
+            val folderDisplays = s.optJSONObject("progressPhotoDropboxFolderDisplays")
             s.optJSONObject("progressPhotoDropboxFolders")?.let { obj ->
-                obj.keys().forEach { zone -> setProgressPhotoDropboxFolder(context, zone, obj.getString(zone)) }
+                obj.keys().forEach { zone ->
+                    val path = obj.getString(zone)
+                    setProgressPhotoDropboxFolder(context, zone, path, folderDisplays?.optString(zone, "")?.ifBlank { null } ?: path.trim('/'))
+                }
             }
         }
 
