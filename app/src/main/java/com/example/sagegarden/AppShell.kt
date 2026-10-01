@@ -276,7 +276,13 @@ fun GardenMapperApp() {
     LaunchedEffect(PendingNotificationState.type) {
         val type = PendingNotificationState.type
         if (type != null) {
-            navController.navigate("notification/$type")
+            // Every care reminder lands on Home, whose Today section lists what's due (with Done
+            // buttons) and flags other gardens with care due — the old per-type list screen is gone.
+            navController.navigate(TopLevelTab.HOME.route) {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
             PendingNotificationState.type = null
         }
     }
@@ -294,7 +300,13 @@ fun GardenMapperApp() {
                 val installId = getOrCreateInstallId(context)
                 GardenMembershipStore.setActiveGardenId(context, if (targetGardenId == installId) null else targetGardenId)
             }
-            navController.navigate("form_edit/$id")
+            // Land on Home rather than the plant's edit form: its Today list shows this plant with a
+            // Done button (the switch above makes sure it's the right garden's list).
+            navController.navigate(TopLevelTab.HOME.route) {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
             PendingPlantEditState.plantId = null
             PendingPlantEditState.gardenId = null
         }
@@ -505,17 +517,6 @@ fun GardenMapperApp() {
             }
             composable("sunmap") {
                 SunMapScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                "notification/{type}",
-                arguments = listOf(navArgument("type") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val notifType = backStackEntry.arguments?.getString("type") ?: "watering"
-                NotificationDetailsScreen(
-                    type = notifType,
-                    onBack = { navController.popBackStack() },
-                    onOpenZone = { location -> navController.navigate("location_photos/${Uri.encode(location)}") }
-                )
             }
             composable("growth/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { backStackEntry ->
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable

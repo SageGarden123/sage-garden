@@ -20,9 +20,6 @@
     <string name="dropbox_no_subfolders_here">No subfolders here.</string>
     <string name="dropbox_nothing_here">Nothing here.</string>
     <string name="dropbox_use_this_folder">Use this folder</string>
-    <string name="due_add_photo">Add photo ›</string>
-    <string name="due_nothing_needs_attention_right_now">Nothing needs attention right now.</string>
-    <string name="due_zones_due_a_progress_photo">Zones due a progress photo</string>
     <string name="field_ok">OK</string>
     <string name="field_pick_an_option">Pick an option</string>
     <string name="field_yyyy_mm_dd">YYYY-MM-DD</string>
