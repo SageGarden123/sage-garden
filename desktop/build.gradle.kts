@@ -45,7 +45,7 @@ compose.desktop {
             // first) or looks like the same version again (in which case Windows Installer may
             // just no-op instead of actually updating anything). Keeping it at a fixed value across
             // builds is what forced manual uninstall/reinstall for every test build so far.
-            packageVersion = "1.6.1"
+            packageVersion = "1.7.3"
 
             // jlink's automatic module detection scans compiled bytecode for module dependencies,
             // but java.net.http.HttpClient's actual implementation lives behind an internal SPI
