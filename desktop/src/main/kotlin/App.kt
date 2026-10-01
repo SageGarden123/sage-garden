@@ -44,6 +44,7 @@ sealed class Screen {
     data class PlantEdit(val plantId: String?) : Screen()
     data class CareHistory(val plantId: String) : Screen()
     data object GardenCheck : Screen()
+    data object ProgressPhotos : Screen()
     data object Reports : Screen()
 }
 
@@ -79,6 +80,8 @@ class GardenAppState {
     private var store = GardenStore(file).also { it.load() }
     val plants = mutableStateListOf<Plant>().also { it.addAll(store.plants) }
     val careLog = mutableStateListOf<CareLogEntry>().also { it.addAll(store.careLog) }
+    /** Synced from the phone, read-only here (see GardenPhoto). */
+    val photos = mutableStateListOf<GardenPhoto>().also { it.addAll(store.photos) }
     private var plantTombstones = store.plantTombstones.toMutableList()
     private var careLogTombstones = store.careLogTombstones.toMutableList()
     var filePath by mutableStateOf(file.absolutePath)
@@ -112,6 +115,7 @@ class GardenAppState {
         store = GardenStore(newFile).also { it.load() }
         plants.clear(); plants.addAll(store.plants)
         careLog.clear(); careLog.addAll(store.careLog)
+        photos.clear(); photos.addAll(store.photos)
         plantTombstones = store.plantTombstones.toMutableList()
         careLogTombstones = store.careLogTombstones.toMutableList()
         meta = store.meta
@@ -159,6 +163,7 @@ class GardenAppState {
         fresh.setPlantTombstones(plantTombstones)
         fresh.setCareLogTombstones(careLogTombstones)
         fresh.meta = meta
+        fresh.photos = photos.toList()
         fresh.save()
     }
 
@@ -264,6 +269,7 @@ class GardenAppState {
             careLog.clear(); careLog.addAll(result.careLog)
             careLogTombstones = result.careLogTombstones.toMutableList()
             meta = result.meta
+            result.photos?.let { photos.clear(); photos.addAll(it) }
             persist()
             lastSyncedAt = System.currentTimeMillis()
             GardenSyncSettings.setLastSyncedAt(lastSyncedAt)
@@ -429,7 +435,8 @@ fun App() {
                                 onSave = { appState.upsertPlant(it); screen = Screen.PlantList },
                                 onDelete = existing?.let { { appState.deletePlant(it.id); screen = Screen.PlantList } },
                                 onCancel = { screen = Screen.PlantList },
-                                onViewHistory = existing?.let { { screen = Screen.CareHistory(it.id) } }
+                                onViewHistory = existing?.let { { screen = Screen.CareHistory(it.id) } },
+                                photos = existing?.let { p -> appState.photos.filter { it.plantId == p.id } }.orEmpty()
                             )
                         }
                         is Screen.CareHistory -> {
@@ -445,6 +452,10 @@ fun App() {
                             } else screen = Screen.PlantList
                         }
                         is Screen.GardenCheck -> GardenCheckScreen(appState.plants)
+                        is Screen.ProgressPhotos -> ProgressPhotosScreen(
+                            photos = appState.photos.toList(),
+                            zones = appState.meta.zones ?: appState.plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+                        )
                         is Screen.Reports -> ReportsScreen(
                             input = appState.reportInput(),
                             fetchSatellite = { view -> withContext(Dispatchers.IO) { appState.fetchSatellite(view) } },
@@ -552,6 +563,7 @@ private fun Sidebar(
             SidebarItem(Icons.Outlined.Dashboard, "Dashboard", screen is Screen.Dashboard) { onSelect(Screen.Dashboard) }
             SidebarItem(Icons.Outlined.LocalFlorist, "Plants", screen is Screen.PlantList || screen is Screen.PlantEdit || screen is Screen.CareHistory) { onSelect(Screen.PlantList) }
             SidebarItem(Icons.Outlined.FactCheck, "Garden check", screen is Screen.GardenCheck) { onSelect(Screen.GardenCheck) }
+            SidebarItem(Icons.Outlined.PhotoLibrary, "Progress photos", screen is Screen.ProgressPhotos) { onSelect(Screen.ProgressPhotos) }
             SidebarItem(Icons.Outlined.Summarize, "Reports & map", screen is Screen.Reports) { onSelect(Screen.Reports) }
 
             Spacer(Modifier.height(16.dp))

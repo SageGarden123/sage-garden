@@ -42,7 +42,9 @@ fun PlantEditScreen(
     onSave: (Plant) -> Unit,
     onDelete: (() -> Unit)?,
     onCancel: () -> Unit,
-    onViewHistory: (() -> Unit)? = null
+    onViewHistory: (() -> Unit)? = null,
+    /** This plant's synced Extra / Growth Timeline photos (view-only — added on the phone). */
+    photos: List<GardenPhoto> = emptyList()
 ) {
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var sci by remember { mutableStateOf(existing?.sci ?: "") }
@@ -104,6 +106,8 @@ fun PlantEditScreen(
             PlantThumbnail(existing.photoUri, existing.photoThumbnailBase64, size = 96.dp, onClick = { showPhotoPreview = true })
             Spacer(Modifier.height(16.dp))
         }
+        PhotoStrip("Extra photos", photos.filter { it.kind == "extra" }.sortedBy { it.takenAt })
+        PhotoStrip("Growth timeline", photos.filter { it.kind == "growth" }.sortedBy { it.takenAt })
 
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))

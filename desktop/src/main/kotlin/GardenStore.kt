@@ -39,6 +39,19 @@ class GardenStore(private val file: File) {
             passthrough.put("settings", s)
         }
 
+    /**
+     * Photos synced from the phone (see GardenPhoto), under their own "syncedPhotos" key — NOT the
+     * phone backup's extraPhotos/locationPhotos/growthPhotos arrays, which this app passes through
+     * untouched and which hold the phone's full (partly phone-local) set in a different shape. The
+     * phone's restore ignores unknown keys, so this is safe in a file that's later restored there.
+     */
+    var photos: List<GardenPhoto>
+        get() {
+            val arr = passthrough.optJSONArray("syncedPhotos") ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { photoFromJson(it) } }
+        }
+        set(value) { passthrough.put("syncedPhotos", JSONArray(value.map { photoToJson(it) })) }
+
     fun load() {
         if (!file.exists()) {
             plants = mutableListOf()
@@ -192,6 +205,21 @@ class GardenStore(private val file: File) {
         }
         return arr
     }
+}
+
+/** Same field names as the syncGarden "photos" payload, so the sync client and the file share one shape. */
+fun photoFromJson(o: JSONObject): GardenPhoto? {
+    val id = o.optString("id", ""); val uri = o.optString("uri", "")
+    if (id.isBlank() || uri.isBlank()) return null
+    return GardenPhoto(
+        id = id, kind = o.optString("kind", ""), plantId = o.optString("plantId", ""), location = o.optString("location", ""),
+        uri = uri, label = o.optString("label", ""), takenAt = o.optLong("takenAt", 0L), updatedAt = o.optLong("updatedAt", 0L)
+    )
+}
+
+fun photoToJson(p: GardenPhoto): JSONObject = JSONObject().apply {
+    put("id", p.id); put("kind", p.kind); put("plantId", p.plantId); put("location", p.location)
+    put("uri", p.uri); put("label", p.label); put("takenAt", p.takenAt); put("updatedAt", p.updatedAt)
 }
 
 private fun JSONObject.optLongOrNull(key: String): Long? = if (isNull(key) || !has(key)) null else optLong(key)

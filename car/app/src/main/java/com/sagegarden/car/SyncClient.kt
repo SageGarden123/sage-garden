@@ -9,7 +9,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 sealed class SyncResult {
-    data class Success(val plants: List<Plant>, val gardenLat: Double?, val gardenLng: Double?, val memberToken: String?) : SyncResult()
+    data class Success(val plants: List<Plant>, val gardenLat: Double?, val gardenLng: Double?, val memberToken: String?, val photos: List<GardenPhoto>? = null) : SyncResult()
     data object NetworkError : SyncResult()
     data object ServerError : SyncResult()
     data object NotAuthorized : SyncResult()
@@ -97,7 +97,9 @@ object SyncClient {
                 // GardenSyncClient) — used here only as the map's default camera position.
                 val gardenLat = if (json.isNull("gardenLat")) null else json.optDouble("gardenLat")
                 val gardenLng = if (json.isNull("gardenLng")) null else json.optDouble("gardenLng")
-                SyncResult.Success(plants, gardenLat, gardenLng, json.optString("memberToken", "").ifBlank { null })
+                // Null when the server predates photo sync — the caller keeps its cached photos.
+                val photos = json.optJSONArray("photos")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let(::jsonToPhoto) } }
+                SyncResult.Success(plants, gardenLat, gardenLng, json.optString("memberToken", "").ifBlank { null }, photos)
             }
         } catch (_: Exception) {
             SyncResult.NetworkError

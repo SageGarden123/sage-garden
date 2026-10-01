@@ -14,7 +14,9 @@ sealed class GardenSyncResult {
         val careLogTombstones: List<SyncTombstone>,
         val memberToken: String?,
         val meta: GardenMeta,
-        val signalRev: Long?
+        val signalRev: Long?,
+        /** Null when the server predates photo sync — keep whatever photos are already stored. */
+        val photos: List<GardenPhoto>? = null
     ) : GardenSyncResult()
     data object NotAuthorized : GardenSyncResult()
     data object NetworkError : GardenSyncResult()
@@ -178,7 +180,9 @@ object GardenSyncClient {
                     lng = if (json.isNull("gardenLng")) null else json.optDouble("gardenLng"),
                     zones = json.optJSONArray("gardenLocations")?.let { a -> (0 until a.length()).map { a.getString(it) } }
                 ),
-                if (json.has("signalRev")) json.optLong("signalRev") else null
+                if (json.has("signalRev")) json.optLong("signalRev") else null,
+                // Read-only here: desktop never sends photos (they're added on the phone), only receives them.
+                json.optJSONArray("photos")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let(::photoFromJson) } }
             )
         } catch (_: Exception) {
             GardenSyncResult.NetworkError

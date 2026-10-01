@@ -62,6 +62,8 @@ private sealed class Screen {
     data object Map : Screen()
     data class PlantDetail(val id: String, val returnTo: Screen) : Screen()
     data object Settings : Screen()
+    data object ProgressPhotos : Screen()
+    data class ZonePhotos(val zone: String) : Screen()
 }
 
 private data class DashboardStat(val key: String, val label: String)
@@ -148,6 +150,7 @@ private fun CarApp() {
         }
     }
     var plants by remember { mutableStateOf(loadCachedPlants(context)) }
+    var photos by remember { mutableStateOf(loadCachedPhotos(context)) }
     var gardenLatLng by remember { mutableStateOf(getSavedGardenLatLng(context)) }
     var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -168,6 +171,7 @@ private fun CarApp() {
                     result.memberToken?.let { setMemberToken(context, gardenId, it) }
                     plants = result.plants.sortedBy { it.name.lowercase() }
                     saveCachedPlants(context, plants)
+                    result.photos?.let { photos = it; saveCachedPhotos(context, it) }
                     if (result.gardenLat != null && result.gardenLng != null) {
                         gardenLatLng = Pair(result.gardenLat, result.gardenLng)
                         setSavedGardenLatLng(context, result.gardenLat, result.gardenLng)
@@ -186,7 +190,7 @@ private fun CarApp() {
 
     LaunchedEffect(Unit) { refreshGardens(); if (gardenId.isNotBlank() && plants.isEmpty()) refresh() }
 
-    BackHandler(enabled = screen !is Screen.Dashboard) { screen = Screen.Dashboard }
+    BackHandler(enabled = screen !is Screen.Dashboard) { screen = if (screen is Screen.ZonePhotos) Screen.ProgressPhotos else Screen.Dashboard }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -196,6 +200,9 @@ private fun CarApp() {
                 actions = {
                     IconButton(onClick = { screen = if (screen is Screen.Map) Screen.Dashboard else Screen.Map }) {
                         Text("🗺️", fontSize = 18.sp)
+                    }
+                    IconButton(onClick = { screen = Screen.ProgressPhotos }) {
+                        Text("📷", fontSize = 18.sp)
                     }
                     IconButton(onClick = { refresh() }, enabled = !loading && gardenId.isNotBlank()) {
                         Text("🔄", fontSize = 18.sp)
@@ -228,7 +235,7 @@ private fun CarApp() {
                 is Screen.PlantDetail -> {
                     val plant = plants.firstOrNull { it.id == s.id }
                     if (plant != null) {
-                        PlantDetailScreen(plant = plant, onBack = { screen = s.returnTo })
+                        PlantDetailScreen(plant = plant, photos = photos.filter { it.plantId == plant.id }, onBack = { screen = s.returnTo })
                     } else {
                         screen = Screen.Dashboard
                     }
@@ -247,7 +254,7 @@ private fun CarApp() {
                     activeGardenId = gardenId,
                     onPickGarden = { id ->
                         gardenId = id; setActiveGardenId(context, id)
-                        plants = emptyList(); screen = Screen.Dashboard; refresh()
+                        plants = emptyList(); photos = emptyList(); screen = Screen.Dashboard; refresh()
                     },
                     onJoin = { code, done ->
                         scope.launch {
@@ -258,6 +265,10 @@ private fun CarApp() {
                     },
                     onBack = { screen = Screen.Dashboard }
                 )
+                is Screen.ProgressPhotos -> ProgressPhotosScreen(
+                    photos = photos, onOpenZone = { screen = Screen.ZonePhotos(it) }, onBack = { screen = Screen.Dashboard }
+                )
+                is Screen.ZonePhotos -> ZoneProgressPhotosScreen(zone = s.zone, photos = photos, onBack = { screen = Screen.ProgressPhotos })
             }
         }
     }
@@ -534,7 +545,7 @@ private fun PlantRow(plant: Plant, now: Long, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PlantDetailScreen(plant: Plant, onBack: () -> Unit) {
+private fun PlantDetailScreen(plant: Plant, photos: List<GardenPhoto>, onBack: () -> Unit) {
     val now = remember { System.currentTimeMillis() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -574,6 +585,9 @@ private fun PlantDetailScreen(plant: Plant, onBack: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(plant.notes, fontSize = 13.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        PhotoStrip("Extra photos", photos.filter { it.kind == "extra" }.sortedBy { it.takenAt })
+        PhotoStrip("Growth timeline", photos.filter { it.kind == "growth" }.sortedBy { it.takenAt })
         Spacer(Modifier.height(24.dp))
     }
 }
