@@ -1,6 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { emptyGardenDoc, mergeGarden, GardenDoc, GardenPayload, SyncRecord, Tombstone } from "../gardenSync";
+import { emptyGardenDoc, mergeGarden, normalizeGardenDoc, GardenDoc, GardenPayload, SyncRecord, Tombstone } from "../gardenSync";
 import { DeviceGardensDoc, emptyDeviceGardensDoc, generateMemberToken, MemberDoc, MemberPermission, MemberRole } from "../gardenMembers";
 import { GardenSignalDoc, readerRef, signalRef, verifiedListenerUid } from "../gardenSignals";
 import { hasInlineThumbs, joinThumbs, splitThumbs, thumbBucketRef, ThumbBuckets } from "../gardenThumbs";
@@ -12,6 +12,16 @@ const MAX_ITEMS = 2000;
 
 function isValidRecord(x: unknown): x is SyncRecord {
   return !!x && typeof x === "object" && typeof (x as SyncRecord).id === "string" && typeof (x as SyncRecord).updatedAt === "number";
+}
+
+const PHOTO_KINDS = new Set(["extra", "progress", "growth"]);
+
+/** A photo must be a known kind with an http(s) link — a device-local content:// URI is meaningless
+ * to every other device, so it's never stored (the phone only sends Dropbox-uploaded photos anyway). */
+function isValidPhoto(x: unknown): x is SyncRecord {
+  if (!isValidRecord(x)) return false;
+  const p = x as SyncRecord & { kind?: unknown; uri?: unknown };
+  return typeof p.kind === "string" && PHOTO_KINDS.has(p.kind) && typeof p.uri === "string" && /^https?:\/\//.test(p.uri);
 }
 
 function isValidTombstone(x: unknown): x is Tombstone {
@@ -75,6 +85,9 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
   const rawPlantTombstones = Array.isArray(req.body?.plantTombstones) ? req.body.plantTombstones : [];
   const rawCareLog = Array.isArray(req.body?.careLog) ? req.body.careLog : [];
   const rawCareLogTombstones = Array.isArray(req.body?.careLogTombstones) ? req.body.careLogTombstones : [];
+  // Photo records (extra / progress / growth — see GardenPayload.photos). Absent from older clients.
+  const rawPhotos = Array.isArray(req.body?.photos) ? req.body.photos : [];
+  const rawPhotoTombstones = Array.isArray(req.body?.photoTombstones) ? req.body.photoTombstones : [];
 
   // Unlike the custom map image / irrigation setup (deliberately kept device-local — see
   // isOwnerOfActiveGarden in the Android client), the garden's address/coordinates are basic
@@ -98,7 +111,7 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
         .slice(0, 200)
     : null;
 
-  if (rawPlants.length > MAX_ITEMS || rawCareLog.length > MAX_ITEMS) {
+  if (rawPlants.length > MAX_ITEMS || rawCareLog.length > MAX_ITEMS || rawPhotos.length > MAX_ITEMS) {
     res.status(400).json({ error: "too_many_items" });
     return;
   }
@@ -108,8 +121,10 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
     plantTombstones: rawPlantTombstones.filter(isValidTombstone),
     careLog: rawCareLog.filter(isValidRecord),
     careLogTombstones: rawCareLogTombstones.filter(isValidTombstone),
+    photos: rawPhotos.filter(isValidPhoto),
+    photoTombstones: rawPhotoTombstones.filter(isValidTombstone),
   };
-  const emptyPayload: GardenPayload = { plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] };
+  const emptyPayload: GardenPayload = { plants: [], plantTombstones: [], careLog: [], careLogTombstones: [], photos: [], photoTombstones: [] };
 
   const db = getFirestore();
   const gardenRef = db.collection("gardens").doc(gardenId);
@@ -185,7 +200,8 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
         tx.set(deviceGardensRef, deviceDoc);
       }
 
-      const stored: GardenDoc = gardenSnap.exists ? (gardenSnap.data() as GardenDoc) : emptyGardenDoc();
+      // Normalised so a garden stored before photo sync existed reads as "no photos" rather than as a change.
+      const stored: GardenDoc = gardenSnap.exists ? normalizeGardenDoc(gardenSnap.data() as Partial<GardenDoc>) : emptyGardenDoc();
       const migratingInlineThumbs = hasInlineThumbs(stored.plants);
       stored.plants = joinThumbs(stored.plants, storedBuckets);
       const result = mergeGarden(stored, permission === "read" ? emptyPayload : incoming);
@@ -240,7 +256,10 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       // had changed. mergeGarden keeps stored records by reference and in their original key order,
       // so an unchanged merge serializes identically; a false "changed" only costs one extra write
       // and one extra signal, never a missed change.
-      const storedData = { plants: stored.plants, plantTombstones: stored.plantTombstones, careLog: stored.careLog, careLogTombstones: stored.careLogTombstones };
+      const storedData = {
+        plants: stored.plants, plantTombstones: stored.plantTombstones, careLog: stored.careLog, careLogTombstones: stored.careLogTombstones,
+        photos: stored.photos, photoTombstones: stored.photoTombstones,
+      };
       const changed = !gardenSnap.exists || needsMetaStamp || migratingInlineThumbs ||
         JSON.stringify(newBucketIds) !== JSON.stringify(usedBuckets) ||
         JSON.stringify(result) !== JSON.stringify(storedData) ||
@@ -287,6 +306,8 @@ export const syncGarden = onRequest({ cors: false }, async (req, res) => {
       plantTombstones: Object.entries(outcome.result.plantTombstones).map(([id, deletedAt]) => ({ id, deletedAt })),
       careLog: Object.values(outcome.result.careLog),
       careLogTombstones: Object.entries(outcome.result.careLogTombstones).map(([id, deletedAt]) => ({ id, deletedAt })),
+      photos: Object.values(outcome.result.photos),
+      photoTombstones: Object.entries(outcome.result.photoTombstones).map(([id, deletedAt]) => ({ id, deletedAt })),
       gardenAddress: outcome.responseGardenAddress,
       gardenLat: outcome.responseGardenLat,
       gardenLng: outcome.responseGardenLng,

@@ -26,6 +26,11 @@ export interface GardenPayload {
   plantTombstones: Tombstone[];
   careLog: SyncRecord[];
   careLogTombstones: Tombstone[];
+  /** Extra / progress (zone) / growth-timeline photo records, told apart by their `kind` field.
+   * Only Dropbox-linked photos are ever sent (a phone-local image can't be shown anywhere else),
+   * and clients that predate photo sync simply send none — which merges as "no change". */
+  photos: SyncRecord[];
+  photoTombstones: Tombstone[];
 }
 
 export interface GardenDoc {
@@ -33,10 +38,25 @@ export interface GardenDoc {
   plantTombstones: Record<string, number>;
   careLog: Record<string, SyncRecord>;
   careLogTombstones: Record<string, number>;
+  photos: Record<string, SyncRecord>;
+  photoTombstones: Record<string, number>;
 }
 
 export function emptyGardenDoc(): GardenDoc {
-  return { plants: {}, plantTombstones: {}, careLog: {}, careLogTombstones: {} };
+  return { plants: {}, plantTombstones: {}, careLog: {}, careLogTombstones: {}, photos: {}, photoTombstones: {} };
+}
+
+/** Fills in collections a garden stored before they existed (photos, added later), so merging and
+ * change detection treat "absent" as empty rather than as a difference on every sync. */
+export function normalizeGardenDoc(doc: Partial<GardenDoc>): GardenDoc {
+  return {
+    plants: doc.plants ?? {},
+    plantTombstones: doc.plantTombstones ?? {},
+    careLog: doc.careLog ?? {},
+    careLogTombstones: doc.careLogTombstones ?? {},
+    photos: doc.photos ?? {},
+    photoTombstones: doc.photoTombstones ?? {},
+  };
 }
 
 function mergeCollection(
@@ -72,10 +92,13 @@ function mergeCollection(
 export function mergeGarden(stored: GardenDoc, incoming: GardenPayload): GardenDoc {
   const plantsMerge = mergeCollection(stored.plants, stored.plantTombstones, incoming.plants, incoming.plantTombstones);
   const careLogMerge = mergeCollection(stored.careLog, stored.careLogTombstones, incoming.careLog, incoming.careLogTombstones);
+  const photosMerge = mergeCollection(stored.photos ?? {}, stored.photoTombstones ?? {}, incoming.photos ?? [], incoming.photoTombstones ?? []);
   return {
     plants: plantsMerge.items,
     plantTombstones: plantsMerge.tombstones,
     careLog: careLogMerge.items,
     careLogTombstones: careLogMerge.tombstones,
+    photos: photosMerge.items,
+    photoTombstones: photosMerge.tombstones,
   };
 }

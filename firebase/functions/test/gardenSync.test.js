@@ -2,10 +2,10 @@
 // Run with `npm test` — builds first, then uses Node's built-in test runner.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mergeGarden, emptyGardenDoc } = require("../lib/gardenSync.js");
+const { mergeGarden, emptyGardenDoc, normalizeGardenDoc } = require("../lib/gardenSync.js");
 
 const plant = (id, updatedAt, extra = {}) => ({ id, updatedAt, name: `Plant ${id}`, ...extra });
-const payload = (over = {}) => ({ plants: [], plantTombstones: [], careLog: [], careLogTombstones: [], ...over });
+const payload = (over = {}) => ({ plants: [], plantTombstones: [], careLog: [], careLogTombstones: [], photos: [], photoTombstones: [], ...over });
 
 test("newer edit wins, older edit is ignored", () => {
   const stored = { ...emptyGardenDoc(), plants: { P1: plant("P1", 100, { name: "Old" }) } };
@@ -58,4 +58,30 @@ test("plants and care log merge independently", () => {
   }));
   assert.deepEqual(Object.keys(result.plants), ["P1"]);
   assert.deepEqual(Object.keys(result.careLog), ["C1"]);
+});
+
+const photo = (id, updatedAt, extra = {}) => ({ id, updatedAt, kind: "progress", location: "Back Garden", uri: `https://dl.dropboxusercontent.com/${id}.jpg`, takenAt: 1, ...extra });
+
+test("photos merge last-write-wins with tombstones, like plants", () => {
+  const stored = { ...emptyGardenDoc(), photos: { LP1: photo("LP1", 100) } };
+  const added = mergeGarden(stored, payload({ photos: [photo("LP2", 110, { kind: "extra", plantId: "P1" })] }));
+  assert.deepEqual(Object.keys(added.photos).sort(), ["LP1", "LP2"]);
+  const deleted = mergeGarden(added, payload({ photoTombstones: [{ id: "LP1", deletedAt: 150 }] }));
+  assert.equal(deleted.photos.LP1, undefined);
+  assert.equal(deleted.photoTombstones.LP1, 150);
+});
+
+test("a client that predates photo sync (no photos keys at all) leaves stored photos untouched", () => {
+  const stored = { ...emptyGardenDoc(), photos: { LP1: photo("LP1", 100) } };
+  const { photos, photoTombstones, ...legacyPayload } = payload();
+  const result = mergeGarden(stored, legacyPayload);
+  assert.deepEqual(result.photos, stored.photos);
+});
+
+test("a garden stored before photos existed normalises to empty photos, so an unchanged merge is still identical", () => {
+  const legacyStored = { plants: { P1: plant("P1", 100) }, plantTombstones: {}, careLog: {}, careLogTombstones: {} };
+  const stored = normalizeGardenDoc(legacyStored);
+  assert.deepEqual(stored.photos, {});
+  const same = mergeGarden(stored, payload({ plants: [plant("P1", 100)] }));
+  assert.equal(JSON.stringify(same), JSON.stringify(stored));
 });

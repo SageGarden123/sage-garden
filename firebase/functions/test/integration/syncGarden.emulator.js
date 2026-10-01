@@ -2,10 +2,10 @@
 //   firebase emulators:exec --only functions,firestore --project demo-sage "node test/integration/syncGarden.emulator.js"
 // Covers: thumbnails bucketed out of the garden doc, full records returned, no-op syncs don't
 // write or bump the change signal, pre-bucket (inline) gardens migrate, and deletes really
-// remove plants from storage.
+// remove plants from storage, and photo records sync (and survive photo-less clients).
 const assert = require("node:assert/strict");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
 const PROJECT = process.env.GCLOUD_PROJECT || "demo-sage";
 const URL = `http://127.0.0.1:5001/${PROJECT}/us-central1/syncGarden`;
@@ -72,6 +72,36 @@ async function sync(body) {
   await sync({ deviceId: desktopId, gardenId: deviceId, memberToken: joined.memberToken, plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] });
   const phoneTokenAfter = (await db.collection("gardens").doc(deviceId).collection("members").doc(deviceId).get()).data().memberToken;
   assert.equal(phoneTokenAfter, phoneTokenBefore, "phone's token untouched by desktop syncs");
+
+  // 6. Photos: Dropbox-linked photos sync; phone-local content:// ones and unknown kinds are dropped.
+  const photo = (id, updatedAt, extra = {}) => ({ id, updatedAt, kind: "progress", location: "Back Garden", uri: `https://dl.dropboxusercontent.com/${id}.jpg`, takenAt: 5, label: "", ...extra });
+  const withPhotos = await sync({
+    ...base, memberToken: token, plants: [],
+    photos: [photo("LP-1", 20), photo("EP-1", 21, { kind: "extra", plantId: "P0001", location: undefined }),
+      photo("LP-local", 22, { uri: "content://media/external/images/1" }), photo("XX-1", 23, { kind: "bogus" })],
+    photoTombstones: [],
+  });
+  assert.deepEqual(withPhotos.photos.map((p) => p.id).sort(), ["EP-1", "LP-1"], "only valid shareable photos stored");
+  const revWithPhotos = withPhotos.signalRev;
+
+  // 7. A client that predates photo sync (desktop / car / older phone — no photos keys) neither wipes
+  //    them nor counts as a change.
+  const legacyClient = await sync({ ...base, memberToken: token, plants: [] });
+  assert.deepEqual(legacyClient.photos.map((p) => p.id).sort(), ["EP-1", "LP-1"], "photos survive a photo-less sync");
+  assert.equal(legacyClient.signalRev, revWithPhotos, "photo-less no-op sync must not bump the change signal");
+
+  // 8. A photo delete removes it and is not resurrected by a device still holding the old copy.
+  await sync({ ...base, memberToken: token, plants: [], photos: [], photoTombstones: [{ id: "LP-1", deletedAt: 30 }] });
+  const stale = await sync({ ...base, memberToken: token, plants: [], photos: [photo("LP-1", 20)], photoTombstones: [] });
+  assert.deepEqual(stale.photos.map((p) => p.id), ["EP-1"], "deleted photo stays deleted");
+
+  // 9. A garden stored before photo sync existed (no photos fields) must not be rewritten on its
+  //    next no-op sync — otherwise deploying this would write every garden once per open app.
+  const legacyRevBefore = (await sync({ deviceId: legacyId, gardenId: legacyId, memberToken: legacy.memberToken, plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] })).signalRev;
+  await db.collection("gardens").doc(legacyId).update({ photos: FieldValue.delete(), photoTombstones: FieldValue.delete() });
+  const legacyAfter = await sync({ deviceId: legacyId, gardenId: legacyId, memberToken: legacy.memberToken, plants: [], plantTombstones: [], careLog: [], careLogTombstones: [] });
+  assert.equal(legacyAfter.signalRev, legacyRevBefore, "pre-photo garden: no-op sync is still a no-op");
+  assert.deepEqual(legacyAfter.photos, []);
 
   console.log("syncGarden emulator integration: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });
