@@ -626,48 +626,43 @@ fun DashboardBarChart(plants: List<PlantEntity>, groupBy: String) {
         return
     }
     val maxCount = counts.maxOf { it.value }.coerceAtLeast(1)
-    val density = LocalDensity.current
-    var trackHeightPx by remember { mutableStateOf(0) }
+    // Bars sit in a row exactly one label-line tall, top-aligned, so each bar lines up with the
+    // first line of its label even when a long label wraps onto more lines.
+    // Label and count share one explicit 16sp line with the glyphs centred in it — the count used
+    // to inherit the theme's taller line height, which clipped it and pushed it off the bar's centre.
+    val chartTextStyle = MaterialTheme.typography.bodySmall.copy(
+        fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+            alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+            trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+        )
+    )
+    val firstLineHeight = with(LocalDensity.current) { chartTextStyle.lineHeight.toDp() }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(140.dp)
-                .onGloballyPositioned { trackHeightPx = it.size.height },
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            counts.forEach { entry ->
-                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
-                    // Reserve fixed px for the number+spacer above the bar, then size the bar
-                    // from whatever's left — so the number never gets squeezed out.
-                    val numberReservePx = with(density) { 18.dp.toPx() }
-                    val availablePx = (trackHeightPx - numberReservePx).coerceAtLeast(0f)
+    // Horizontal bars: labels sit on the left and wrap when long, rather than being squeezed
+    // under narrow columns (where "Verandah" used to lose its last letter to a second line).
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        counts.forEach { entry ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                // Right-aligned so each label sits snug against its bar.
+                Text(entry.key, style = chartTextStyle, textAlign = TextAlign.End, modifier = Modifier.weight(0.3f))
+                Spacer(Modifier.width(6.dp))
+                BoxWithConstraints(modifier = Modifier.weight(0.7f).heightIn(min = firstLineHeight), contentAlignment = Alignment.CenterStart) {
+                    // Reserve room for the count after the bar so it never gets squeezed out.
+                    val barMax = (maxWidth - 32.dp).coerceAtLeast(0.dp)
                     val fraction = (entry.value.toFloat() / maxCount).coerceIn(0.03f, 1f)
-                    val barHeightDp = with(density) { (availablePx * fraction).toDp() }.coerceAtLeast(3.dp)
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(entry.value.toString(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.55f)
-                                .height(barHeightDp)
-                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .width((barMax * fraction).coerceAtLeast(3.dp))
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
                                 .background(MaterialTheme.colorScheme.primary)
                         )
+                        Spacer(Modifier.width(6.dp))
+                        Text(entry.value.toString(), style = chartTextStyle, maxLines = 1, softWrap = false)
                     }
                 }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            counts.forEach { entry ->
-                Text(
-                    entry.key, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 12.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.weight(1f)
-                )
             }
         }
     }
