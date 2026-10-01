@@ -275,23 +275,36 @@ object GardenSyncClient {
                 // transient undercount (only the rows written so far) that "jumped" to the real
                 // total once the loop finished. Wrapping it means the Flow only ever sees the
                 // fully-merged before/after states, never a partial one.
+                //
+                // Never let the merge overwrite a row edited locally while the request was in flight:
+                // the payload was snapshotted before the network round-trip, so the server's copy
+                // can't include that edit. Blindly upserting it silently reverted e.g. a Home-tab
+                // "Done" tap (lastWateredDate snapped back and the plant reappeared as due), which only
+                // stuck on a second tap made outside a sync. Such a row is kept, and the fingerprint is
+                // left unrecorded so the next sync pushes it.
+                var keptNewerLocal = false
                 db.withTransaction {
                     val mergedPlantIds = mutableSetOf<String>()
                     for (i in 0 until mergedPlantsArr.length()) {
                         val plant = jsonToPlant(mergedPlantsArr.getJSONObject(i)).copy(gardenId = gardenId)
-                        plantDao.upsert(plant)
                         mergedPlantIds += plant.id
+                        val local = plantDao.getByIdForGarden(gardenId, plant.id)
+                        if (local != null && local.updatedAt > plant.updatedAt) { keptNewerLocal = true; continue }
+                        plantDao.upsert(plant)
                     }
                     plantTombstones.forEach { if (it.id !in mergedPlantIds) plantDao.deleteById(gardenId, it.id) }
 
                     val mergedCareLogIds = mutableSetOf<String>()
                     for (i in 0 until mergedCareLogArr.length()) {
                         val entry = jsonToCareLog(mergedCareLogArr.getJSONObject(i)).copy(gardenId = gardenId)
-                        careLogDao.upsert(entry)
                         mergedCareLogIds += entry.id
+                        val local = careLogDao.getById(entry.id)
+                        if (local != null && local.updatedAt > entry.updatedAt) { keptNewerLocal = true; continue }
+                        careLogDao.upsert(entry)
                     }
                     careLogTombstones.forEach { if (it.id !in mergedCareLogIds) careLogDao.deleteById(it.id) }
-                    lastSyncedFingerprints[gardenId] = plantDao.syncFingerprintOnce(gardenId) + "|" + careLogDao.syncFingerprintOnce(gardenId)
+                    if (keptNewerLocal) lastSyncedFingerprints.remove(gardenId)
+                    else lastSyncedFingerprints[gardenId] = plantDao.syncFingerprintOnce(gardenId) + "|" + careLogDao.syncFingerprintOnce(gardenId)
                 }
                 GardenSyncStore.setPlantTombstones(context, gardenId, plantTombstones)
                 GardenSyncStore.setCareLogTombstones(context, gardenId, careLogTombstones)
