@@ -95,7 +95,8 @@ class WateringReminderWorker(context: Context, params: WorkerParameters) : Corou
                 allDueProgressPhotoZones.addAll(
                     progressPhotoZonesToNotify(
                         plants, photos, now, gardenSettings.progressPhotoRemindersEnabledAt,
-                        gardenSettings.overdueRepeatEnabled, gardenSettings.overdueRepeatDays
+                        gardenSettings.overdueRepeatEnabled, gardenSettings.overdueRepeatDays,
+                        gardenSettings.progressPhotoMutedZones
                     )
                 )
             }

@@ -115,6 +115,29 @@ fun LocationTimelineScreen(location: String, onBack: () -> Unit) {
             stringResource(R.string.zonephotos_for_the_best_before_after_comparison),
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.height(8.dp))
+
+        // Per-zone opt-out: people often only track a few zones, and only want reminders for those.
+        val gardenSettings = remember(gardenId) { GardenSettings.of(context, gardenId) }
+        val remindersOn = remember(gardenId) { gardenSettings.progressPhotoRemindersEnabled }
+        var remindForZone by remember(gardenId, location) { mutableStateOf(location !in gardenSettings.progressPhotoMutedZones) }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.zonephotos_remind_me), fontSize = 14.sp)
+                Text(
+                    stringResource(if (remindersOn) R.string.zonephotos_remind_me_desc else R.string.zonephotos_reminders_off_in_settings),
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = remindForZone && remindersOn, enabled = remindersOn,
+                onCheckedChange = { on ->
+                    remindForZone = on
+                    gardenSettings.progressPhotoMutedZones =
+                        if (on) gardenSettings.progressPhotoMutedZones - location else gardenSettings.progressPhotoMutedZones + location
+                }
+            )
+        }
         Spacer(Modifier.height(14.dp))
 
         if (sorted.size >= 2) {

@@ -122,6 +122,11 @@ class GardenSettings private constructor(private val context: Context, val garde
         get() = string("progress_photo_reminders_enabled_at", "").toLongOrNull() ?: 0L
         set(value) = put("progress_photo_reminders_enabled_at", value.toString())
 
+    /** Zones opted out of progress-photo reminders (from each zone's Progress photos page) — the rest still remind. */
+    var progressPhotoMutedZones: Set<String>
+        get() = string("progress_photo_muted_zones", "").split(LOCATIONS_SEPARATOR).filter { it.isNotBlank() }.toSet()
+        set(value) = put("progress_photo_muted_zones", value.sorted().joinToString(LOCATIONS_SEPARATOR))
+
     val notificationHour: Int get() = int("notification_hour", 8)
     val notificationMinute: Int get() = int("notification_minute", 0)
     fun setNotificationTime(hour: Int, minute: Int) {

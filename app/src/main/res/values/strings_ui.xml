@@ -460,4 +460,7 @@
     <string name="zonephotos_add_at_least_2_photos_of">Add at least 2 photos of this area to compare then vs now.</string>
     <string name="zonephotos_for_the_best_before_after_comparison">For the best before/after comparison, take one photo of this whole area each season, from roughly the same spot.</string>
     <string name="zonephotos_progress_photos">Progress photos — %1$s</string>
+    <string name="zonephotos_remind_me">Remind me to photograph this zone</string>
+    <string name="zonephotos_remind_me_desc">Turn off if you don\'t track progress photos for this zone.</string>
+    <string name="zonephotos_reminders_off_in_settings">Progress photo reminders are off. Turn them on in Settings › Reminders.</string>
 </resources>

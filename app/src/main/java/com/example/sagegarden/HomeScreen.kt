@@ -94,7 +94,10 @@ private fun TodaySection(
     val showPhotoZones = FeatureVisibility.shouldShow(context, Feature.PROGRESS_PHOTOS) && GardenSettings.active(context).progressPhotoRemindersEnabled
     LaunchedEffect(plants, showPhotoZones) {
         photoZones = if (!showPhotoZones) emptyList() else
-            dueProgressPhotoZones(plants, AppDatabase.getInstance(context).locationPhotoDao().getAllOnceForGarden(effectiveGardenId(context)), now)
+            dueProgressPhotoZones(
+                plants, AppDatabase.getInstance(context).locationPhotoDao().getAllOnceForGarden(effectiveGardenId(context)), now,
+                GardenSettings.active(context).progressPhotoMutedZones
+            )
     }
 
     Text(stringResource(R.string.home_today), style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })

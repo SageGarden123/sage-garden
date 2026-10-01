@@ -121,9 +121,9 @@ fun frostTenderOutdoorPlants(plants: List<PlantEntity>): List<PlantEntity> =
 
 /** Every zone (plant location) that's gone [PROGRESS_PHOTO_REMINDER_DAYS] or more since its last
  * progress photo, or never had one at all — [photos] should already be scoped to the same garden
- * as [plants] (see LocationPhotoDao.getAllOnceForGarden). */
-fun dueProgressPhotoZones(plants: List<PlantEntity>, photos: List<LocationPhotoEntity>, now: Long): List<String> {
-    val zones = plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+ * as [plants] (see LocationPhotoDao.getAllOnceForGarden). Zones in [mutedZones] are left out. */
+fun dueProgressPhotoZones(plants: List<PlantEntity>, photos: List<LocationPhotoEntity>, now: Long, mutedZones: Set<String> = emptySet()): List<String> {
+    val zones = plants.map { it.location }.filter { it.isNotBlank() && it !in mutedZones }.distinct()
     val lastPhotoByZone = photos.groupBy { it.location }.mapValues { (_, entries) -> entries.maxOf { it.takenAt } }
     return zones.filter { zone ->
         val last = lastPhotoByZone[zone]
@@ -148,10 +148,11 @@ fun progressPhotoZonesToNotify(
     now: Long,
     enabledAt: Long,
     overdueRepeatEnabled: Boolean,
-    overdueRepeatDays: Int
+    overdueRepeatDays: Int,
+    mutedZones: Set<String> = emptySet()
 ): List<String> {
     val dayMs = 86_400_000L
-    val zones = plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+    val zones = plants.map { it.location }.filter { it.isNotBlank() && it !in mutedZones }.distinct()
     val lastPhotoByZone = photos.groupBy { it.location }.mapValues { (_, entries) -> entries.maxOf { it.takenAt } }
     return zones.filter { zone ->
         val dueAt = lastPhotoByZone[zone]?.let { it + PROGRESS_PHOTO_REMINDER_DAYS * dayMs } ?: enabledAt
