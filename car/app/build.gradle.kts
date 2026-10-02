@@ -23,8 +23,8 @@ android {
         // recent phone, both comfortably newer than this floor.
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.6"
+        versionCode = 5
+        versionName = "0.7"
         // Same Maps/Places Cloud project as the phone app (see MainActivity's app/build.gradle.kts)
         // — this app's package name + debug-keystore SHA-1 need adding to that API key's Android app
         // restrictions in Cloud Console before the map will actually load (see MainActivity.kt's own
