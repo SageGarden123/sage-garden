@@ -1,11 +1,13 @@
 package com.sagegarden.car
 
 import android.content.Context
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,11 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import org.json.JSONArray
 import org.json.JSONObject
@@ -88,14 +92,30 @@ fun saveCachedPhotos(context: Context, photos: List<GardenPhoto>) {
 
 private val photoDateFormat = SimpleDateFormat("d MMM yyyy", Locale.getDefault())
 
+/**
+ * A photo enlarged to fill the screen, scaled to fit (never cropped or taller than the display — car
+ * screens are short and wide). Tap anywhere to close. [model] is anything Coil loads (a URL), or an
+ * ImageBitmap for a plant that only has its synced thumbnail.
+ */
 @Composable
-private fun PhotoPreview(photo: GardenPhoto, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
-            AsyncImage(model = photo.uri, contentDescription = photo.label.ifBlank { null }, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+fun FullScreenPhoto(model: Any, contentDescription: String?, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onDismiss).padding(8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (model is ImageBitmap) {
+                Image(model, contentDescription = contentDescription, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            } else {
+                AsyncImage(model = model, contentDescription = contentDescription, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            }
         }
     }
 }
+
+@Composable
+private fun PhotoPreview(photo: GardenPhoto, onDismiss: () -> Unit) =
+    FullScreenPhoto(photo.uri, photo.label.ifBlank { null }, onDismiss)
 
 /** A titled, horizontally scrolling row of thumbnails; tap to enlarge. Shows nothing when [photos] is empty. */
 @Composable
@@ -120,23 +140,26 @@ fun PhotoStrip(title: String, photos: List<GardenPhoto>) {
     preview?.let { PhotoPreview(it) { preview = null } }
 }
 
-/** Then-vs-now cross-fade between a zone's progress photos, oldest to newest — mirrors the phone's slider. */
+/**
+ * Then-vs-now cross-fade between a zone's progress photos, oldest to newest — mirrors the phone's
+ * slider. The photo takes whatever height [modifier] gives it (scaled to fit, not cropped) and the
+ * slider and dates sit underneath, so the whole thing fits inside its bounds.
+ */
 @Composable
-private fun ProgressPhotoSlider(photos: List<GardenPhoto>) {
+private fun ProgressPhotoSlider(photos: List<GardenPhoto>, modifier: Modifier = Modifier) {
     if (photos.size < 2) return
     val maxIndex = (photos.size - 1).toFloat()
     var position by remember(photos.size) { mutableStateOf(maxIndex) }
     val lower = position.toInt().coerceIn(0, photos.size - 1)
     val upper = (lower + 1).coerceAtMost(photos.size - 1)
     val blend = (position - lower).coerceIn(0f, 1f)
-    Column {
-        Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(12.dp)).background(Color(0x22888888))) {
-            AsyncImage(model = photos[lower].uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    Column(modifier) {
+        Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)).background(Color(0x22888888))) {
+            AsyncImage(model = photos[lower].uri, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             if (upper != lower) {
-                AsyncImage(model = photos[upper].uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().alpha(blend))
+                AsyncImage(model = photos[upper].uri, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().alpha(blend))
             }
         }
-        Spacer(Modifier.height(8.dp))
         Slider(value = position, onValueChange = { position = it }, valueRange = 0f..maxIndex)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(photoDateFormat.format(Date(photos.first().takenAt)), fontSize = 12.sp, color = Color.Gray)
@@ -175,18 +198,39 @@ fun ProgressPhotosScreen(photos: List<GardenPhoto>, onOpenZone: (String) -> Unit
     }
 }
 
+/**
+ * The photo + slider + dates always fill exactly one screen (photo scaled to fit), so they're fully
+ * visible without scrolling on a short, wide car display; the photo list sits below, reached by
+ * scrolling down.
+ */
 @Composable
 fun ZoneProgressPhotosScreen(zone: String, photos: List<GardenPhoto>, onBack: () -> Unit) {
     val zonePhotos = remember(photos, zone) { photos.filter { it.kind == "progress" && it.location == zone }.sortedBy { it.takenAt } }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
-            Text(zone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screenHeight = maxHeight
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().height(screenHeight).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onBack) { Text("‹ Back") }
+                    Text(zone, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+                when (zonePhotos.size) {
+                    0 -> Text("No progress photos for this zone yet.", fontSize = 13.sp, color = Color.Gray)
+                    1 -> {
+                        Text("Only one photo so far — add another on the phone to compare then vs now.", fontSize = 13.sp, color = Color.Gray)
+                        Spacer(Modifier.height(8.dp))
+                        AsyncImage(
+                            model = zonePhotos[0].uri, contentDescription = null, contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxWidth().weight(1f)
+                        )
+                    }
+                    else -> ProgressPhotoSlider(zonePhotos, Modifier.weight(1f))
+                }
+            }
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                PhotoStrip("All photos", zonePhotos.reversed())
+                Spacer(Modifier.height(16.dp))
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        if (zonePhotos.size == 1) Text("Only one photo so far — add another on the phone to compare then vs now.", fontSize = 13.sp, color = Color.Gray)
-        ProgressPhotoSlider(zonePhotos)
-        Spacer(Modifier.height(12.dp))
-        PhotoStrip("All photos", zonePhotos.reversed())
     }
 }

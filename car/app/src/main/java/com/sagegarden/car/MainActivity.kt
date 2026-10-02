@@ -510,8 +510,13 @@ private fun PlantThumb(plant: Plant, size: Int) {
         }
     }
     val isHttpPhoto = plant.photoUri?.startsWith("http") == true
+    // Tapping the photo enlarges it full-screen (the full Dropbox photo when there is one, otherwise
+    // the synced thumbnail). In a list row this takes the tap, so the rest of the row still opens the plant.
+    val enlargeModel: Any? = if (isHttpPhoto) plant.photoUri else bitmap
+    var showEnlarged by remember { mutableStateOf(false) }
     Box(
-        Modifier.size(size.dp).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
+        Modifier.size(size.dp).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant)
+            .then(if (enlargeModel != null) Modifier.clickable { showEnlarged = true } else Modifier),
         contentAlignment = Alignment.Center
     ) {
         when {
@@ -520,6 +525,7 @@ private fun PlantThumb(plant: Plant, size: Int) {
             else -> Text("🌿", fontSize = (size / 2.2).sp)
         }
     }
+    if (showEnlarged && enlargeModel != null) FullScreenPhoto(enlargeModel, plant.name) { showEnlarged = false }
 }
 
 @Composable
