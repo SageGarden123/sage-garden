@@ -31,7 +31,7 @@ import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
 /** Same page as the Android app's Help → Support Sage Garden link — keep these in sync if it ever changes. */
-const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/sagegarden"
+const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/spokolabs"
 
 /** Runs [action] via java.awt.Desktop (mail client / default browser) if the current platform supports it. Returns false on any failure so the caller can show a fallback message. */
 private fun openInDesktop(action: (Desktop) -> Unit): Boolean = try {
@@ -487,9 +487,9 @@ fun App() {
                             Text("Found a bug, or have an idea for the app? We'd love to hear from you.")
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "gardenwizardry685@gmail.com", fontWeight = FontWeight.SemiBold,
+                                "spokolabs@gmail.com", fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable {
-                                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection("gardenwizardry685@gmail.com"), null)
+                                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection("spokolabs@gmail.com"), null)
                                     scope.launch { snackbarHostState.showSnackbar("Email address copied") }
                                 }
                             )

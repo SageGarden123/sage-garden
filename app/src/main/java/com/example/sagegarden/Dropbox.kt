@@ -46,7 +46,7 @@ fun clearDropboxTokens(context: Context) {
 /** Dropbox short-lived tokens last ~4 hours; refresh proactively a bit before that. */
 internal const val DROPBOX_TOKEN_REFRESH_AFTER_MS = 3L * 60 * 60 * 1000
 
-const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/sagegarden"
+const val SUPPORT_LINK_URL = "https://www.buymeacoffee.com/spokolabs"
 
 suspend fun ensureDropboxTokenFresh(context: Context) = withContext(Dispatchers.IO) {
     val refreshToken = getDropboxRefreshToken(context) ?: return@withContext

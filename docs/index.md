@@ -4,7 +4,7 @@ title: Sage Garden — Privacy Policy
 
 # Privacy Policy for Sage Garden
 
-**Last updated: 28 September 2026**
+**Last updated: 2 October 2026**
 
 Sage Garden ("the app") is a personal garden-tracking app developed by Sage Garden. This page explains what data the app collects, why, where it's stored, and who it's shared with.
 
@@ -53,4 +53,4 @@ If this policy changes, the "Last updated" date above will change accordingly.
 
 ## Contact
 
-Questions about this policy or your data: **gardenwizardry685@gmail.com**
+Questions about this policy or your data: **spokolabs@gmail.com**

@@ -128,5 +128,5 @@
     <string name="faq_wrong_hemisphere_q">Summer and winter watering seem the wrong way round.</string>
     <string name="faq_wrong_hemisphere_a">The app works out your hemisphere from the garden\'s address. Check the address is correct, or choose your hemisphere manually if you haven\'t set one.</string>
     <string name="faq_contact_q">How do I report a problem or suggest an idea?</string>
-    <string name="faq_contact_a">Email gardenwizardry685@gmail.com from Settings → About — we read everything.</string>
+    <string name="faq_contact_a">Email spokolabs@gmail.com from Settings → About — we read everything.</string>
 </resources>

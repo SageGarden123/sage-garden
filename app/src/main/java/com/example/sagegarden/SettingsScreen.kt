@@ -2523,13 +2523,13 @@ fun SettingsPageScreen(
             OutlinedButton(
                 onClick = {
                     val emailIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
-                        data = Uri.parse("mailto:gardenwizardry685@gmail.com")
+                        data = Uri.parse("mailto:spokolabs@gmail.com")
                         putExtra(android.content.Intent.EXTRA_SUBJECT, "Sage Garden feedback")
                     }
                     try {
                         context.startActivity(emailIntent)
                     } catch (_: Exception) {
-                        scope.launch { snackbarHostState.showSnackbar("No email app found — you can reach us at gardenwizardry685@gmail.com") }
+                        scope.launch { snackbarHostState.showSnackbar("No email app found — you can reach us at spokolabs@gmail.com") }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
