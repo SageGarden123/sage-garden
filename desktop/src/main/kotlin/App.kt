@@ -454,7 +454,10 @@ fun App() {
                         is Screen.GardenCheck -> GardenCheckScreen(appState.plants)
                         is Screen.ProgressPhotos -> ProgressPhotosScreen(
                             photos = appState.photos.toList(),
-                            zones = appState.meta.zones ?: appState.plants.map { it.location }.filter { it.isNotBlank() }.distinct()
+                            // Same zones as the phone's Progress photos picker: the ones plants actually
+                            // use. Not meta.zones — the garden's saved zone list can differ in
+                            // capitalisation from plants' locations, which listed duplicates with 0 photos.
+                            zones = appState.plants.map { it.location }.filter { it.isNotBlank() }.distinct()
                         )
                         is Screen.Reports -> ReportsScreen(
                             input = appState.reportInput(),

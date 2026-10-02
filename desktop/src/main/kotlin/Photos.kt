@@ -140,8 +140,12 @@ fun ProgressPhotoSlider(photos: List<GardenPhoto>, modifier: Modifier = Modifier
 fun ProgressPhotosScreen(photos: List<GardenPhoto>, zones: List<String>) {
     val progress = remember(photos) { photos.filter { it.kind == "progress" } }
     val byZone = remember(progress) { progress.groupBy { it.location }.mapValues { (_, v) -> v.sortedBy { it.takenAt } } }
+    // Zones with photos first, then the rest; a zone already listed under a different capitalisation
+    // isn't repeated (photos are keyed by the exact name they were taken under).
     val allZones = remember(byZone, zones) {
-        (byZone.keys.sortedBy { it.lowercase() } + zones.filter { it !in byZone }.sortedBy { it.lowercase() }).filter { it.isNotBlank() }
+        val withPhotos = byZone.keys.filter { it.isNotBlank() }.sortedBy { it.lowercase() }
+        val seen = withPhotos.mapTo(mutableSetOf()) { it.lowercase() }
+        withPhotos + zones.filter { it.isNotBlank() && seen.add(it.lowercase()) }.sortedBy { it.lowercase() }
     }
     var selected by remember(allZones) { mutableStateOf(allZones.firstOrNull()) }
     val cs = MaterialTheme.colorScheme
