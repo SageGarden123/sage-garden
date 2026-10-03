@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
-    "firebase-admin": "^14.3.0",
-    "firebase-functions": "^7.3.2",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
